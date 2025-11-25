@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+}
+
+enum WorkMode {
+  OFFICE
+  WFH
+  OTHER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String?   // Hashed password
+  image         String?
+  role          Role      @default(USER)
+  
+  departmentId  String?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  
+  teamId        String?
+  team          Team?       @relation(fields: [teamId], references: [id])
+  
+  attendance    Attendance[]
+  
+  managedDepartments Department[] @relation("DepartmentManager")
+  ledTeams           Team[]       @relation("TeamLeader")
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  
+  managerId String?
+  manager   User?    @relation("DepartmentManager", fields: [managerId], references: [id])
+  
+  teams     Team[]
+  users     User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Team {
+  id           String     @id @default(cuid())
+  name         String
+  
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  
+  leaderId     String?
+  leader       User?      @relation("TeamLeader", fields: [leaderId], references: [id])
+  
+  users        User[]
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  date      DateTime         // Date of attendance (without time)
+  
+  clockIn   DateTime?
+  clockOut  DateTime?
+  
+  breakStart DateTime?
+  breakEnd   DateTime?
+  
+  status    AttendanceStatus @default(ABSENT)
+  mode      WorkMode         @default(OFFICE)
+  
+  duration  Int?             // Duration in minutes
+  
+  notes     String?
+
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([userId, date])
+}
