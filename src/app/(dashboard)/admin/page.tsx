@@ -37,15 +37,58 @@ export default function AdminDashboard() {
                 fetch('/api/employees'),
                 fetch('/api/departments')
             ])
-            const attendanceData = await attendanceRes.json()
-            const employeesData = await employeesRes.json()
-            const departmentsData = await departmentsRes.json()
-            setRecords(attendanceData)
-            setEmployees(employeesData)
-            setDepartments(departmentsData)
-            setTotalStaff(employeesData.length)
+
+            // Validate attendance response
+            if (attendanceRes.ok) {
+                const attendanceData = await attendanceRes.json()
+                if (Array.isArray(attendanceData)) {
+                    setRecords(attendanceData)
+                } else {
+                    console.error('Attendance API returned non-array data:', attendanceData)
+                    setRecords([])
+                }
+            } else {
+                console.error('Failed to fetch attendance:', attendanceRes.status)
+                setRecords([])
+            }
+
+            // Validate employees response
+            if (employeesRes.ok) {
+                const employeesData = await employeesRes.json()
+                if (Array.isArray(employeesData)) {
+                    setEmployees(employeesData)
+                    setTotalStaff(employeesData.length)
+                } else {
+                    console.error('Employees API returned non-array data:', employeesData)
+                    setEmployees([])
+                    setTotalStaff(0)
+                }
+            } else {
+                console.error('Failed to fetch employees:', employeesRes.status)
+                setEmployees([])
+                setTotalStaff(0)
+            }
+
+            // Validate departments response
+            if (departmentsRes.ok) {
+                const departmentsData = await departmentsRes.json()
+                if (Array.isArray(departmentsData)) {
+                    setDepartments(departmentsData)
+                } else {
+                    console.error('Departments API returned non-array data:', departmentsData)
+                    setDepartments([])
+                }
+            } else {
+                console.error('Failed to fetch departments:', departmentsRes.status)
+                setDepartments([])
+            }
         } catch (error) {
             console.error('Error fetching attendance:', error)
+            // Ensure arrays are set even on error
+            setRecords([])
+            setEmployees([])
+            setDepartments([])
+            setTotalStaff(0)
         } finally {
             setLoading(false)
         }

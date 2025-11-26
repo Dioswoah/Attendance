@@ -46,10 +46,21 @@ export default function HistoryPage() {
     const fetchDepartments = async () => {
         try {
             const res = await fetch('/api/departments')
-            const data = await res.json()
-            setDepartments(data)
+            if (res.ok) {
+                const data = await res.json()
+                if (Array.isArray(data)) {
+                    setDepartments(data)
+                } else {
+                    console.error('Departments API returned non-array data:', data)
+                    setDepartments([])
+                }
+            } else {
+                console.error('Failed to fetch departments:', res.status)
+                setDepartments([])
+            }
         } catch (error) {
             console.error('Error fetching departments:', error)
+            setDepartments([])
         }
     }
 
@@ -64,13 +75,22 @@ export default function HistoryPage() {
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 const dateStr = d.toISOString().split('T')[0]
                 const res = await fetch(`/api/attendance?date=${dateStr}`)
-                const data = await res.json()
-                allRecords.push(...data)
+                if (res.ok) {
+                    const data = await res.json()
+                    if (Array.isArray(data)) {
+                        allRecords.push(...data)
+                    } else {
+                        console.error('Attendance API returned non-array data for date', dateStr, ':', data)
+                    }
+                } else {
+                    console.error('Failed to fetch attendance for date', dateStr, ':', res.status)
+                }
             }
 
             setRecords(allRecords)
         } catch (error) {
             console.error('Error fetching records:', error)
+            setRecords([])
         } finally {
             setLoading(false)
         }

@@ -51,10 +51,21 @@ export default function EmployeesPage() {
     const fetchEmployees = async () => {
         try {
             const res = await fetch('/api/employees')
-            const data = await res.json()
-            setEmployees(data)
+            if (res.ok) {
+                const data = await res.json()
+                if (Array.isArray(data)) {
+                    setEmployees(data)
+                } else {
+                    console.error('Employees API returned non-array data:', data)
+                    setEmployees([])
+                }
+            } else {
+                console.error('Failed to fetch employees:', res.status)
+                setEmployees([])
+            }
         } catch (error) {
             console.error('Error fetching employees:', error)
+            setEmployees([])
         } finally {
             setLoading(false)
         }
@@ -63,10 +74,21 @@ export default function EmployeesPage() {
     const fetchDepartments = async () => {
         try {
             const res = await fetch('/api/departments')
-            const data = await res.json()
-            setDepartments(data)
+            if (res.ok) {
+                const data = await res.json()
+                if (Array.isArray(data)) {
+                    setDepartments(data)
+                } else {
+                    console.error('Departments API returned non-array data:', data)
+                    setDepartments([])
+                }
+            } else {
+                console.error('Failed to fetch departments:', res.status)
+                setDepartments([])
+            }
         } catch (error) {
             console.error('Error fetching departments:', error)
+            setDepartments([])
         }
     }
 

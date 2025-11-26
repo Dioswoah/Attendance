@@ -39,12 +39,41 @@ export default function UserDashboard() {
                     fetch('/api/employees'),
                     fetch('/api/departments')
                 ])
-                const employeesData = await employeesRes.json()
-                const departmentsData = await departmentsRes.json()
-                setEmployees(employeesData)
-                setDepartments(departmentsData)
+                
+                // Validate employees response
+                if (employeesRes.ok) {
+                    const employeesData = await employeesRes.json()
+                    // Ensure it's an array before setting state
+                    if (Array.isArray(employeesData)) {
+                        setEmployees(employeesData)
+                    } else {
+                        console.error('Employees API returned non-array data:', employeesData)
+                        setEmployees([])
+                    }
+                } else {
+                    console.error('Failed to fetch employees:', employeesRes.status)
+                    setEmployees([])
+                }
+                
+                // Validate departments response
+                if (departmentsRes.ok) {
+                    const departmentsData = await departmentsRes.json()
+                    // Ensure it's an array before setting state
+                    if (Array.isArray(departmentsData)) {
+                        setDepartments(departmentsData)
+                    } else {
+                        console.error('Departments API returned non-array data:', departmentsData)
+                        setDepartments([])
+                    }
+                } else {
+                    console.error('Failed to fetch departments:', departmentsRes.status)
+                    setDepartments([])
+                }
             } catch (error) {
                 console.error('Error fetching data:', error)
+                // Ensure arrays are set even on error
+                setEmployees([])
+                setDepartments([])
             }
         }
         fetchData()
