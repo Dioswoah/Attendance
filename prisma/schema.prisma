@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String       @id @default(cuid())
+  name               String?
+  email              String       @unique
+  password           String?
+  image              String?
+  role               Role         @default(USER)
+  departmentId       String?
+  teamId             String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  emailVerified      DateTime?
+  accounts           Account[]
+  attendance         Attendance[]
+  managedDepartments Department[] @relation("DepartmentManager")
+  leaves             Leave[]
+  sessions           Session[]
+  ledTeams           Team[]       @relation("TeamLeader")
+  department         Department?  @relation(fields: [departmentId], references: [id])
+  team               Team?        @relation(fields: [teamId], references: [id])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  managerId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  manager   User?    @relation("DepartmentManager", fields: [managerId], references: [id])
+  teams     Team[]
+  users     User[]
+}
+
+model Team {
+  id           String     @id @default(cuid())
+  name         String
+  departmentId String
+  leaderId     String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  department   Department @relation(fields: [departmentId], references: [id])
+  leader       User?      @relation("TeamLeader", fields: [leaderId], references: [id])
+  users        User[]
+}
+
+model Attendance {
+  id         String           @id @default(cuid())
+  userId     String
+  date       DateTime
+  clockIn    DateTime?
+  clockOut   DateTime?
+  breakStart DateTime?
+  breakEnd   DateTime?
+  status     AttendanceStatus @default(ABSENT)
+  mode       WorkMode         @default(OFFICE)
+  duration   Int?
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  breaks     Break[]
+
+  @@unique([userId, date])
+}
+
+model Leave {
+  id        String    @id @default(cuid())
+  userId    String
+  startDate DateTime
+  endDate   DateTime
+  type      String
+  reason    String?
+  status    String    @default("APPROVED")
+  duration  String
+  startTime DateTime?
+  endTime   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Break {
+  id           String     @id @default(cuid())
+  attendanceId String
+  startTime    DateTime
+  endTime      DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+}
+
+model SystemSettings {
+  key   String @id
+  value String
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  LEAVE
+}
+
+enum WorkMode {
+  OFFICE
+  WFH
+  OTHER
+}
