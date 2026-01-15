@@ -4,9 +4,15 @@ import { prisma } from '@/lib/prisma'
 export async function GET() {
     try {
         const employees = await prisma.user.findMany({
-            where: { role: 'USER' },
             include: {
-                department: true
+                department: true,
+                manager: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
             },
             orderBy: { name: 'asc' }
         })
@@ -25,7 +31,8 @@ export async function POST(req: Request) {
                 name: body.name,
                 email: body.email,
                 departmentId: body.departmentId,
-                role: 'USER'
+                role: body.role || 'USER',
+                managerId: body.managerId || null
             }
         })
         return NextResponse.json(employee)

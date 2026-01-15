@@ -9,6 +9,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         Google({
             clientId: process.env.AUTH_GOOGLE_ID,
             clientSecret: process.env.AUTH_GOOGLE_SECRET,
+            allowDangerousEmailAccountLinking: true,
         }),
     ],
     callbacks: {
@@ -21,6 +22,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     include: { department: true }
                 });
                 (session.user as any).department = dbUser?.department?.name || "Unassigned";
+                (session.user as any).role = dbUser?.role;
+                (session.user as any).managerId = dbUser?.managerId;
             }
             return session;
         },

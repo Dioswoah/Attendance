@@ -47,14 +47,15 @@ export default function AdminDashboard() {
                     // Calculate stats
                     const clockedIn = atts.filter((a: any) => a.status === 'clocked-in').length
                     const onBreak = atts.filter((a: any) => a.status === 'on-break').length
+                    const onLeave = atts.filter((a: any) => a.status === 'on-leave').length
                     const totalStaff = emps.length
 
                     setStats({
                         totalStaff,
                         clockedIn,
                         onBreak,
-                        onLeave: 0, // Not implemented yet
-                        absent: totalStaff - (clockedIn + onBreak)
+                        onLeave,
+                        absent: totalStaff - (clockedIn + onBreak + onLeave)
                     })
                 }
             } catch (error) {
@@ -166,7 +167,8 @@ export default function AdminDashboard() {
                                         <div className="text-right">
                                             <Badge variant="outline" className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border-none ${record.status === 'clocked-in' ? 'bg-red-50 text-red-600' :
                                                 record.status === 'on-break' ? 'bg-yellow-50 text-yellow-700' :
-                                                    'bg-slate-100 text-slate-500'
+                                                    record.status === 'on-leave' ? 'bg-blue-50 text-blue-600' :
+                                                        'bg-slate-100 text-slate-500'
                                                 }`}>
                                                 {record.status.replace('-', ' ')}
                                             </Badge>
@@ -262,6 +264,7 @@ export default function AdminDashboard() {
                                     <SelectItem value="all" className="font-bold text-[9px] uppercase italic">All Status</SelectItem>
                                     <SelectItem value="clocked-in" className="font-bold text-[9px] uppercase italic text-red-600">Active</SelectItem>
                                     <SelectItem value="on-break" className="font-bold text-[9px] uppercase italic text-yellow-600">Break</SelectItem>
+                                    <SelectItem value="on-leave" className="font-bold text-[9px] uppercase italic text-blue-600">On Leave</SelectItem>
                                     <SelectItem value="clocked-out" className="font-bold text-[9px] uppercase italic text-slate-400">Offline</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -308,8 +311,9 @@ export default function AdminDashboard() {
                                         <TableCell className="py-5 px-8 text-center">
                                             <Badge variant="outline" className={`px-2.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border-none ${status === 'clocked-in' ? 'bg-red-50 text-red-600' :
                                                 status === 'on-break' ? 'bg-yellow-50 text-yellow-700' :
-                                                    status === 'clocked-out' ? 'bg-slate-100 text-slate-400' :
-                                                        'bg-red-50/50 text-red-400'
+                                                    status === 'on-leave' ? 'bg-blue-50 text-blue-600' :
+                                                        status === 'clocked-out' ? 'bg-slate-100 text-slate-400' :
+                                                            'bg-red-50/50 text-red-400'
                                                 }`}>
                                                 {status.replace('-', ' ')}
                                             </Badge>

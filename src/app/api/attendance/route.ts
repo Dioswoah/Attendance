@@ -49,32 +49,101 @@ export async function GET(req: Request) {
     }
 
     try {
-        const attendance = await prisma.attendance.findMany({
-            where: whereClause,
-            include: {
-                user: {
-                    include: {
-                        department: true
-                    }
+        // Prepare Leave Query
+        let leaveWhere: any = { status: 'APPROVED' }
+        if (userId) leaveWhere.userId = userId
+        if (departmentId && departmentId !== 'all') leaveWhere.user = { departmentId }
+
+        // Date logic for Leaves
+        if (startDateStr && endDateStr) {
+            const start = new Date(startDateStr)
+            start.setUTCHours(0, 0, 0, 0)
+            const end = new Date(endDateStr)
+            end.setUTCHours(23, 59, 59, 999)
+
+            leaveWhere.AND = [
+                { startDate: { lte: end } },
+                { endDate: { gte: start } }
+            ]
+        } else {
+            // Single date (or default today)
+            // Use the same targetDate as attendance query
+            const targetDayStart = new Date(whereClause.date.gte)
+            const targetDayEnd = new Date(whereClause.date.lt)
+            // Adjust to end of day? actually 'lt nextDay' is fine for attendance, 
+            // but for leave overlap we want: LeaveStart < NextDay AND LeaveEnd >= TargetDay
+            leaveWhere.AND = [
+                { startDate: { lt: targetDayEnd } },
+                { endDate: { gte: targetDayStart } }
+            ]
+        }
+
+        const [attendance, leaves] = await Promise.all([
+            prisma.attendance.findMany({
+                where: whereClause,
+                include: {
+                    user: {
+                        include: {
+                            department: true
+                        }
+                    },
+                    breaks: true
                 },
-                breaks: true
-            },
-            orderBy: { clockIn: 'desc' }
+                orderBy: { clockIn: 'desc' }
+            }),
+            prisma.leave.findMany({
+                where: leaveWhere,
+                include: {
+                    user: {
+                        include: {
+                            department: true
+                        }
+                    }
+                }
+            })
+        ])
+
+        // Transform Attendance
+        const attendanceMap = new Map()
+        attendance.forEach(a => {
+            attendanceMap.set(a.userId, {
+                id: a.id,
+                userId: a.userId,
+                userName: a.user?.name || 'Unknown',
+                userImage: a.user?.image,
+                department: a.user?.department?.name || 'Unassigned',
+                date: a.date.toISOString().split('T')[0],
+                clockIn: a.clockIn?.toISOString(),
+                clockOut: a.clockOut?.toISOString(),
+                mode: a.mode,
+                status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
+                breakStart: a.breakStart?.toISOString(),
+                breakEnd: a.breakEnd?.toISOString()
+            })
         })
 
-        const transformed = attendance.map(a => ({
-            id: a.id,
-            userId: a.userId,
-            userName: a.user?.name || 'Unknown',
-            department: a.user?.department?.name || 'Unassigned',
-            date: a.date.toISOString().split('T')[0],
-            clockIn: a.clockIn?.toISOString(),
-            clockOut: a.clockOut?.toISOString(),
-            mode: a.mode,
-            status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
-            breakStart: a.breakStart?.toISOString(),
-            breakEnd: a.breakEnd?.toISOString()
-        }))
+        // Merge Leaves
+        // Only add leave if no attendance record exists (attendance takes precedence if they clocked in)
+        leaves.forEach((l: any) => {
+            if (!attendanceMap.has(l.userId)) {
+                attendanceMap.set(l.userId, {
+                    id: l.id, // Use leave ID
+                    userId: l.userId,
+                    userName: l.user?.name || 'Unknown',
+                    userImage: l.user?.image,
+                    department: l.user?.department?.name || 'Unassigned',
+                    date: l.startDate.toISOString().split('T')[0], // Approximate
+                    clockIn: null,
+                    clockOut: null,
+                    mode: 'LEAVE',
+                    status: 'on-leave',
+                    breakStart: null,
+                    breakEnd: null
+                })
+            }
+        })
+
+        const transformed = Array.from(attendanceMap.values())
 
         return NextResponse.json(transformed)
     } catch (error) {

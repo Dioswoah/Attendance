@@ -16,6 +16,7 @@ model User {
   role               Role         @default(USER)
   departmentId       String?
   teamId             String?
+  managerId          String?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
   emailVerified      DateTime?
@@ -25,8 +26,10 @@ model User {
   leaves             Leave[]
   sessions           Session[]
   ledTeams           Team[]       @relation("TeamLeader")
+  managedUsers       User[]       @relation("UserManager")
   department         Department?  @relation(fields: [departmentId], references: [id])
   team               Team?        @relation(fields: [teamId], references: [id])
+  manager            User?        @relation("UserManager", fields: [managerId], references: [id])
 }
 
 model Account {
@@ -115,7 +118,7 @@ model Leave {
   endDate   DateTime
   type      String
   reason    String?
-  status    String    @default("APPROVED")
+  status    String    @default("PENDING")
   duration  String
   startTime DateTime?
   endTime   DateTime?
@@ -141,6 +144,7 @@ model SystemSettings {
 
 enum Role {
   ADMIN
+  MANAGER
   USER
 }
 

@@ -21,6 +21,8 @@ export default function EmployeesPage() {
     const [newName, setNewName] = useState("")
     const [newEmail, setNewEmail] = useState("")
     const [newDeptId, setNewDeptId] = useState("")
+    const [newRole, setNewRole] = useState("USER")
+    const [newManagerId, setNewManagerId] = useState("")
     const [isAddOpen, setIsAddOpen] = useState(false)
 
     // Edit state
@@ -28,6 +30,8 @@ export default function EmployeesPage() {
     const [editName, setEditName] = useState("")
     const [editEmail, setEditEmail] = useState("")
     const [editDeptId, setEditDeptId] = useState("")
+    const [editRole, setEditRole] = useState("")
+    const [editManagerId, setEditManagerId] = useState("")
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -62,7 +66,9 @@ export default function EmployeesPage() {
                 body: JSON.stringify({
                     name: newName,
                     email: newEmail,
-                    departmentId: newDeptId
+                    departmentId: newDeptId,
+                    role: newRole,
+                    managerId: newRole === "USER" && newManagerId ? newManagerId : null
                 })
             })
             if (res.ok) {
@@ -70,6 +76,8 @@ export default function EmployeesPage() {
                 setNewName("")
                 setNewEmail("")
                 setNewDeptId("")
+                setNewRole("USER")
+                setNewManagerId("")
                 fetchData()
             }
         } catch (error) {
@@ -82,6 +90,8 @@ export default function EmployeesPage() {
         setEditName(emp.name || "")
         setEditEmail(emp.email || "")
         setEditDeptId(emp.departmentId || "")
+        setEditRole(emp.role || "USER")
+        setEditManagerId(emp.managerId || "")
         setIsEditOpen(true)
     }
 
@@ -96,7 +106,9 @@ export default function EmployeesPage() {
                 body: JSON.stringify({
                     name: editName,
                     email: editEmail,
-                    departmentId: editDeptId === "unassigned" ? null : editDeptId
+                    departmentId: editDeptId === "unassigned" ? null : editDeptId,
+                    role: editRole,
+                    managerId: editRole === "USER" && editManagerId && editManagerId !== "unassigned" ? editManagerId : null
                 })
             })
             if (res.ok) {
@@ -178,7 +190,7 @@ export default function EmployeesPage() {
                                     <Input type="email" placeholder="Email@redadair.com..." className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" value={newEmail} onChange={e => setNewEmail(e.target.value)} required />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Node Assignment</Label>
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Department</Label>
                                     <Select value={newDeptId} onValueChange={setNewDeptId} required>
                                         <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
                                             <SelectValue placeholder="SELECT DEPARTMENT..." />
@@ -190,6 +202,35 @@ export default function EmployeesPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Role</Label>
+                                    <Select value={newRole} onValueChange={setNewRole} required>
+                                        <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
+                                            <SelectValue placeholder="SELECT ROLE..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                                            <SelectItem value="USER" className="font-bold uppercase italic text-[9px] tracking-widest">User</SelectItem>
+                                            <SelectItem value="MANAGER" className="font-bold uppercase italic text-[9px] tracking-widest">Manager</SelectItem>
+                                            <SelectItem value="ADMIN" className="font-bold uppercase italic text-[9px] tracking-widest">Admin</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {newRole === "USER" && (
+                                    <div className="space-y-2">
+                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Assigned Manager</Label>
+                                        <Select value={newManagerId} onValueChange={setNewManagerId}>
+                                            <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
+                                                <SelectValue placeholder="SELECT MANAGER..." />
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                                                <SelectItem value="unassigned" className="font-bold text-[9px] uppercase italic text-slate-400">No Manager</SelectItem>
+                                                {employees.filter(e => e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
+                                                    <SelectItem key={m.id} value={m.id} className="font-bold uppercase italic text-[9px] tracking-widest">{m.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                             </div>
                             <Button type="submit" className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest">Create Staff Member</Button>
                         </form>
@@ -214,8 +255,10 @@ export default function EmployeesPage() {
                         <TableHeader className="bg-slate-50/50">
                             <TableRow className="border-slate-100 hover:bg-transparent">
                                 <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-left">Personnel Identity</TableHead>
-                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-left">Structural Node</TableHead>
-                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-left">Communication</TableHead>
+                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-left">Department</TableHead>
+                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-left">Email</TableHead>
+                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-left">Role</TableHead>
+                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-left">Assigned Manager</TableHead>
                                 <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -229,14 +272,13 @@ export default function EmployeesPage() {
                                             </div>
                                             <div className="flex flex-col">
                                                 <span className="font-black text-slate-800 uppercase italic text-[11px] leading-tight">{emp.name || "Unknown Identity"}</span>
-                                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">ID: {emp.id.slice(0, 8)}</span>
                                             </div>
                                         </div>
                                     </TableCell>
                                     <TableCell className="py-5 px-8">
                                         <Badge variant="outline" className="bg-red-50/50 text-red-600 text-[8px] font-black uppercase tracking-widest border-none px-3 py-1.5 rounded-lg italic">
                                             <Building className="h-2.5 w-2.5 mr-1.5 opacity-50" />
-                                            {emp.department?.name || 'Unassigned Node'}
+                                            {emp.department?.name || 'Unassigned'}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="py-5 px-8">
@@ -244,6 +286,27 @@ export default function EmployeesPage() {
                                             <Mail className="h-3 w-3 text-slate-300" />
                                             {emp.email}
                                         </div>
+                                    </TableCell>
+                                    <TableCell className="py-5 px-8">
+                                        <Badge
+                                            variant="outline"
+                                            className={`text-[8px] font-black uppercase tracking-widest border-none px-3 py-1.5 rounded-lg italic ${emp.role === 'ADMIN' ? 'bg-red-50 text-red-600' :
+                                                emp.role === 'MANAGER' ? 'bg-blue-50 text-blue-600' :
+                                                    'bg-slate-50 text-slate-600'
+                                                }`}
+                                        >
+                                            {emp.role}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="py-5 px-8">
+                                        {emp.role === 'USER' ? (
+                                            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 italic tracking-tight">
+                                                <User className="h-3 w-3 text-slate-300" />
+                                                {emp.manager?.name || 'No Manager'}
+                                            </div>
+                                        ) : (
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">N/A</span>
+                                        )}
                                     </TableCell>
                                     <TableCell className="py-5 px-8 text-right">
                                         <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
@@ -270,7 +333,7 @@ export default function EmployeesPage() {
                             ))}
                             {filteredEmployees.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={4} className="text-center py-24">
+                                    <TableCell colSpan={6} className="text-center py-24">
                                         <div className="flex flex-col items-center gap-2 opacity-20">
                                             <User className="h-8 w-8 text-slate-900" />
                                             <p className="text-[9px] font-black uppercase tracking-widest italic leading-tight">No identities detected in current parameters</p>
@@ -286,10 +349,11 @@ export default function EmployeesPage() {
             {/* Edit Employee Dialog */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
                 <DialogContent className="sm:max-w-[450px] border-none rounded-[2.5rem] p-0 overflow-hidden shadow-2xl">
-                    <div className="bg-slate-900 p-8 text-white relative">
+                    <div className="bg-red-600 p-8 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 h-32 w-32 bg-white/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2" />
                         <DialogHeader className="space-y-1 relative z-10">
                             <DialogTitle className="text-2xl font-black italic tracking-tighter uppercase leading-none">Edit Staff Member</DialogTitle>
-                            <DialogDescription className="text-slate-400 font-bold uppercase tracking-widest text-[9px]">Updating authorized personnel metrics</DialogDescription>
+                            <DialogDescription className="text-red-100 font-bold uppercase tracking-widest text-[9px]">Updating authorized personnel metrics</DialogDescription>
                         </DialogHeader>
                     </div>
                     <form onSubmit={handleUpdateEmployee} className="p-8 space-y-6 bg-white">
@@ -316,26 +380,55 @@ export default function EmployeesPage() {
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Node Assignment</Label>
+                                <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Department</Label>
                                 <Select value={editDeptId} onValueChange={setEditDeptId}>
                                     <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
                                         <SelectValue placeholder="Select Department" />
                                     </SelectTrigger>
                                     <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-                                        <SelectItem value="unassigned" className="font-bold text-[9px] uppercase italic text-slate-400">Unassigned Node</SelectItem>
+                                        <SelectItem value="unassigned" className="font-bold text-[9px] uppercase italic text-slate-400">Unassigned</SelectItem>
                                         {departments.map(d => (
                                             <SelectItem key={d.id} value={d.id} className="font-bold uppercase italic text-[9px] tracking-widest">{d.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Role</Label>
+                                <Select value={editRole} onValueChange={setEditRole}>
+                                    <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
+                                        <SelectValue placeholder="Select Role" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                                        <SelectItem value="USER" className="font-bold uppercase italic text-[9px] tracking-widest">User</SelectItem>
+                                        <SelectItem value="MANAGER" className="font-bold uppercase italic text-[9px] tracking-widest">Manager</SelectItem>
+                                        <SelectItem value="ADMIN" className="font-bold uppercase italic text-[9px] tracking-widest">Admin</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {editRole === "USER" && (
+                                <div className="space-y-1.5">
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Assigned Manager</Label>
+                                    <Select value={editManagerId} onValueChange={setEditManagerId}>
+                                        <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
+                                            <SelectValue placeholder="Select Manager" />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl border-slate-100 shadow-xl">
+                                            <SelectItem value="unassigned" className="font-bold text-[9px] uppercase italic text-slate-400">No Manager</SelectItem>
+                                            {employees.filter(e => (e.role === 'MANAGER' || e.role === 'ADMIN') && e.id !== editingEmp?.id).map(m => (
+                                                <SelectItem key={m.id} value={m.id} className="font-bold uppercase italic text-[9px] tracking-widest">{m.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                         </div>
                         <Button
                             type="submit"
                             disabled={isSaving}
-                            className="w-full h-14 bg-slate-900 hover:bg-black text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest flex gap-3"
+                            className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest flex gap-3"
                         >
-                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <ShieldCheck className="h-4 w-4 text-red-600" />}
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <ShieldCheck className="h-4 w-4 text-white" />}
                             Save Changes
                         </Button>
                     </form>

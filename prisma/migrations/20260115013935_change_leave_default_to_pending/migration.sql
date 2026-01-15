@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Leave" ALTER COLUMN "status" SET DEFAULT 'PENDING';
