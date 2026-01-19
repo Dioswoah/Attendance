@@ -44,7 +44,7 @@ export default function AdminLayout({
         { href: "/admin/employees", label: "Staff", icon: Users },
         { href: "/admin/departments", label: "Departments", icon: Building2 },
         { href: "/admin/manual-entry", label: "Manual Entry", icon: Clock },
-        { href: "/admin/history", label: "History", icon: History },
+        { href: "/admin/history", label: "Record", icon: History },
         { href: "/admin/reports", label: "Export", icon: FileText },
         { href: "/admin/settings", label: "Settings", icon: Settings },
     ]
@@ -101,7 +101,7 @@ export default function AdminLayout({
             </aside>
 
             {/* Main Content Area */}
-            <div className="flex flex-col flex-1 sm:pl-64 min-h-screen">
+            <div className="flex flex-col flex-1 sm:pl-64 min-h-screen min-w-0">
                 <header className="sticky top-0 z-40 flex h-16 items-center justify-between px-8 bg-white/80 backdrop-blur-md border-b border-border">
                     <div className="flex items-center gap-2">
                         {/* Empty or can add breadcrumbs later */}
@@ -115,7 +115,7 @@ export default function AdminLayout({
                     </div>
                 </header>
 
-                <main className="flex-1 p-8">
+                <main className="flex-1 p-8 min-w-0">
                     {children}
                 </main>
             </div>

@@ -54,12 +54,10 @@ export async function POST(req: Request) {
         const targetDate = new Date(date)
         targetDate.setUTCHours(0, 0, 0, 0)
 
-        let attendance = await prisma.attendance.findUnique({
+        let attendance = await prisma.attendance.findFirst({
             where: {
-                userId_date: {
-                    userId,
-                    date: targetDate
-                }
+                userId,
+                date: targetDate
             }
         })
 

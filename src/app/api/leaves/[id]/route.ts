@@ -17,7 +17,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             where: { id },
             data: {
                 status: body.status,
-                declineReason: body.declineReason // Add decline reason
+                declineReason: body.declineReason,
+                startDate: body.startDate ? new Date(body.startDate) : undefined,
+                endDate: body.endDate ? new Date(body.endDate) : undefined,
+                reason: body.reason,
+                type: body.type,
+                duration: body.duration,
+                startTime: body.startTime ? new Date(body.startTime) : undefined,
+                endTime: body.endTime ? new Date(body.endTime) : undefined,
             },
             include: { user: true }
         })

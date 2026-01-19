@@ -25,12 +25,14 @@ import {
     ArrowRight,
     Flame,
     Zap,
-    ShieldCheck
+    ShieldCheck,
+    MoreHorizontal
 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { format, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
 
-type TabType = 'attendance' | 'leave' | 'breaks'
+type TabType = 'attendance' | 'leaves' | 'breaks'
 type ModeType = 'create' | 'list'
 
 export default function ManualEntryPage() {
@@ -75,6 +77,13 @@ export default function ManualEntryPage() {
     const [brIn, setBrIn] = useState("12:00")
     const [brOut, setBrOut] = useState("13:00")
 
+    // Form Filter States
+    const [formDeptId, setFormDeptId] = useState("all")
+
+    // Editing States
+    const [editingRecord, setEditingRecord] = useState<any | null>(null)
+    const [editForm, setEditForm] = useState<any>({})
+
     useEffect(() => {
         fetchInitialData()
     }, [])
@@ -105,7 +114,7 @@ export default function ManualEntryPage() {
             let url = `/api/${activeTab}?`
             if (activeTab === 'attendance') {
                 url += `startDate=${startDate}&endDate=${endDate}&departmentId=${filterDept}&userId=${filterEmp === 'all' ? '' : filterEmp}`
-            } else if (activeTab === 'leave') {
+            } else if (activeTab === 'leaves') {
                 url += `startDate=${startDate}&endDate=${endDate}&departmentId=${filterDept}`
             } else if (activeTab === 'breaks') {
                 url += `date=${startDate}&userId=${filterEmp === 'all' ? '' : filterEmp}`
@@ -142,6 +151,11 @@ export default function ManualEntryPage() {
         finally { setProcessing(false) }
     }
 
+    const showStatus = (s: 'success' | 'error') => {
+        setStatus(s)
+        setTimeout(() => setStatus('idle'), 3000)
+    }
+
     const handleLeaveSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setProcessing(true)
@@ -156,6 +170,7 @@ export default function ManualEntryPage() {
                     type: lvType,
                     reason: lvReason,
                     duration: lvDuration,
+                    status: 'APPROVED',
                     startTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvStartTime}:00`).toISOString() : null,
                     endTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvEndTime}:00`).toISOString() : null
                 })
@@ -189,9 +204,49 @@ export default function ManualEntryPage() {
         finally { setProcessing(false) }
     }
 
-    const showStatus = (s: 'success' | 'error') => {
-        setStatus(s)
-        setTimeout(() => setStatus('idle'), 3000)
+    const handleEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setProcessing(true)
+        try {
+            const endpoint = `/api/${activeTab}/${editingRecord.id}`
+            const res = await fetch(endpoint, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editForm)
+            })
+            if (res.ok) {
+                showStatus('success')
+                setEditingRecord(null)
+                fetchRecords()
+            } else showStatus('error')
+        } catch { showStatus('error') }
+        finally { setProcessing(false) }
+    }
+
+    const startEditing = (rec: any) => {
+        setEditingRecord(rec)
+        if (activeTab === 'attendance') {
+            setEditForm({
+                clockIn: rec.clockIn,
+                clockOut: rec.clockOut,
+                mode: rec.mode,
+                date: rec.date
+            })
+        } else if (activeTab === 'leaves') {
+            setEditForm({
+                startDate: rec.startDate,
+                endDate: rec.endDate,
+                type: rec.type,
+                duration: rec.duration,
+                reason: rec.reason
+            })
+        } else if (activeTab === 'breaks') {
+            setEditForm({
+                startTime: rec.startTime,
+                endTime: rec.endTime,
+                date: rec.date
+            })
+        }
     }
 
     const deleteRecord = async (id: string) => {
@@ -234,7 +289,7 @@ export default function ManualEntryPage() {
             <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
                 {[
                     { id: 'attendance', label: 'Attendance', icon: Clock },
-                    { id: 'leave', label: 'Authorized Leave', icon: FileText },
+                    { id: 'leaves', label: 'Authorized Leave', icon: FileText },
                     { id: 'breaks', label: 'Break Sessions', icon: Coffee }
                 ].map(tab => (
                     <Button
@@ -258,7 +313,7 @@ export default function ManualEntryPage() {
             <div className="flex gap-6 border-b border-border pb-0">
                 {[
                     { id: 'create', label: 'Create New record' },
-                    { id: 'list', label: 'Review Existing Nodes' }
+                    { id: 'list', label: 'Review Existing Record' }
                 ].map(mode => (
                     <button
                         key={mode.id}
@@ -287,28 +342,41 @@ export default function ManualEntryPage() {
                     <CardContent className="p-8">
                         {activeTab === 'attendance' && (
                             <form onSubmit={handleAttendanceSubmit} className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="space-y-2">
-                                        <Label>Select Operative</Label>
+                                        <Label>Filter by Department</Label>
+                                        <Select value={formDeptId} onValueChange={setFormDeptId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="All Departments" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Departments</SelectItem>
+                                                {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Staff Name</Label>
                                         <Select value={attEmpId} onValueChange={setAttEmpId} required>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                                                {employees.filter(e => formDeptId === 'all' || e.departmentId === formDeptId).map(e => (
+                                                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Structural Node</Label>
+                                        <Label>Work Location</Label>
                                         <Select value={attMode} onValueChange={setAttMode}>
                                             <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="OFFICE">Office Terminal</SelectItem>
-                                                <SelectItem value="WFH">Remote Node</SelectItem>
-                                                <SelectItem value="OTHER">Field Deployment</SelectItem>
+                                                <SelectItem value="OFFICE">In-Office</SelectItem>
+                                                <SelectItem value="WFH">WFH</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -318,11 +386,11 @@ export default function ManualEntryPage() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Ingress Time</Label>
+                                            <Label>Clock In</Label>
                                             <Input type="time" value={attIn} onChange={e => setAttIn(e.target.value)} required />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Egress Time</Label>
+                                            <Label>Clock Out</Label>
                                             <Input type="time" value={attOut} onChange={e => setAttOut(e.target.value)} />
                                         </div>
                                     </div>
@@ -334,22 +402,36 @@ export default function ManualEntryPage() {
                             </form>
                         )}
 
-                        {activeTab === 'leave' && (
+                        {activeTab === 'leaves' && (
                             <form onSubmit={handleLeaveSubmit} className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="space-y-2">
-                                        <Label>Staff Member</Label>
+                                        <Label>Department</Label>
+                                        <Select value={formDeptId} onValueChange={setFormDeptId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="All Departments" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Departments</SelectItem>
+                                                {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Staff Name</Label>
                                         <Select value={lvEmpId} onValueChange={setLvEmpId} required>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                                                {employees.filter(e => formDeptId === 'all' || e.departmentId === formDeptId).map(e => (
+                                                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Leave Classification</Label>
+                                        <Label>Leave Type</Label>
                                         <Select value={lvType} onValueChange={setLvType}>
                                             <SelectTrigger>
                                                 <SelectValue />
@@ -410,15 +492,29 @@ export default function ManualEntryPage() {
 
                         {activeTab === 'breaks' && (
                             <form onSubmit={handleBreakSubmit} className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="space-y-2">
-                                        <Label>Select Operative</Label>
+                                        <Label>Department</Label>
+                                        <Select value={formDeptId} onValueChange={setFormDeptId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="All Departments" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Departments</SelectItem>
+                                                {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Staff Name</Label>
                                         <Select value={brEmpId} onValueChange={setBrEmpId} required>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                                                {employees.filter(e => formDeptId === 'all' || e.departmentId === formDeptId).map(e => (
+                                                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -455,7 +551,7 @@ export default function ManualEntryPage() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">Global Overlook</SelectItem>
+                                        <SelectItem value="all">All Departments</SelectItem>
                                         {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
@@ -485,10 +581,10 @@ export default function ManualEntryPage() {
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow className="border-border hover:bg-transparent">
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Personnel</TableHead>
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Architecture</TableHead>
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Temporal</TableHead>
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">{activeTab === 'leave' ? 'Leave Type' : 'Metrics'}</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Staff Name</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Date</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">{activeTab === 'leaves' ? 'Leave Type' : 'Work Time'}</TableHead>
                                         <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Admin</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -500,7 +596,11 @@ export default function ManualEntryPage() {
                                             </TableCell>
                                             <TableCell className="py-4 px-6 text-sm text-muted-foreground">{rec.department}</TableCell>
                                             <TableCell className="py-4 px-6 text-sm text-muted-foreground">
-                                                {activeTab === 'leave' ? `${format(parseISO(rec.startDate), "dd MMM")} - ${format(parseISO(rec.endDate), "dd MMM")}` : format(parseISO(rec.clockIn || rec.date || rec.startTime), "dd MMM yyyy")}
+                                                {activeTab === 'leaves'
+                                                    ? `${rec.startDate ? format(parseISO(rec.startDate), "dd MMM") : '---'} - ${rec.endDate ? format(parseISO(rec.endDate), "dd MMM") : '---'}`
+                                                    : (rec.clockIn || rec.date || rec.startTime)
+                                                        ? format(parseISO(rec.clockIn || rec.date || rec.startTime), "dd MMM yyyy")
+                                                        : '---'}
                                             </TableCell>
                                             <TableCell className="py-4 px-6">
                                                 {activeTab === 'attendance' && (
@@ -510,7 +610,7 @@ export default function ManualEntryPage() {
                                                         <span className="text-muted-foreground">{rec.clockOut ? format(parseISO(rec.clockOut), "HH:mm") : '---'}</span>
                                                     </div>
                                                 )}
-                                                {activeTab === 'leave' && (
+                                                {activeTab === 'leaves' && (
                                                     <div className="flex flex-col gap-0.5">
                                                         <span className="font-medium text-sm text-foreground">{rec.type}</span>
                                                         <span className="text-xs text-muted-foreground">{rec.duration}</span>
@@ -518,16 +618,21 @@ export default function ManualEntryPage() {
                                                 )}
                                                 {activeTab === 'breaks' && (
                                                     <div className="flex gap-2 items-center text-sm font-medium text-yellow-600">
-                                                        <span>{format(parseISO(rec.startTime), "HH:mm")}</span>
+                                                        <span>{rec.startTime ? format(parseISO(rec.startTime), "HH:mm") : '---'}</span>
                                                         <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
                                                         <span>{rec.endTime ? format(parseISO(rec.endTime), "HH:mm") : '---'}</span>
                                                     </div>
                                                 )}
                                             </TableCell>
                                             <TableCell className="py-4 px-6 text-right">
-                                                <Button onClick={() => deleteRecord(rec.id)} variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                <div className="flex justify-end gap-1 transition-opacity">
+                                                    <Button onClick={() => startEditing(rec)} variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10">
+                                                        <Edit2 className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button onClick={() => deleteRecord(rec.id)} variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -547,6 +652,88 @@ export default function ManualEntryPage() {
                     </Card>
                 </div>
             )}
+            {/* Edit Dialog */}
+            <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit {activeTab.slice(0, -1)} Record</DialogTitle>
+                        <DialogDescription>Modify entry for {editingRecord?.userName}</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleEditSubmit} className="space-y-4 py-4">
+                        {activeTab === 'attendance' && (
+                            <>
+                                <div className="space-y-2">
+                                    <Label>Date</Label>
+                                    <Input type="date" value={editForm.date} onChange={e => setEditForm({ ...editForm, date: e.target.value })} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Clock In</Label>
+                                        <Input type="time" value={editForm.clockIn ? format(parseISO(editForm.clockIn), "HH:mm") : ""}
+                                            onChange={e => setEditForm({ ...editForm, clockIn: `${editForm.date}T${e.target.value}:00Z` })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Clock Out</Label>
+                                        <Input type="time" value={editForm.clockOut ? format(parseISO(editForm.clockOut), "HH:mm") : ""}
+                                            onChange={e => setEditForm({ ...editForm, clockOut: `${editForm.date}T${e.target.value}:00Z` })} />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Work Location</Label>
+                                    <Select value={editForm.mode} onValueChange={m => setEditForm({ ...editForm, mode: m })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="OFFICE">In-Office</SelectItem>
+                                            <SelectItem value="WFH">WFH</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </>
+                        )}
+                        {activeTab === 'leaves' && (
+                            <>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Start Date</Label>
+                                        <Input type="date" value={editForm.startDate} onChange={e => setEditForm({ ...editForm, startDate: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>End Date</Label>
+                                        <Input type="date" value={editForm.endDate} onChange={e => setEditForm({ ...editForm, endDate: e.target.value })} />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Reason</Label>
+                                    <Input value={editForm.reason || ""} onChange={e => setEditForm({ ...editForm, reason: e.target.value })} />
+                                </div>
+                            </>
+                        )}
+                        {activeTab === 'breaks' && (
+                            <>
+                                <div className="space-y-2">
+                                    <Label>Date</Label>
+                                    <Input type="date" value={editForm.date} onChange={e => setEditForm({ ...editForm, date: e.target.value })} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Start Time</Label>
+                                        <Input type="time" value={editForm.startTime ? format(parseISO(editForm.startTime), "HH:mm") : ""}
+                                            onChange={e => setEditForm({ ...editForm, startTime: `${editForm.date}T${e.target.value}:00Z` })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>End Time</Label>
+                                        <Input type="time" value={editForm.endTime ? format(parseISO(editForm.endTime), "HH:mm") : ""}
+                                            onChange={e => setEditForm({ ...editForm, endTime: `${editForm.date}T${e.target.value}:00Z` })} />
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                        <Button type="submit" disabled={processing} className="w-full">
+                            {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : "Save Changes"}
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

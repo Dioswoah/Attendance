@@ -231,27 +231,29 @@ export default function ActivityLogsPage() {
                         </div>
                         <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                             <CardContent className="p-0">
-                                <div className="divide-y divide-border/50">
-                                    {logs.map((log) => (
-                                        <div key={log.id} className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
-                                            <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground">
-                                                {getTypeIcon(log.type)}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-3 flex-wrap mb-1">
-                                                    <span className="text-sm font-medium text-foreground">{log.details}</span>
-                                                    {getTypeBadge(log.type)}
+                                <div className="max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                                    <div className="divide-y divide-border/50">
+                                        {logs.map((log) => (
+                                            <div key={log.id} className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
+                                                <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground">
+                                                    {getTypeIcon(log.type)}
                                                 </div>
-                                                {log.employeeName && (
-                                                    <p className="text-xs text-muted-foreground">{log.employeeName}</p>
-                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-3 flex-wrap mb-1">
+                                                        <span className="text-sm font-medium text-foreground">{log.details}</span>
+                                                        {getTypeBadge(log.type)}
+                                                    </div>
+                                                    {log.employeeName && (
+                                                        <p className="text-xs text-muted-foreground">{log.employeeName}</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                                                    <Clock className="w-3.5 h-3.5" />
+                                                    {log.time}
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                                                <Clock className="w-3.5 h-3.5" />
-                                                {log.time}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

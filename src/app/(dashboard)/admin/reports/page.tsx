@@ -49,10 +49,12 @@ export default function ExportPage() {
         }
     }
 
-    const setQuickRange = (range: '7days' | '30days' | 'month') => {
+    const setQuickRange = (range: 'today' | '7days' | '30days' | 'month') => {
         const end = new Date()
         const start = new Date()
-        if (range === '7days') start.setDate(end.getDate() - 7)
+        if (range === 'today') {
+            // Both start and end are already today
+        } else if (range === '7days') start.setDate(end.getDate() - 7)
         else if (range === '30days') start.setDate(end.getDate() - 30)
         else if (range === 'month') start.setDate(1)
 
@@ -60,11 +62,35 @@ export default function ExportPage() {
         setEndDate(format(end, "yyyy-MM-dd"))
     }
 
-    const calculateHours = (start?: string, end?: string) => {
-        if (!start || !end) return "0.00"
-        const diff = new Date(end).getTime() - new Date(start).getTime()
-        const decimalHours = diff / (1000 * 60 * 60)
-        return decimalHours.toFixed(2)
+    const calculateDurations = (recs: any[]) => {
+        let workMs = 0
+        let breakMs = 0
+        let leaveMs = 0
+
+        recs.forEach(r => {
+            if (r.status === 'on-leave' || r.mode === 'LEAVE' || r.status === 'LEAVE') {
+                leaveMs += 8 * 60 * 60 * 1000
+            } else if (r.clockIn) {
+                const clockIn = new Date(r.clockIn).getTime()
+                const clockOut = r.clockOut ? new Date(r.clockOut).getTime() :
+                    (new Date(r.date).toDateString() === new Date().toDateString() ? new Date().getTime() : 0)
+
+                if (clockOut > clockIn) {
+                    let dayBreakMs = 0
+                    r.breaks?.forEach((b: any) => {
+                        const start = new Date(b.startTime).getTime()
+                        const end = b.endTime ? new Date(b.endTime).getTime() :
+                            (new Date(r.date) >= new Date() ? new Date().getTime() : start)
+                        dayBreakMs += Math.max(0, end - start)
+                    })
+
+                    workMs += (clockOut - clockIn) - dayBreakMs
+                    breakMs += dayBreakMs
+                }
+            }
+        })
+
+        return { workMs, breakMs, leaveMs }
     }
 
     const handleExport = async () => {
@@ -74,21 +100,54 @@ export default function ExportPage() {
             if (res.ok) {
                 const data = await res.json()
 
-                const exportData = data.map((record: any) => ({
-                    'IDENTITY': record.userName,
-                    'DEPARTMENT': record.department,
-                    'DATE': record.date,
-                    'CLOCK_IN': record.clockIn ? format(new Date(record.clockIn), "HH:mm:ss") : '-',
-                    'CLOCK_OUT': record.clockOut ? format(new Date(record.clockOut), "HH:mm:ss") : '-',
-                    'TOTAL_HOURS': calculateHours(record.clockIn, record.clockOut),
-                    'STATUS': record.status.toUpperCase(),
-                    'WORK_MODE': record.mode
-                }))
+                // Sheet 1: Logs (Sorted)
+                const sortedData = [...data].sort((a, b) => {
+                    if (a.userName < b.userName) return -1
+                    if (a.userName > b.userName) return 1
+                    return a.date.localeCompare(b.date)
+                })
 
-                const ws = XLSX.utils.json_to_sheet(exportData)
+                const logData = sortedData.map((record: any) => {
+                    const stats = calculateDurations([record])
+                    return {
+                        'Employee': record.userName,
+                        'Department': record.department,
+                        'Date': record.date,
+                        'Clock In': record.clockIn ? format(new Date(record.clockIn), "HH:mm") : '-',
+                        'Clock Out': record.clockOut ? format(new Date(record.clockOut), "HH:mm") : '-',
+                        'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
+                        'Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2)),
+                        'Work Location': record.mode
+                    }
+                })
+
+                // Sheet 2: Summary (Derive from data)
+                const uniqueEmployees = Array.from(new Set(data.map((r: any) => r.userId)))
+                const summaryData = uniqueEmployees.map(id => {
+                    const empRecs = data.filter((r: any) => r.userId === id)
+                    const stats = calculateDurations(empRecs)
+                    const firstRec = empRecs[0]
+                    return {
+                        'Employee': firstRec.userName,
+                        'Department': firstRec.department,
+                        'Days Worked': empRecs.filter((r: any) => r.clockIn).length,
+                        'Total Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
+                        'Days Leave': empRecs.filter((r: any) => r.status === 'on-leave' || r.mode === 'LEAVE' || r.status === 'LEAVE').length,
+                        'Total Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2))
+                    }
+                }).sort((a, b) => a.Employee.localeCompare(b.Employee))
+
                 const wb = XLSX.utils.book_new()
-                XLSX.utils.book_append_sheet(wb, ws, "Attendance_Ledger")
-                XLSX.writeFile(wb, `REDADAIR_MASTER_LEDGER_${startDate}_${endDate}.xlsx`)
+
+                const wsLogs = XLSX.utils.json_to_sheet(logData)
+                wsLogs['!cols'] = Object.keys(logData[0] || {}).map(key => ({ wch: Math.max(key.length, 15) }))
+                XLSX.utils.book_append_sheet(wb, wsLogs, "Master Ledger")
+
+                const wsSummary = XLSX.utils.json_to_sheet(summaryData)
+                wsSummary['!cols'] = Object.keys(summaryData[0] || {}).map(key => ({ wch: Math.max(key.length, 15) }))
+                XLSX.utils.book_append_sheet(wb, wsSummary, "Finance Summary")
+
+                XLSX.writeFile(wb, `REDADAIR_MASTER_PAYROLL_${startDate}_${endDate}.xlsx`)
             }
         } catch (error) {
             console.error("Export failed:", error)
@@ -137,10 +196,10 @@ export default function ExportPage() {
                             <Label>Department Scope</Label>
                             <Select value={selectedDept} onValueChange={setSelectedDept}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="All Nodes" />
+                                    <SelectValue placeholder="All Departments" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Global Overlook</SelectItem>
+                                    <SelectItem value="all">All Departments</SelectItem>
                                     {departments.map(d => (
                                         <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                     ))}
@@ -153,6 +212,7 @@ export default function ExportPage() {
                         <Label>Quick Presets</Label>
                         <div className="flex flex-wrap gap-2">
                             {[
+                                { id: 'today', label: 'Today' },
                                 { id: '7days', label: 'Last 7 Days' },
                                 { id: '30days', label: 'Last 30 Days' },
                                 { id: 'month', label: 'Month to Date' }
