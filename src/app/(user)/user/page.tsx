@@ -367,42 +367,36 @@ export default function UserPortal() {
 
     if (!session) {
         return (
-            <div className="min-h-screen w-full flex items-center justify-center p-4">
-                <div className="max-w-md w-full animate-in fade-in zoom-in duration-700">
-                    <Card className="border-none shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] rounded-[2.5rem] overflow-hidden bg-white/80 backdrop-blur-xl">
-                        <CardHeader className="bg-muted/40/50 p-10 border-b border-border text-center space-y-4">
-                            <div className="mx-auto h-20 w-20 bg-primary rounded-[2rem] flex items-center justify-center shadow-xl shadow-red-100">
-                                <Clock className="h-10 w-10 text-white" />
-                            </div>
-                            <div className="space-y-1">
-                                <h1 className="text-3xl font-black italic uppercase tracking-tighter text-foreground leading-none">Redadair</h1>
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Time & Attendance System</p>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-12 text-center space-y-8">
-                            <p className="text-muted-foreground font-bold text-sm tracking-wide leading-relaxed px-4">
-                                Authorized personnel only. Please sign in with your company Google account to manage your attendance.
-                            </p>
-                            <Button
-                                onClick={() => signIn("google")}
-                                className="w-full h-16 bg-slate-900 hover:bg-black text-white text-lg font-black rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95 flex gap-4 italic uppercase tracking-widest"
-                            >
-                                <svg className="w-5 h-5 group-hover:rotate-12 transition-transform" viewBox="0 0 24 24">
-                                    <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                    <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                    <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
-                                    <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                                </svg>
-                                Secure Sign In
-                            </Button>
-                            <div className="pt-4 flex justify-center">
-                                <Button variant="ghost" className="text-[10px] font-black uppercase tracking-widest text-slate-300 hover:text-primary transition-colors" asChild>
-                                    <Link href="/admin-login">Administrator Access</Link>
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
+            <div className="min-h-screen w-full flex items-center justify-center bg-muted/20 p-4">
+                <Card className="w-full max-w-md border border-border shadow-lg rounded-xl overflow-hidden bg-white">
+                    <CardHeader className="flex flex-col items-center justify-center p-12 text-center space-y-6 pb-6 border-b border-border">
+                        <div className="h-16 w-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105">
+                            <Clock className="h-8 w-8 text-primary-foreground" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <h1 className="text-3xl font-bold tracking-tight text-foreground">Redadair</h1>
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Attendance System</p>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-12 text-center space-y-8">
+                        <p className="text-muted-foreground font-medium text-sm leading-relaxed max-w-[280px] mx-auto">
+                            Authorized personnel only. Please sign in with your corporate Google account.
+                        </p>
+
+                        <Button
+                            onClick={() => signIn("google")}
+                            className="w-full h-12 bg-foreground hover:bg-foreground/90 text-background text-sm font-semibold rounded-lg shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+                        >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24">
+                                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+                                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                            </svg>
+                            Secure Sign In
+                        </Button>
+                    </CardContent>
+                </Card>
             </div>
         )
     }

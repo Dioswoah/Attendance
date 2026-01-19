@@ -101,12 +101,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async jwt({ token, account, user }) {
             // Initial sign in
             if (account && user) {
+                // Find internal DB user by email to ensure we use our internal ID
+                const dbUser = await prisma.user.findUnique({
+                    where: { email: user.email as string }
+                });
+
                 return {
                     ...token,
                     accessToken: account.access_token,
                     refreshToken: account.refresh_token,
                     expiresAt: Date.now() + ((account.expires_in as number) * 1000), // expires_in is in seconds
-                    id: user.id,
+                    id: dbUser?.id || user.id,
                 };
             }
 
