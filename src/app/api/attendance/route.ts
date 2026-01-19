@@ -103,47 +103,68 @@ export async function GET(req: Request) {
             })
         ])
 
-        // Transform Attendance
-        const attendanceMap = new Map()
-        attendance.forEach(a => {
-            attendanceMap.set(a.userId, {
-                id: a.id,
-                userId: a.userId,
-                userName: a.user?.name || 'Unknown',
-                userImage: a.user?.image,
-                department: a.user?.department?.name || 'Unassigned',
-                date: a.date.toISOString().split('T')[0],
-                clockIn: a.clockIn?.toISOString(),
-                clockOut: a.clockOut?.toISOString(),
-                mode: a.mode,
-                status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
-                breakStart: a.breakStart?.toISOString(),
-                breakEnd: a.breakEnd?.toISOString()
+        // Transform Helpers
+        const transformRecord = (a: any) => ({
+            id: a.id,
+            userId: a.userId,
+            userName: a.user?.name || 'Unknown',
+            userImage: a.user?.image,
+            department: a.user?.department?.name || 'Unassigned',
+            date: a.date.toISOString().split('T')[0],
+            clockIn: a.clockIn?.toISOString(),
+            clockOut: a.clockOut?.toISOString(),
+            mode: a.mode,
+            status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
+            breakStart: a.breakStart?.toISOString(),
+            breakEnd: a.breakEnd?.toISOString()
+        })
+
+        const transformLeave = (l: any) => ({
+            id: l.id,
+            userId: l.userId,
+            userName: l.user?.name || 'Unknown',
+            userImage: l.user?.image,
+            department: l.user?.department?.name || 'Unassigned',
+            date: l.startDate.toISOString().split('T')[0],
+            clockIn: null, clockOut: null,
+            mode: 'LEAVE',
+            status: 'on-leave',
+            breakStart: null, breakEnd: null
+        })
+
+        let transformed: any[] = []
+
+        if (userId) {
+            // User Portal: Return ALL records to support history and cumulative calc
+            const att = attendance.map(transformRecord)
+            const lvs = leaves.map(transformLeave)
+            transformed = [...att, ...lvs]
+
+            // Sort by latest activity (clockIn or leave start)
+            transformed.sort((a, b) => {
+                const dateA = a.clockIn ? new Date(a.clockIn).getTime() : new Date(a.date).getTime()
+                const dateB = b.clockIn ? new Date(b.clockIn).getTime() : new Date(b.date).getTime()
+                return dateB - dateA
             })
-        })
+        } else {
+            // Admin Dashboard: Return one record per user (Latest Status)
+            const map = new Map()
 
-        // Merge Leaves
-        // Only add leave if no attendance record exists (attendance takes precedence if they clocked in)
-        leaves.forEach((l: any) => {
-            if (!attendanceMap.has(l.userId)) {
-                attendanceMap.set(l.userId, {
-                    id: l.id, // Use leave ID
-                    userId: l.userId,
-                    userName: l.user?.name || 'Unknown',
-                    userImage: l.user?.image,
-                    department: l.user?.department?.name || 'Unassigned',
-                    date: l.startDate.toISOString().split('T')[0], // Approximate
-                    clockIn: null,
-                    clockOut: null,
-                    mode: 'LEAVE',
-                    status: 'on-leave',
-                    breakStart: null,
-                    breakEnd: null
-                })
-            }
-        })
+            // Attendance is sorted desc by clockIn, so first encounter is latest
+            attendance.forEach(a => {
+                if (!map.has(a.userId)) {
+                    map.set(a.userId, transformRecord(a))
+                }
+            })
 
-        const transformed = Array.from(attendanceMap.values())
+            leaves.forEach(l => {
+                if (!map.has(l.userId)) {
+                    map.set(l.userId, transformLeave(l))
+                }
+            })
+
+            transformed = Array.from(map.values())
+        }
 
         return NextResponse.json(transformed)
     } catch (error) {
@@ -162,22 +183,21 @@ export async function POST(req: Request) {
         const targetDate = date ? new Date(date) : getUTCToday()
         targetDate.setUTCHours(0, 0, 0, 0)
 
-        console.log(`[Attendance] Record attempt for user ${userId} on ${targetDate.toISOString()}`)
-
-        const attendance = await prisma.attendance.upsert({
+        // Check for an ACTIVE session (not clocked out)
+        const activeSession = await prisma.attendance.findFirst({
             where: {
-                userId_date: {
-                    userId,
-                    date: targetDate
-                }
-            },
-            update: {
-                clockIn: clockIn ? new Date(clockIn) : new Date(),
-                clockOut: clockOut ? new Date(clockOut) : null,
-                mode: mode || 'OFFICE',
-                status: 'PRESENT'
-            },
-            create: {
+                userId,
+                date: targetDate,
+                clockOut: null
+            }
+        })
+
+        if (activeSession) {
+            return NextResponse.json({ error: 'You are already clocked in. Please clock out first.' }, { status: 400 })
+        }
+
+        const attendance = await prisma.attendance.create({
+            data: {
                 userId,
                 date: targetDate,
                 clockIn: clockIn ? new Date(clockIn) : new Date(),
@@ -188,10 +208,12 @@ export async function POST(req: Request) {
         })
 
         console.log(`[Attendance] Successfully clocked in ${userId}`)
+        // @ts-ignore
+        if (global.io) global.io.emit('update-data')
         return NextResponse.json(attendance)
     } catch (error) {
         console.error("Attendance POST error:", error)
-        return NextResponse.json({ error: 'Failed to record clock-in. Internal error.' }, { status: 500 })
+        return NextResponse.json({ error: `Failed to record clock-in: ${error instanceof Error ? error.message : 'Unknown error'}` }, { status: 500 })
     }
 }
 
@@ -204,26 +226,35 @@ export async function PATCH(req: Request) {
 
         const today = getUTCToday()
 
-        const existing = await prisma.attendance.findUnique({
+        // Find ACTIVE session
+        const existing = await prisma.attendance.findFirst({
             where: {
-                userId_date: {
-                    userId,
-                    date: today
-                }
+                userId,
+                date: today,
+                clockOut: null
             }
         })
 
         if (!existing) {
-            return NextResponse.json({ error: 'No active record for today. Please clock in first.' }, { status: 404 })
+            return NextResponse.json({ error: 'No active session found. Please clock in first.' }, { status: 404 })
         }
 
         let updateData: any = {}
+        const now = new Date()
+
         if (action === 'clock-out') {
-            updateData = { clockOut: new Date(), status: 'PRESENT' } // status can be adjusted later
+            updateData = {
+                clockOut: now,
+                status: 'PRESENT'
+            }
+            // Auto-close break if open
+            if (existing.breakStart && !existing.breakEnd) {
+                updateData.breakEnd = now
+            }
         } else if (action === 'start-break') {
-            updateData = { breakStart: new Date(), breakEnd: null }
+            updateData = { breakStart: now, breakEnd: null }
         } else if (action === 'end-break') {
-            updateData = { breakEnd: new Date() }
+            updateData = { breakEnd: now }
         }
 
         const updated = await prisma.attendance.update({
@@ -231,6 +262,8 @@ export async function PATCH(req: Request) {
             data: updateData
         })
 
+        // @ts-ignore
+        if (global.io) global.io.emit('update-data')
         return NextResponse.json(updated)
     } catch (error) {
         console.error("Attendance PATCH error:", error)

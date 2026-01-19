@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { NotificationBell } from "@/components/NotificationBell"
 import {
     LayoutDashboard,
     Users,
@@ -49,48 +50,48 @@ export default function AdminLayout({
     ]
 
     return (
-        <div className="flex min-h-screen w-full bg-slate-50">
+        <div className="flex min-h-screen w-full bg-muted/20">
             {/* Sidebar */}
-            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col bg-white border-r border-slate-100 sm:flex">
-                <div className="flex h-20 items-center px-8 border-b border-slate-50">
-                    <Link href="/admin" className="flex items-center gap-2.5 group">
-                        <div className="h-9 w-9 bg-red-600 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105">
-                            <Flame className="h-5 w-5 text-white fill-white" />
+            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col bg-white border-r border-border sm:flex">
+                <div className="flex h-16 items-center px-6 border-b border-border">
+                    <Link href="/admin" className="flex items-center gap-3 group">
+                        <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center transition-transform group-hover:scale-105">
+                            <Flame className="h-4 w-4 text-primary-foreground fill-primary-foreground" />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-base font-black italic uppercase tracking-tighter text-slate-900 leading-none">Redadair</span>
-                            <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-red-600 mt-0.5">Admin Portal</span>
+                            <span className="text-base font-bold tracking-tight text-foreground leading-none">Redadair</span>
+                            <span className="text-xs font-medium text-muted-foreground mt-0.5">Admin Portal</span>
                         </div>
                     </Link>
                 </div>
 
-                <nav className="flex flex-col gap-1 p-5">
+                <nav className="flex flex-col gap-1 p-4">
                     {navItems.map((item) => {
                         const isActive = pathname === item.href
                         return (
                             <Link key={item.href} href={item.href}>
                                 <Button
                                     variant="ghost"
-                                    className={`w-full justify-start h-11 rounded-xl gap-3 px-4 transition-all duration-200 group ${isActive
-                                        ? "bg-red-50 text-red-600 font-black border border-red-100/50"
-                                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                                    className={`w-full justify-start h-10 rounded-lg gap-3 px-3 transition-all duration-200 ${isActive
+                                        ? "bg-primary/10 text-primary font-semibold"
+                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
                                         }`}
                                 >
-                                    <item.icon className={`h-4.5 w-4.5 ${isActive ? "text-red-600" : "text-slate-400 group-hover:text-slate-900"}`} />
-                                    <span className={`text-[10px] font-bold uppercase tracking-widest italic flex-1 text-left ${isActive ? "text-red-600" : "text-slate-500 group-hover:text-slate-900"}`}>
+                                    <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                                    <span className="text-sm font-medium flex-1 text-left">
                                         {item.label}
                                     </span>
-                                    {isActive && <div className="h-1.5 w-1.5 rounded-full bg-red-600" />}
+                                    {isActive && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
                                 </Button>
                             </Link>
                         )
                     })}
                 </nav>
 
-                <div className="mt-auto p-5 border-t border-slate-50">
+                <div className="mt-auto p-4 border-t border-border">
                     <Button
                         variant="ghost"
-                        className="w-full justify-start h-12 rounded-xl gap-3 px-4 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all font-bold uppercase italic tracking-widest text-[9px] group"
+                        className="w-full justify-start h-10 rounded-lg gap-3 px-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all font-medium text-sm"
                         onClick={handleLogout}
                     >
                         <LogOut className="h-4 w-4" />
@@ -101,19 +102,20 @@ export default function AdminLayout({
 
             {/* Main Content Area */}
             <div className="flex flex-col flex-1 sm:pl-64 min-h-screen">
-                <header className="sticky top-0 z-40 flex h-16 items-center justify-between px-10 bg-white/80 backdrop-blur-md border-b border-slate-100">
+                <header className="sticky top-0 z-40 flex h-16 items-center justify-between px-8 bg-white/80 backdrop-blur-md border-b border-border">
                     <div className="flex items-center gap-2">
                         {/* Empty or can add breadcrumbs later */}
                     </div>
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-4">
                         <div className="flex flex-col text-right">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 leading-none group-hover:text-red-600 transition-colors">Administrator</span>
-                            <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mt-1">Status: Authorized</span>
+                            <span className="text-sm font-semibold text-foreground leading-none">Administrator</span>
+                            <span className="text-xs text-muted-foreground mt-0.5">Authorized</span>
                         </div>
+                        <NotificationBell role="ADMIN" />
                     </div>
                 </header>
 
-                <main className="flex-1 p-10">
+                <main className="flex-1 p-8">
                     {children}
                 </main>
             </div>

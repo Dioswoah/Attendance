@@ -42,14 +42,14 @@ async function main() {
 
     // Create employees
     const employees = [
-        { id: 'beau', name: 'Beau Hannan', email: 'beau@redadair.com', departmentId: fireDept.id, role: Role.USER },
-        { id: 'cherry', name: 'Cherry Celeste', email: 'cherry@redadair.com', departmentId: fireDept.id, role: Role.USER },
-        { id: 'chris', name: 'Chris Wyborn', email: 'chris@redadair.com', departmentId: fireDept.id, role: Role.USER },
-        { id: 'garry', name: 'Garry Gent', email: 'garry@redadair.com', departmentId: fireDept.id, role: Role.USER },
-        { id: 'bryan', name: 'Bryan Morales', email: 'bryan@redadair.com', departmentId: bapDept.id, role: Role.USER },
-        { id: 'john', name: 'John Cedric Ureta', email: 'john@redadair.com', departmentId: bapDept.id, role: Role.USER },
-        { id: 'carol', name: 'Carol', email: 'carol@redadair.com', departmentId: financeDept.id, role: Role.USER },
-        { id: 'edsel', name: 'Edsel Bukis', email: 'edsel@redadair.com', departmentId: managementDept.id, role: Role.ADMIN },
+        { id: 'beau', name: 'Beau Hannan', email: 'beau@redadair.com', departmentId: fireDept.id, roles: [Role.USER] },
+        { id: 'cherry', name: 'Cherry Celeste', email: 'cherry@redadair.com', departmentId: fireDept.id, roles: [Role.USER] },
+        { id: 'chris', name: 'Chris Wyborn', email: 'chris@redadair.com', departmentId: fireDept.id, roles: [Role.USER] },
+        { id: 'garry', name: 'Garry Gent', email: 'garry@redadair.com', departmentId: fireDept.id, roles: [Role.USER] },
+        { id: 'bryan', name: 'Bryan Morales', email: 'bryan@redadair.com', departmentId: bapDept.id, roles: [Role.USER] },
+        { id: 'john', name: 'John Cedric Ureta', email: 'john@redadair.com', departmentId: bapDept.id, roles: [Role.USER] },
+        { id: 'carol', name: 'Carol', email: 'carol@redadair.com', departmentId: financeDept.id, roles: [Role.USER] },
+        { id: 'edsel', name: 'Edsel Bukis', email: 'edsel@redadair.com', departmentId: managementDept.id, roles: [Role.ADMIN] },
     ]
 
     for (const emp of employees) {

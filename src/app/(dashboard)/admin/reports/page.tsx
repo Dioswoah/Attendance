@@ -101,59 +101,48 @@ export default function ExportPage() {
         <div className="space-y-10 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight italic uppercase leading-none">Export Ledger</h1>
-                    <p className="text-red-600 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Workforce Intelligence & Industrial Reports</p>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Export Ledger</h1>
+                    <p className="text-muted-foreground text-sm">Workforce Intelligence & Industrial Reports</p>
                 </div>
-                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
-                    <Database className="h-4 w-4 text-red-600" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ledger Stream Active</span>
+                <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-full border border-border">
+                    <Database className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">Ledger Stream Active</span>
                 </div>
             </div>
 
-            <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white border border-slate-100">
-                <CardHeader className="bg-slate-50/50 p-8 border-b border-slate-50">
-                    <CardTitle className="text-xl font-black text-slate-900 uppercase italic">Export Configuration</CardTitle>
-                    <CardDescription className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Configure chronological and structural parameters</CardDescription>
+            <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                <CardHeader className="p-6 border-b border-border bg-muted/20">
+                    <CardTitle className="text-lg font-semibold text-foreground">Export Configuration</CardTitle>
+                    <CardDescription className="text-sm text-muted-foreground">Configure chronological and structural parameters</CardDescription>
                 </CardHeader>
-                <CardContent className="p-10 space-y-10">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <CardContent className="p-6 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
-                            <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal Start</Label>
-                            <div className="relative">
-                                <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
-                                <Input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="h-12 pl-12 rounded-xl bg-slate-50 border-slate-100 font-bold text-[10px] uppercase italic text-slate-700"
-                                />
-                            </div>
+                            <Label>Start Date</Label>
+                            <Input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                            />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal End</Label>
-                            <div className="relative">
-                                <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
-                                <Input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="h-12 pl-12 rounded-xl bg-slate-50 border-slate-100 font-bold text-[10px] uppercase italic text-slate-700"
-                                />
-                            </div>
+                            <Label>End Date</Label>
+                            <Input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                            />
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Department Scope</Label>
+                            <Label>Department Scope</Label>
                             <Select value={selectedDept} onValueChange={setSelectedDept}>
-                                <SelectTrigger className="h-12 rounded-xl bg-slate-50 border-slate-100 font-bold text-[10px] text-slate-600 italic px-5 uppercase tracking-widest leading-none">
-                                    <div className="flex items-center gap-3">
-                                        <Building2 className="h-3.5 w-3.5 text-slate-300" />
-                                        <SelectValue placeholder="All Nodes" />
-                                    </div>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All Nodes" />
                                 </SelectTrigger>
-                                <SelectContent className="rounded-xl border-slate-100 shadow-xl">
-                                    <SelectItem value="all" className="font-bold uppercase italic text-[9px]">Global Overlook</SelectItem>
+                                <SelectContent>
+                                    <SelectItem value="all">Global Overlook</SelectItem>
                                     {departments.map(d => (
-                                        <SelectItem key={d.id} value={d.id} className="font-bold uppercase italic text-[9px]">{d.name}</SelectItem>
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -161,7 +150,7 @@ export default function ExportPage() {
                     </div>
 
                     <div className="space-y-3">
-                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal Presets</Label>
+                        <Label>Quick Presets</Label>
                         <div className="flex flex-wrap gap-2">
                             {[
                                 { id: '7days', label: 'Last 7 Days' },
@@ -171,8 +160,9 @@ export default function ExportPage() {
                                 <Button
                                     key={range.id}
                                     onClick={() => setQuickRange(range.id as any)}
-                                    variant="ghost"
-                                    className="h-9 px-5 rounded-lg bg-slate-50 text-[9px] font-black uppercase tracking-widest italic text-slate-500 hover:bg-red-600 hover:text-white transition-all"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs font-medium"
                                 >
                                     {range.label}
                                 </Button>
@@ -180,31 +170,29 @@ export default function ExportPage() {
                         </div>
                     </div>
 
-                    <div className="pt-6 border-t border-slate-100">
+                    <div className="pt-4 border-t border-border">
                         <Button
                             onClick={handleExport}
                             disabled={generating}
-                            className="bg-red-600 hover:bg-red-700 h-16 px-10 rounded-2xl gap-4 shadow-lg shadow-red-100 transition-all active:scale-95 group w-full md:w-auto"
+                            className="w-full md:w-auto"
                         >
                             {generating ? (
-                                <Loader2 className="h-5 w-5 animate-spin text-white" />
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                             ) : (
-                                <Download className="h-5 w-5 text-red-100 group-hover:translate-y-0.5 transition-transform" />
+                                <Download className="h-4 w-4 mr-2" />
                             )}
-                            <span className="font-black text-[11px] uppercase tracking-widest italic text-white">
-                                {generating ? "Synthesizing Dataset..." : "Generate Master Ledger"}
-                            </span>
+                            {generating ? "Synthesizing Dataset..." : "Generate Master Ledger"}
                         </Button>
                     </div>
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white border border-slate-100">
-                    <CardHeader className="p-6 border-b border-slate-50">
-                        <CardTitle className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Report Data Schema</CardTitle>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                    <CardHeader className="p-6 border-b border-border bg-muted/20">
+                        <CardTitle className="text-base font-semibold text-foreground">Report Data Schema</CardTitle>
                     </CardHeader>
-                    <CardContent className="px-8 py-6">
+                    <CardContent className="px-6 py-6">
                         <div className="space-y-4">
                             {[
                                 { label: 'IDENTITY', desc: 'Verified Employee Name', icon: User },
@@ -213,12 +201,12 @@ export default function ExportPage() {
                                 { label: 'EFFICIENCY', desc: 'Work Engagement Metrics', icon: Zap }
                             ].map(item => (
                                 <div key={item.label} className="flex items-center gap-4 group">
-                                    <div className="h-8 w-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-red-50 group-hover:text-red-600 transition-colors">
-                                        <item.icon className="h-3.5 w-3.5" />
+                                    <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
+                                        <item.icon className="h-4 w-4" />
                                     </div>
                                     <div className="space-y-0.5">
-                                        <p className="font-black text-slate-800 text-[10px] italic uppercase tracking-widest leading-none">{item.label}</p>
-                                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{item.desc}</p>
+                                        <p className="font-medium text-sm text-foreground">{item.label}</p>
+                                        <p className="text-xs text-muted-foreground">{item.desc}</p>
                                     </div>
                                 </div>
                             ))}
@@ -226,14 +214,13 @@ export default function ExportPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-slate-900 relative p-8 text-white flex flex-col justify-center">
-                    <Flame className="absolute top-4 right-4 h-12 w-12 text-red-600/20" />
+                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-muted/30 relative p-8 flex flex-col justify-center">
                     <div className="relative z-10 space-y-4">
                         <div className="space-y-1">
-                            <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-tight">Data Integrity</h3>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Redadair Audit Compliance (RAC-01)</p>
+                            <h3 className="text-xl font-bold tracking-tight text-foreground">Data Integrity</h3>
+                            <p className="text-xs font-medium text-muted-foreground">Redadair Audit Compliance (RAC-01)</p>
                         </div>
-                        <p className="text-[10px] leading-relaxed font-bold text-slate-300 border-l-2 border-red-600 pl-4 italic">
+                        <p className="text-sm leading-relaxed text-muted-foreground border-l-2 border-primary pl-4">
                             All generated ledgers are cryptographically assigned to the current administrative session. Exported datasets comply with fire protection industry standards and workforce monitoring protocols.
                         </p>
                     </div>

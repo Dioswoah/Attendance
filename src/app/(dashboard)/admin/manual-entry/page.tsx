@@ -65,6 +65,8 @@ export default function ManualEntryPage() {
     const [lvEnd, setLvEnd] = useState(format(new Date(), "yyyy-MM-dd"))
     const [lvType, setLvType] = useState("Annual Leave")
     const [lvDuration, setLvDuration] = useState("Full Day")
+    const [lvStartTime, setLvStartTime] = useState("09:00")
+    const [lvEndTime, setLvEndTime] = useState("13:00")
     const [lvReason, setLvReason] = useState("")
 
     // Form States - Breaks
@@ -153,7 +155,9 @@ export default function ManualEntryPage() {
                     endDate: lvEnd,
                     type: lvType,
                     reason: lvReason,
-                    duration: lvDuration
+                    duration: lvDuration,
+                    startTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvStartTime}:00`).toISOString() : null,
+                    endTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvEndTime}:00`).toISOString() : null
                 })
             })
             if (res.ok) showStatus('success')
@@ -207,10 +211,8 @@ export default function ManualEntryPage() {
     if (loading && records.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-                <div className="h-12 w-12 rounded-xl bg-red-600 flex items-center justify-center animate-pulse shadow-lg">
-                    <Flame className="h-6 w-6 text-white fill-white" />
-                </div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Portal...</p>
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm font-medium text-muted-foreground">Loading Portal...</p>
             </div>
         )
     }
@@ -219,17 +221,17 @@ export default function ManualEntryPage() {
         <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight italic uppercase leading-none">Manual Entry</h1>
-                    <p className="text-red-600 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Administrative Intelligence & Node Overrides</p>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Manual Entry</h1>
+                    <p className="text-muted-foreground text-sm">Administrative Intelligence & Node Overrides</p>
                 </div>
-                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
-                    <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Override Mode Active</span>
+                <div className="flex items-center gap-2 bg-destructive/10 px-3 py-1.5 rounded-full border border-destructive/20">
+                    <div className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                    <span className="text-xs font-medium text-destructive">Override Mode Active</span>
                 </div>
             </div>
 
             {/* Category Toggle */}
-            <div className="flex gap-2 p-1.5 bg-slate-100 rounded-[1.5rem] w-fit">
+            <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
                 {[
                     { id: 'attendance', label: 'Attendance', icon: Clock },
                     { id: 'leave', label: 'Authorized Leave', icon: FileText },
@@ -238,22 +240,22 @@ export default function ManualEntryPage() {
                     <Button
                         key={tab.id}
                         onClick={() => { setActiveTab(tab.id as any); setActiveMode('create'); }}
-                        variant="ghost"
+                        variant={activeTab === tab.id ? 'secondary' : 'ghost'}
                         className={cn(
-                            "h-12 px-8 rounded-xl gap-3 transition-all font-black uppercase italic tracking-widest",
+                            "h-9 px-4 rounded-lg gap-2 transition-all font-medium text-sm",
                             activeTab === tab.id
-                                ? "bg-white text-red-600 shadow-sm"
-                                : "text-slate-400 hover:text-slate-600"
+                                ? "bg-white text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                         )}
                     >
-                        <tab.icon className={cn("h-4 w-4", activeTab === tab.id ? "text-red-600" : "text-slate-300")} />
-                        <span className="text-[9px]">{tab.label}</span>
+                        <tab.icon className={cn("h-4 w-4", activeTab === tab.id ? "text-primary" : "text-muted-foreground")} />
+                        {tab.label}
                     </Button>
                 ))}
             </div>
 
             {/* Mode Switcher */}
-            <div className="flex gap-4 border-b border-slate-100 pb-2">
+            <div className="flex gap-6 border-b border-border pb-0">
                 {[
                     { id: 'create', label: 'Create New record' },
                     { id: 'list', label: 'Review Existing Nodes' }
@@ -262,168 +264,180 @@ export default function ManualEntryPage() {
                         key={mode.id}
                         onClick={() => setActiveMode(mode.id as any)}
                         className={cn(
-                            "pb-2 px-1 text-[10px] font-black uppercase italic tracking-[0.2em] transition-all relative",
-                            activeMode === mode.id ? "text-slate-900" : "text-slate-300 hover:text-slate-500"
+                            "pb-3 px-1 text-sm font-medium transition-all relative",
+                            activeMode === mode.id ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
                         )}
                     >
                         {mode.label}
-                        {activeMode === mode.id && <div className="absolute bottom-0 left-0 right-0 h-1 bg-red-600 rounded-full" />}
                     </button>
                 ))}
             </div>
 
             {/* Content Area */}
             {activeMode === 'create' ? (
-                <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white border border-slate-100">
-                    <div className="p-8 border-b border-slate-50 bg-slate-50/50">
-                        <CardTitle className="text-xl font-black text-slate-900 italic uppercase">
-                            Manual {activeTab} Initialization
+                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                    <CardHeader className="border-b border-border p-6 bg-muted/20">
+                        <CardTitle className="text-lg font-semibold text-foreground">
+                            Manual {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Initialization
                         </CardTitle>
-                        <CardDescription className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                        <CardDescription className="text-sm text-muted-foreground">
                             Securing data injection for departmental audit
                         </CardDescription>
-                    </div>
-                    <CardContent className="p-10">
+                    </CardHeader>
+                    <CardContent className="p-8">
                         {activeTab === 'attendance' && (
-                            <form onSubmit={handleAttendanceSubmit} className="space-y-8">
+                            <form onSubmit={handleAttendanceSubmit} className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Operative</Label>
+                                        <Label>Select Operative</Label>
                                         <Select value={attEmpId} onValueChange={setAttEmpId} required>
-                                            <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] text-slate-600 italic">
-                                                <SelectValue placeholder="CHOOSE STAFF..." />
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
-                                            <SelectContent className="rounded-xl border-slate-100">
-                                                {employees.map(e => <SelectItem key={e.id} value={e.id} className="font-bold uppercase italic text-[9px] tracking-widest">{e.name}</SelectItem>)}
+                                            <SelectContent>
+                                                {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Structural Node</Label>
+                                        <Label>Structural Node</Label>
                                         <Select value={attMode} onValueChange={setAttMode}>
-                                            <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] text-slate-600 italic">
+                                            <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
-                                            <SelectContent className="rounded-xl border-slate-100">
-                                                <SelectItem value="OFFICE" className="font-bold uppercase italic text-[9px]">🏢 OFFICE TERMINAL</SelectItem>
-                                                <SelectItem value="WFH" className="font-bold uppercase italic text-[9px]">🏠 REMOTE NODE</SelectItem>
-                                                <SelectItem value="OTHER" className="font-bold uppercase italic text-[9px]">📍 FIELD DEPLOYMENT</SelectItem>
+                                            <SelectContent>
+                                                <SelectItem value="OFFICE">Office Terminal</SelectItem>
+                                                <SelectItem value="WFH">Remote Node</SelectItem>
+                                                <SelectItem value="OTHER">Field Deployment</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal Date</Label>
-                                        <Input type="date" value={attDate} onChange={e => setAttDate(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" required />
+                                        <Label>Date</Label>
+                                        <Input type="date" value={attDate} onChange={e => setAttDate(e.target.value)} required />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Ingress Time</Label>
-                                            <Input type="time" value={attIn} onChange={e => setAttIn(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" required />
+                                            <Label>Ingress Time</Label>
+                                            <Input type="time" value={attIn} onChange={e => setAttIn(e.target.value)} required />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Egress Time</Label>
-                                            <Input type="time" value={attOut} onChange={e => setAttOut(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" />
+                                            <Label>Egress Time</Label>
+                                            <Input type="time" value={attOut} onChange={e => setAttOut(e.target.value)} />
                                         </div>
                                     </div>
                                 </div>
-                                <Button type="submit" disabled={processing} className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest gap-3">
-                                    {processing ? <Loader2 className="animate-spin h-5 w-5" /> : status === 'success' ? "Sync Complete" : "Authorize Final Entry"}
+                                <Button type="submit" disabled={processing} className="w-full">
+                                    {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
+                                    {status === 'success' ? "Sync Complete" : "Authorize Final Entry"}
                                 </Button>
                             </form>
                         )}
 
                         {activeTab === 'leave' && (
-                            <form onSubmit={handleLeaveSubmit} className="space-y-8">
+                            <form onSubmit={handleLeaveSubmit} className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Staff Member</Label>
+                                        <Label>Staff Member</Label>
                                         <Select value={lvEmpId} onValueChange={setLvEmpId} required>
-                                            <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] text-slate-600 italic">
-                                                <SelectValue placeholder="CHOOSE STAFF..." />
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
-                                            <SelectContent className="rounded-xl border-slate-100">
-                                                {employees.map(e => <SelectItem key={e.id} value={e.id} className="font-bold uppercase italic text-[9px] tracking-widest">{e.name}</SelectItem>)}
+                                            <SelectContent>
+                                                {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Leave Classification</Label>
+                                        <Label>Leave Classification</Label>
                                         <Select value={lvType} onValueChange={setLvType}>
-                                            <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] text-slate-600 italic">
+                                            <SelectTrigger>
                                                 <SelectValue />
                                             </SelectTrigger>
-                                            <SelectContent className="rounded-xl border-slate-100">
-                                                {['Annual Leave', 'Sick Leave', 'Compassionate', 'Unpaid Leave'].map(t => <SelectItem key={t} value={t} className="font-bold italic text-[10px] uppercase">{t}</SelectItem>)}
+                                            <SelectContent>
+                                                {['Annual Leave', 'Sick Leave', 'Compassionate', 'Unpaid Leave'].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal Start</Label>
-                                        <Input type="date" value={lvStart} onChange={e => setLvStart(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" required />
+                                        <Label>Start Date</Label>
+                                        <Input type="date" value={lvStart} onChange={e => setLvStart(e.target.value)} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal End</Label>
-                                        <Input type="date" value={lvEnd} onChange={e => setLvEnd(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" required />
+                                        <Label>End Date</Label>
+                                        <Input type="date" value={lvEnd} onChange={e => setLvEnd(e.target.value)} required />
                                     </div>
                                     <div className="space-y-3 md:col-span-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1 text-center block">Duration Parameter</Label>
-                                        <div className="flex justify-center gap-3">
+                                        <Label className="block text-center mb-2">Duration Parameter</Label>
+                                        <div className="flex justify-center gap-2">
                                             {['Full Day', 'Half Day', 'Part Day'].map(d => (
                                                 <Button
                                                     key={d}
                                                     type="button"
                                                     onClick={() => setLvDuration(d)}
-                                                    variant="ghost"
-                                                    className={cn(
-                                                        "h-11 px-6 rounded-lg font-black text-[9px] uppercase tracking-widest italic border transition-all",
-                                                        lvDuration === d ? "bg-slate-900 text-white border-slate-900 shadow-sm" : "bg-white text-slate-400 border-slate-100 hover:bg-slate-50"
-                                                    )}
+                                                    variant={lvDuration === d ? 'default' : 'outline'}
+                                                    className="h-9 px-4 text-sm font-medium"
                                                 >
                                                     {d}
                                                 </Button>
                                             ))}
                                         </div>
                                     </div>
+
+                                    {lvDuration !== 'Full Day' && (
+                                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 md:col-span-2">
+                                            <div className="space-y-2">
+                                                <Label>Start Time</Label>
+                                                <Input type="time" value={lvStartTime} onChange={e => setLvStartTime(e.target.value)} required />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>End Time</Label>
+                                                <Input type="time" value={lvEndTime} onChange={e => setLvEndTime(e.target.value)} required />
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="space-y-2 md:col-span-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Justification Remarks</Label>
-                                        <Input placeholder="ENTER AUDIT REMARKS..." value={lvReason} onChange={e => setLvReason(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" />
+                                        <Label>Justification Remarks</Label>
+                                        <Input placeholder="Enter audit remarks..." value={lvReason} onChange={e => setLvReason(e.target.value)} />
                                     </div>
                                 </div>
-                                <Button type="submit" disabled={processing} className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest">
-                                    {processing ? <Loader2 className="animate-spin h-5 w-5" /> : status === 'success' ? "Authorization Complete" : "Grant Manual Leave"}
+                                <Button type="submit" disabled={processing} className="w-full">
+                                    {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
+                                    {status === 'success' ? "Authorization Complete" : "Grant Manual Leave"}
                                 </Button>
                             </form>
                         )}
 
                         {activeTab === 'breaks' && (
-                            <form onSubmit={handleBreakSubmit} className="space-y-8">
+                            <form onSubmit={handleBreakSubmit} className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Operative</Label>
+                                        <Label>Select Operative</Label>
                                         <Select value={brEmpId} onValueChange={setBrEmpId} required>
-                                            <SelectTrigger className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] text-slate-600 italic">
-                                                <SelectValue placeholder="CHOOSE STAFF..." />
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
-                                            <SelectContent className="rounded-xl border-slate-100">
-                                                {employees.map(e => <SelectItem key={e.id} value={e.id} className="font-bold uppercase italic text-[9px] tracking-widest">{e.name}</SelectItem>)}
+                                            <SelectContent>
+                                                {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Observational Date</Label>
-                                        <Input type="date" value={brDate} onChange={e => setBrDate(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" required />
+                                        <Label>Date</Label>
+                                        <Input type="date" value={brDate} onChange={e => setBrDate(e.target.value)} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Session Start</Label>
-                                        <Input type="time" value={brIn} onChange={e => setBrIn(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" required />
+                                        <Label>Session Start</Label>
+                                        <Input type="time" value={brIn} onChange={e => setBrIn(e.target.value)} required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Session End</Label>
-                                        <Input type="time" value={brOut} onChange={e => setBrOut(e.target.value)} className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic" />
+                                        <Label>Session End</Label>
+                                        <Input type="time" value={brOut} onChange={e => setBrOut(e.target.value)} />
                                     </div>
                                 </div>
-                                <Button type="submit" disabled={processing} className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest">
-                                    {processing ? <Loader2 className="animate-spin h-5 w-5" /> : status === 'success' ? "Break Sync Complete" : "Register Manual Break"}
+                                <Button type="submit" disabled={processing} className="w-full">
+                                    {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
+                                    {status === 'success' ? "Break Sync Complete" : "Register Manual Break"}
                                 </Button>
                             </form>
                         )}
@@ -432,97 +446,97 @@ export default function ManualEntryPage() {
             ) : (
                 <div className="space-y-6">
                     {/* Filters for Lists */}
-                    <Card className="border-none shadow-sm rounded-2xl bg-white border border-slate-100 p-8">
+                    <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white p-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                            <div className="space-y-1.5">
-                                <Label className="text-[8px] font-black uppercase tracking-widest text-slate-400 ml-1">Node Focus</Label>
+                            <div className="space-y-2">
+                                <Label>Node Focus</Label>
                                 <Select value={filterDept} onValueChange={setFilterDept}>
-                                    <SelectTrigger className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[9px] uppercase tracking-widest text-slate-600">
+                                    <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent className="rounded-lg border-slate-100">
-                                        <SelectItem value="all" className="font-bold uppercase italic text-[9px]">Global Overlook</SelectItem>
-                                        {departments.map(d => <SelectItem key={d.id} value={d.id} className="font-bold uppercase italic text-[9px]">{d.name}</SelectItem>)}
+                                    <SelectContent>
+                                        <SelectItem value="all">Global Overlook</SelectItem>
+                                        {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-[8px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal From</Label>
-                                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[9px] uppercase tracking-widest italic" />
+                            <div className="space-y-2">
+                                <Label>Date From</Label>
+                                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
                             </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-[8px] font-black uppercase tracking-widest text-slate-400 ml-1">Temporal To</Label>
-                                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[9px] uppercase tracking-widest italic" />
+                            <div className="space-y-2">
+                                <Label>Date To</Label>
+                                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                             </div>
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     placeholder="Filter identity..."
                                     value={filterQuery}
                                     onChange={e => setFilterQuery(e.target.value)}
-                                    className="pl-9 h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[9px] uppercase tracking-widest italic transition-all focus:bg-white"
+                                    className="pl-9"
                                 />
                             </div>
                         </div>
                     </Card>
 
-                    <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white border border-slate-100">
+                    <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                         <div className="p-0 overflow-x-auto min-h-[400px]">
                             <Table>
-                                <TableHeader className="bg-slate-50/50">
-                                    <TableRow className="border-slate-100 hover:bg-transparent">
-                                        <TableHead className="py-4 px-8 font-black text-slate-400 uppercase text-[8px] tracking-[0.2em]">Personnel</TableHead>
-                                        <TableHead className="py-4 px-8 font-black text-slate-400 uppercase text-[8px] tracking-[0.2em]">Architecture</TableHead>
-                                        <TableHead className="py-4 px-8 font-black text-slate-400 uppercase text-[8px] tracking-[0.2em]">Temporal</TableHead>
-                                        <TableHead className="py-4 px-8 font-black text-slate-400 uppercase text-[8px] tracking-[0.2em]">{activeTab === 'leave' ? 'Leave Type' : 'Metrics'}</TableHead>
-                                        <TableHead className="py-4 px-8 font-black text-slate-400 uppercase text-[8px] tracking-[0.2em] text-right">Admin</TableHead>
+                                <TableHeader className="bg-muted/50">
+                                    <TableRow className="border-border hover:bg-transparent">
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Personnel</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Architecture</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Temporal</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">{activeTab === 'leave' ? 'Leave Type' : 'Metrics'}</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Admin</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filteredRecords.map(rec => (
-                                        <TableRow key={rec.id} className="border-slate-50 hover:bg-slate-50/20 transition-all group">
-                                            <TableCell className="py-4 px-8">
-                                                <span className="font-black text-slate-800 uppercase italic text-[10px] leading-none">{rec.userName}</span>
+                                        <TableRow key={rec.id} className="border-border hover:bg-muted/30 transition-colors group">
+                                            <TableCell className="py-4 px-6">
+                                                <span className="font-medium text-foreground text-sm">{rec.userName}</span>
                                             </TableCell>
-                                            <TableCell className="py-4 px-8 font-bold text-slate-400 uppercase text-[9px]">{rec.department}</TableCell>
-                                            <TableCell className="py-4 px-8 font-bold text-slate-500 uppercase italic text-[9px]">
+                                            <TableCell className="py-4 px-6 text-sm text-muted-foreground">{rec.department}</TableCell>
+                                            <TableCell className="py-4 px-6 text-sm text-muted-foreground">
                                                 {activeTab === 'leave' ? `${format(parseISO(rec.startDate), "dd MMM")} - ${format(parseISO(rec.endDate), "dd MMM")}` : format(parseISO(rec.clockIn || rec.date || rec.startTime), "dd MMM yyyy")}
                                             </TableCell>
-                                            <TableCell className="py-4 px-8">
+                                            <TableCell className="py-4 px-6">
                                                 {activeTab === 'attendance' && (
-                                                    <div className="flex gap-2 items-center text-[10px] font-black italic">
-                                                        <span className="text-red-500">{rec.clockIn ? format(parseISO(rec.clockIn), "HH:mm") : '---'}</span>
-                                                        <ArrowRight className="h-2 w-2 opacity-30" />
-                                                        <span className="text-slate-400">{rec.clockOut ? format(parseISO(rec.clockOut), "HH:mm") : '---'}</span>
+                                                    <div className="flex gap-2 items-center text-sm font-medium">
+                                                        <span className="text-primary">{rec.clockIn ? format(parseISO(rec.clockIn), "HH:mm") : '---'}</span>
+                                                        <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
+                                                        <span className="text-muted-foreground">{rec.clockOut ? format(parseISO(rec.clockOut), "HH:mm") : '---'}</span>
                                                     </div>
                                                 )}
                                                 {activeTab === 'leave' && (
                                                     <div className="flex flex-col gap-0.5">
-                                                        <span className="text-red-600 font-black uppercase text-[9px] italic">{rec.type}</span>
-                                                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">{rec.duration}</span>
+                                                        <span className="font-medium text-sm text-foreground">{rec.type}</span>
+                                                        <span className="text-xs text-muted-foreground">{rec.duration}</span>
                                                     </div>
                                                 )}
                                                 {activeTab === 'breaks' && (
-                                                    <div className="flex gap-2 items-center text-yellow-600 text-[10px] font-black italic">
+                                                    <div className="flex gap-2 items-center text-sm font-medium text-yellow-600">
                                                         <span>{format(parseISO(rec.startTime), "HH:mm")}</span>
-                                                        <ArrowRight className="h-2 w-2 opacity-30" />
+                                                        <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
                                                         <span>{rec.endTime ? format(parseISO(rec.endTime), "HH:mm") : '---'}</span>
                                                     </div>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="py-4 px-8 text-right">
-                                                <Button onClick={() => deleteRecord(rec.id)} variant="ghost" size="icon" className="h-8 w-8 text-slate-200 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
-                                                    <Trash2 className="h-3.5 w-3.5" />
+                                            <TableCell className="py-4 px-6 text-right">
+                                                <Button onClick={() => deleteRecord(rec.id)} variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
                                     ))}
                                     {filteredRecords.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="py-24 text-center">
-                                                <div className="flex flex-col items-center gap-2 opacity-20">
-                                                    <AlertCircle className="h-8 w-8 text-slate-900" />
-                                                    <p className="text-[9px] font-black uppercase tracking-widest italic">No records detected in temporal segment</p>
+                                            <TableCell colSpan={5} className="py-12 text-center">
+                                                <div className="flex flex-col items-center gap-2 text-muted-foreground opacity-50">
+                                                    <AlertCircle className="h-8 w-8" />
+                                                    <p className="text-sm font-medium">No records detected in temporal segment</p>
                                                 </div>
                                             </TableCell>
                                         </TableRow>

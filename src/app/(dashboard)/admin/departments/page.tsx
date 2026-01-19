@@ -140,10 +140,8 @@ export default function DepartmentsPage() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-                <div className="h-10 w-10 rounded-xl bg-red-600 flex items-center justify-center animate-pulse shadow-lg">
-                    <Flame className="h-5 w-5 text-white fill-white" />
-                </div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Node Architecture...</p>
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm font-medium text-muted-foreground">Loading Departments...</p>
             </div>
         )
     }
@@ -152,35 +150,32 @@ export default function DepartmentsPage() {
         <div className="space-y-10 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight italic uppercase leading-none">Departments</h1>
-                    <p className="text-red-600 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Structural Node Configuration & Hierarchies</p>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Departments</h1>
+                    <p className="text-muted-foreground text-sm">Structural Node Configuration & Hierarchies</p>
                 </div>
 
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                     <DialogTrigger asChild>
-                        <Button className="h-14 px-8 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl shadow-lg shadow-red-100 transition-all active:scale-95 italic uppercase tracking-widest gap-3">
-                            <Plus className="h-5 w-5" /> Add New Department
+                        <Button className="font-medium gap-2">
+                            <Plus className="h-4 w-4" /> Add New Department
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[450px] border-none rounded-[2.5rem] p-0 overflow-hidden shadow-2xl">
-                        <div className="bg-slate-900 p-8 text-white relative">
-                            <DialogHeader className="space-y-1 relative z-10">
-                                <DialogTitle className="text-2xl font-black italic tracking-tighter uppercase leading-none">Add New Department</DialogTitle>
-                                <DialogDescription className="text-slate-400 font-bold uppercase tracking-widest text-[9px]">Defining a company division architecture</DialogDescription>
-                            </DialogHeader>
-                        </div>
-                        <form onSubmit={handleAddDept} className="p-8 space-y-6 bg-white">
+                    <DialogContent className="sm:max-w-[450px]">
+                        <DialogHeader>
+                            <DialogTitle>Add New Department</DialogTitle>
+                            <DialogDescription>Defining a company division architecture</DialogDescription>
+                        </DialogHeader>
+                        <form onSubmit={handleAddDept} className="space-y-4 py-4">
                             <div className="space-y-2">
-                                <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Department Identifier</Label>
+                                <Label>Department Identifier</Label>
                                 <Input
-                                    placeholder="NODE NAME (E.G. OPERATIONS)..."
-                                    className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic"
+                                    placeholder="Enter department name..."
                                     value={newDeptName}
                                     onChange={e => setNewDeptName(e.target.value)}
                                     required
                                 />
                             </div>
-                            <Button type="submit" className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest">Create Department</Button>
+                            <Button type="submit" className="w-full">Create Department</Button>
                         </form>
                     </DialogContent>
                 </Dialog>
@@ -190,45 +185,45 @@ export default function DepartmentsPage() {
                 {departments.map((dept) => {
                     const deptEmployees = employees.filter(e => e.departmentId === dept.id)
                     return (
-                        <Card key={dept.id} className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white border border-slate-100 group hover:shadow-md transition-all duration-300">
+                        <Card key={dept.id} className="border border-border shadow-sm rounded-xl overflow-hidden bg-white hover:shadow-md transition-all duration-300">
                             <CardHeader className="flex flex-row items-center justify-between p-6 pb-2">
-                                <div className="h-10 w-10 rounded-xl bg-slate-50 flex items-center justify-center text-red-600 border border-slate-100 shadow-sm transition-transform group-hover:scale-110">
+                                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shadow-sm">
                                     <Building2 className="h-5 w-5" />
                                 </div>
-                                <div className="flex gap-1.5">
+                                <div className="flex gap-1">
                                     <Button
                                         onClick={() => handleEditClick(dept)}
                                         variant="ghost"
                                         size="icon"
-                                        className="h-9 w-9 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                     >
-                                        <Edit2 className="h-3.5 w-3.5" />
+                                        <Edit2 className="h-4 w-4" />
                                     </Button>
                                     <Button
                                         onClick={() => handleDeleteDept(dept.id)}
                                         disabled={processingId === dept.id}
                                         variant="ghost"
                                         size="icon"
-                                        className="h-9 w-9 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                     >
-                                        {processingId === dept.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                        {processingId === dept.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                     </Button>
                                 </div>
                             </CardHeader>
                             <CardContent className="p-6">
-                                <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter mb-1.5">{dept.name}</h3>
-                                <div className="flex items-center gap-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">
-                                    <Users className="h-3 w-3 text-red-600/50" />
+                                <h3 className="text-lg font-semibold text-foreground mb-1">{dept.name}</h3>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Users className="h-4 w-4 opacity-70" />
                                     <span>{deptEmployees.length} Authorized Staff</span>
                                 </div>
-                                <div className="mt-8 pt-6 border-t border-slate-50">
+                                <div className="mt-6 pt-4 border-t border-border">
                                     <Button
                                         onClick={() => handleViewStaff(dept)}
                                         variant="ghost"
-                                        className="p-0 h-auto text-slate-900 font-bold italic uppercase tracking-widest hover:text-red-600 hover:bg-transparent flex items-center gap-2 group/btn transition-colors"
+                                        className="p-0 h-auto text-primary text-sm font-medium hover:text-primary/80 hover:bg-transparent flex items-center gap-1 group/btn"
                                     >
-                                        <span className="text-[9px]">View Staff</span>
-                                        <ArrowRight className="h-2.5 w-2.5 group-hover/btn:translate-x-1 transition-transform" />
+                                        View Staff
+                                        <ArrowRight className="h-3 w-3 group-hover/btn:translate-x-1 transition-transform" />
                                     </Button>
                                 </div>
                             </CardContent>
@@ -239,25 +234,22 @@ export default function DepartmentsPage() {
 
             {/* Edit Department Dialog */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                <DialogContent className="sm:max-w-[450px] border-none rounded-[2.5rem] p-0 overflow-hidden shadow-2xl">
-                    <div className="bg-slate-900 p-8 text-white relative">
-                        <DialogHeader className="space-y-1 relative z-10">
-                            <DialogTitle className="text-2xl font-black italic tracking-tighter uppercase leading-none">Edit Department</DialogTitle>
-                            <DialogDescription className="text-slate-400 font-bold uppercase tracking-widest text-[9px]">Updating division structural identity</DialogDescription>
-                        </DialogHeader>
-                    </div>
-                    <form onSubmit={handleUpdateDept} className="p-8 space-y-6 bg-white">
+                <DialogContent className="sm:max-w-[450px]">
+                    <DialogHeader>
+                        <DialogTitle>Edit Department</DialogTitle>
+                        <DialogDescription>Updating division structural identity</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleUpdateDept} className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Department Identifier</Label>
+                            <Label>Department Identifier</Label>
                             <Input
-                                placeholder="ENTER NEW NAME..."
-                                className="h-12 bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest italic"
+                                placeholder="Enter department name..."
                                 value={editDeptName}
                                 onChange={e => setEditDeptName(e.target.value)}
                                 required
                             />
                         </div>
-                        <Button type="submit" disabled={processingId === editingDept?.id} className="w-full h-14 bg-slate-900 hover:bg-black text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest flex gap-3">
+                        <Button type="submit" disabled={processingId === editingDept?.id} className="w-full gap-2">
                             {processingId === editingDept?.id && <Loader2 className="h-4 w-4 animate-spin" />}
                             Save Changes
                         </Button>
@@ -267,24 +259,22 @@ export default function DepartmentsPage() {
 
             {/* View Staff Dialog */}
             <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-                <DialogContent className="sm:max-w-[500px] border-none rounded-[2.5rem] p-0 overflow-hidden shadow-2xl">
-                    <div className="bg-red-600 p-8 text-white relative">
-                        <DialogHeader className="space-y-1 relative z-10">
-                            <DialogTitle className="text-2xl font-black italic tracking-tighter uppercase leading-none">{viewingDept?.name}</DialogTitle>
-                            <DialogDescription className="text-red-100 font-bold uppercase tracking-widest text-[9px]">Active Department Staff</DialogDescription>
-                        </DialogHeader>
-                    </div>
-                    <div className="p-8 max-h-[60vh] overflow-y-auto space-y-3 bg-white">
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle>{viewingDept?.name}</DialogTitle>
+                        <DialogDescription>Active Department Staff</DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto space-y-3 py-4">
                         {employees.filter(e => e.departmentId === viewingDept?.id).length > 0 ? (
                             employees.filter(e => e.departmentId === viewingDept?.id).map((emp) => (
-                                <div key={emp.id} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50/50 border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
+                                <div key={emp.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
                                     <div className="flex items-center gap-3">
-                                        <div className="h-9 w-9 rounded-lg bg-white border border-slate-100 flex items-center justify-center overflow-hidden font-black text-slate-400 italic shadow-sm text-xs">
+                                        <div className="h-8 w-8 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden font-medium text-muted-foreground text-xs">
                                             {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : emp.name.charAt(0)}
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="font-black text-slate-800 uppercase italic text-[11px] leading-tight">{emp.name}</span>
-                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">{emp.email}</span>
+                                            <span className="font-medium text-sm text-foreground leading-none">{emp.name}</span>
+                                            <span className="text-xs text-muted-foreground mt-1">{emp.email}</span>
                                         </div>
                                     </div>
                                     <Button
@@ -292,22 +282,22 @@ export default function DepartmentsPage() {
                                         disabled={processingId === emp.id}
                                         variant="ghost"
                                         size="icon"
-                                        className="h-8 w-8 text-slate-200 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                     >
-                                        {processingId === emp.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserMinus className="h-3.5 w-3.5" />}
+                                        {processingId === emp.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserMinus className="h-4 w-4" />}
                                     </Button>
                                 </div>
                             ))
                         ) : (
-                            <div className="py-16 text-center flex flex-col items-center gap-2 opacity-30">
-                                <LayoutGrid className="h-8 w-8 text-slate-900" />
-                                <p className="text-[9px] font-black uppercase tracking-widest italic leading-tight text-center">No operatives currently assigned</p>
+                            <div className="py-12 text-center flex flex-col items-center gap-2 text-muted-foreground opacity-50">
+                                <LayoutGrid className="h-8 w-8" />
+                                <p className="text-sm font-medium">No operatives currently assigned</p>
                             </div>
                         )}
                     </div>
-                    <div className="p-6 border-t border-slate-50 bg-slate-50/30 flex justify-end">
-                        <Button onClick={() => setIsViewOpen(false)} className="h-10 px-6 rounded-lg bg-slate-900 hover:bg-black text-white font-black italic uppercase tracking-widest text-[9px]">
-                            Exit Node
+                    <div className="pt-4 border-t border-border flex justify-end">
+                        <Button variant="outline" onClick={() => setIsViewOpen(false)}>
+                            Close
                         </Button>
                     </div>
                 </DialogContent>

@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap } from "lucide-react"
+import { io } from "socket.io-client"
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState({
@@ -66,16 +67,51 @@ export default function AdminDashboard() {
         }
 
         fetchData()
-        const interval = setInterval(fetchData, 30000) // Refresh every 30s
-        return () => clearInterval(interval)
+
+        const socket = io({
+            path: '/api/socket/io',
+        })
+
+        socket.on("update-data", () => {
+            fetchData()
+        })
+
+        return () => {
+            socket.disconnect()
+        }
     }, [])
 
-    const calculateHours = (start?: string, end?: string) => {
-        if (!start || !end) return "0h 0m"
-        const diff = new Date(end).getTime() - new Date(start).getTime()
-        const hours = Math.floor(diff / (1000 * 60 * 60))
-        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-        return `${hours}h ${mins}m`
+    // Live Clock State
+    const [now, setNow] = useState(new Date())
+
+    useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 1000)
+        return () => clearInterval(timer)
+    }, [])
+
+    const calculateLiveDuration = (record: any) => {
+        if (!record || !record.clockIn) return "0h 0m 0s"
+        const start = new Date(record.clockIn)
+        const end = record.clockOut ? new Date(record.clockOut) : now
+
+        let breakDur = 0
+        if (record.breakStart) {
+            const bStart = new Date(record.breakStart)
+            // If break is ongoing (no breakEnd), use current time (now) unless clocked out
+            let effectiveEnd = now
+            if (record.breakEnd) effectiveEnd = new Date(record.breakEnd)
+            else if (record.clockOut) effectiveEnd = new Date(record.clockOut)
+
+            breakDur = effectiveEnd.getTime() - bStart.getTime()
+        }
+
+        let total = (end.getTime() - start.getTime()) - breakDur
+        if (total < 0) total = 0
+
+        const h = Math.floor(total / (1000 * 60 * 60))
+        const m = Math.floor((total / (1000 * 60)) % 60)
+        const s = Math.floor((total / 1000) % 60)
+        return `${h}h ${m}m ${s}s`
     }
 
     const filteredEmployees = employees.filter(emp => {
@@ -94,10 +130,8 @@ export default function AdminDashboard() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-                <div className="h-12 w-12 rounded-xl bg-red-600 flex items-center justify-center animate-bounce shadow-lg">
-                    <Flame className="h-6 w-6 text-white fill-white" />
-                </div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Intelligence...</p>
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm font-medium text-muted-foreground">Loading Dashboard...</p>
             </div>
         )
     }
@@ -106,33 +140,32 @@ export default function AdminDashboard() {
         <div className="space-y-10 animate-in fade-in duration-500 pb-12">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tight italic uppercase leading-none">Dashboard</h1>
-                    <p className="text-red-600 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Workforce Monitoring & Attendance Overview</p>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Dashboard</h1>
+                    <p className="text-muted-foreground text-sm">Workforce Monitoring & Attendance Overview</p>
                 </div>
-                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm">
-                    <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Live Status Active</span>
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-border shadow-sm">
+                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-xs font-medium text-muted-foreground">Live Status Active</span>
                 </div>
             </div>
 
             {/* Top Stats Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 {[
-                    { label: "Total Staff", value: stats.totalStaff, icon: Users, sub: "Authorized Personnel", color: "red" },
-                    { label: "Active Staff", value: stats.clockedIn, icon: Zap, sub: `${Math.round((stats.clockedIn / stats.totalStaff) * 100) || 0}% Clocked In`, color: "yellow" },
-                    { label: "On Break", value: stats.onBreak, icon: Coffee, sub: "Temporary Idle", color: "orange" },
+                    { label: "Total Staff", value: stats.totalStaff, icon: Users, sub: "Authorized Personnel", color: "blue" },
+                    { label: "Active Staff", value: stats.clockedIn, icon: Zap, sub: `${Math.round((stats.clockedIn / stats.totalStaff) * 100) || 0}% Clocked In`, color: "green" },
+                    { label: "On Break", value: stats.onBreak, icon: Coffee, sub: "Temporary Idle", color: "yellow" },
                     { label: "On Leave", value: stats.onLeave, icon: CalendarOff, sub: "Scheduled Exit", color: "slate" },
                     { label: "Absent", value: stats.absent, icon: ShieldAlert, sub: "Not Clocked In", color: "red" }
                 ].map((stat, i) => (
-                    <Card key={i} className="border-none shadow-sm rounded-3xl bg-white border border-slate-50 overflow-hidden relative group">
-                        <div className={`absolute top-0 left-0 w-1.5 h-full ${stat.color === 'red' ? 'bg-red-600' : stat.color === 'yellow' ? 'bg-yellow-500' : stat.color === 'orange' ? 'bg-orange-500' : 'bg-slate-300'}`} />
+                    <Card key={i} className="border border-border shadow-sm rounded-xl bg-white overflow-hidden relative group">
                         <CardHeader className="flex flex-row items-center justify-between pb-2 px-6 pt-6">
-                            <CardTitle className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</CardTitle>
-                            <stat.icon className={`h-4 w-4 ${stat.color === 'red' ? 'text-red-600' : stat.color === 'yellow' ? 'text-yellow-600' : stat.color === 'orange' ? 'text-orange-600' : 'text-slate-400'}`} />
+                            <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
+                            <stat.icon className={`h-4 w-4 text-muted-foreground`} />
                         </CardHeader>
                         <CardContent className="px-6 pb-6">
-                            <div className="text-3xl font-black text-slate-900 tracking-tighter italic">{stat.value}</div>
-                            <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{stat.sub}</p>
+                            <div className="text-2xl font-bold text-foreground">{stat.value}</div>
+                            <p className="text-xs text-muted-foreground mt-1">{stat.sub}</p>
                         </CardContent>
                     </Card>
                 ))}
@@ -140,40 +173,35 @@ export default function AdminDashboard() {
 
             {/* Middle Row: Activity & Dept Status */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white border border-slate-50">
-                    <CardHeader className="bg-white p-8 border-b border-slate-50">
+                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                    <CardHeader className="bg-white p-6 border-b border-border">
                         <div className="flex items-center justify-between">
                             <div className="space-y-1">
-                                <CardTitle className="text-lg font-black text-slate-900 italic uppercase">Recent Activity</CardTitle>
-                                <CardDescription className="text-slate-400 font-bold uppercase tracking-widest text-[9px]">Live attendance feed</CardDescription>
+                                <CardTitle className="text-lg font-semibold text-foreground">Recent Activity</CardTitle>
+                                <CardDescription className="text-muted-foreground text-sm">Live attendance feed</CardDescription>
                             </div>
-                            <Activity className="h-5 w-5 text-red-600" />
+                            <Activity className="h-5 w-5 text-muted-foreground" />
                         </div>
                     </CardHeader>
                     <CardContent className="p-0">
                         {attendanceRecords.length > 0 ? (
-                            <div className="divide-y divide-slate-50">
+                            <div className="divide-y divide-border">
                                 {attendanceRecords.slice(0, 5).map((record) => (
-                                    <div key={record.id} className="flex items-center justify-between p-6 hover:bg-slate-50 transition-all duration-200">
+                                    <div key={record.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-all duration-200">
                                         <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 font-black italic shadow-sm border border-slate-100">
+                                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-medium text-sm">
                                                 {record.userName?.charAt(0)}
                                             </div>
                                             <div>
-                                                <p className="font-black text-slate-800 uppercase italic text-xs">{record.userName}</p>
-                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{record.department}</p>
+                                                <p className="font-medium text-foreground text-sm">{record.userName}</p>
+                                                <p className="text-xs text-muted-foreground">{record.department}</p>
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <Badge variant="outline" className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border-none ${record.status === 'clocked-in' ? 'bg-red-50 text-red-600' :
-                                                record.status === 'on-break' ? 'bg-yellow-50 text-yellow-700' :
-                                                    record.status === 'on-leave' ? 'bg-blue-50 text-blue-600' :
-                                                        'bg-slate-100 text-slate-500'
-                                                }`}>
+                                            <Badge variant="outline" className="font-normal text-xs">
                                                 {record.status.replace('-', ' ')}
                                             </Badge>
-                                            <p className="text-[9px] font-bold text-slate-400 italic mt-1.5 flex items-center justify-end gap-1">
-                                                <Clock className="h-2.5 w-2.5" />
+                                            <p className="text-xs text-muted-foreground mt-1 font-mono">
                                                 {new Date(record.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </p>
                                         </div>
@@ -181,42 +209,42 @@ export default function AdminDashboard() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-64 text-slate-200 opacity-50">
+                            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground opacity-50">
                                 <Clock className="h-8 w-8 mb-2" />
-                                <p className="text-[9px] font-black uppercase tracking-widest">No active logs</p>
+                                <p className="text-sm font-medium">No active logs</p>
                             </div>
                         )}
                     </CardContent>
                 </Card>
 
-                <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white border border-slate-50">
-                    <CardHeader className="bg-white border-b border-slate-50 p-8">
+                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                    <CardHeader className="bg-white border-b border-border p-6">
                         <div className="flex items-center justify-between">
                             <div className="space-y-1">
-                                <CardTitle className="text-lg font-black text-slate-900 italic uppercase">Department Distribution</CardTitle>
-                                <CardDescription className="text-slate-400 font-bold uppercase tracking-widest text-[9px]">Active staff by department</CardDescription>
+                                <CardTitle className="text-lg font-semibold text-foreground">Department Distribution</CardTitle>
+                                <CardDescription className="text-muted-foreground text-sm">Active staff by department</CardDescription>
                             </div>
-                            <Building2 className="h-5 w-5 text-red-600" />
+                            <Building2 className="h-5 w-5 text-muted-foreground" />
                         </div>
                     </CardHeader>
-                    <CardContent className="p-8 space-y-8">
+                    <CardContent className="p-6 space-y-6">
                         {departments.map(dept => {
                             const deptEmps = employees.filter(e => e.departmentId === dept.id)
                             const present = deptEmps.filter(e => attendanceRecords.some(a => a.userId === e.id && a.status !== 'absent')).length
                             const percentage = (present / deptEmps.length) * 100 || 0
 
                             return (
-                                <div key={dept.id} className="space-y-2.5">
+                                <div key={dept.id} className="space-y-2">
                                     <div className="flex justify-between items-end">
-                                        <div className="space-y-1">
-                                            <span className="text-[10px] font-black text-slate-800 uppercase italic tracking-widest">{dept.name}</span>
-                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{present}/{deptEmps.length} Active</p>
+                                        <div className="space-y-0.5">
+                                            <span className="text-sm font-medium text-foreground">{dept.name}</span>
+                                            <p className="text-xs text-muted-foreground">{present}/{deptEmps.length} Active</p>
                                         </div>
-                                        <span className="text-[10px] font-black text-red-600 italic">{Math.round(percentage)}%</span>
+                                        <span className="text-xs font-semibold text-primary">{Math.round(percentage)}%</span>
                                     </div>
-                                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
                                         <div
-                                            className={`h-full transition-all duration-1000 ease-out rounded-full ${percentage > 0 ? 'bg-red-600' : 'bg-slate-200'}`}
+                                            className={`h-full transition-all duration-1000 ease-out rounded-full ${percentage > 0 ? 'bg-primary' : 'bg-muted-foreground/20'}`}
                                             style={{ width: `${percentage}%` }}
                                         />
                                     </div>
@@ -228,44 +256,44 @@ export default function AdminDashboard() {
             </div>
 
             {/* Bottom Section: Full Employee Table */}
-            <Card className="border-none shadow-sm rounded-[2.5rem] overflow-hidden bg-white border border-slate-50">
-                <CardHeader className="bg-white p-8 border-b border-slate-50">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+            <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                <CardHeader className="bg-white p-6 border-b border-border">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div className="space-y-1">
-                            <CardTitle className="text-xl font-black text-slate-900 italic uppercase leading-none">Staff Overview</CardTitle>
-                            <CardDescription className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Real-time status of all personnel</CardDescription>
+                            <CardTitle className="text-lg font-semibold text-foreground">Staff Overview</CardTitle>
+                            <CardDescription className="text-sm text-muted-foreground">Real-time status of all personnel</CardDescription>
                         </div>
-                        <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="SEARCH IDENTITY..."
-                                    className="pl-10 h-11 w-[240px] bg-slate-50 border-slate-100 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all focus:bg-white"
+                                    placeholder="Search staff..."
+                                    className="pl-9 h-10 w-[240px] bg-background rounded-lg text-sm"
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)}
                                 />
                             </div>
                             <Select value={deptFilter} onValueChange={setDeptFilter}>
-                                <SelectTrigger className="h-11 w-[160px] bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
-                                    <SelectValue placeholder="DEPARTMENTS" />
+                                <SelectTrigger className="h-10 w-[160px] bg-background rounded-lg text-sm">
+                                    <SelectValue placeholder="Department" />
                                 </SelectTrigger>
-                                <SelectContent className="rounded-xl border-slate-100">
-                                    <SelectItem value="all" className="font-bold text-[9px] uppercase italic">All Nodes</SelectItem>
+                                <SelectContent>
+                                    <SelectItem value="all">All Departments</SelectItem>
                                     {departments.map(d => (
-                                        <SelectItem key={d.id} value={d.id} className="font-bold text-[9px] uppercase italic">{d.name}</SelectItem>
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                             <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="h-11 w-[140px] bg-slate-50 border-slate-100 rounded-xl font-black text-[9px] uppercase tracking-widest text-slate-500">
-                                    <SelectValue placeholder="STATUS" />
+                                <SelectTrigger className="h-10 w-[140px] bg-background rounded-lg text-sm">
+                                    <SelectValue placeholder="Status" />
                                 </SelectTrigger>
-                                <SelectContent className="rounded-xl border-slate-100">
-                                    <SelectItem value="all" className="font-bold text-[9px] uppercase italic">All Status</SelectItem>
-                                    <SelectItem value="clocked-in" className="font-bold text-[9px] uppercase italic text-red-600">Active</SelectItem>
-                                    <SelectItem value="on-break" className="font-bold text-[9px] uppercase italic text-yellow-600">Break</SelectItem>
-                                    <SelectItem value="on-leave" className="font-bold text-[9px] uppercase italic text-blue-600">On Leave</SelectItem>
-                                    <SelectItem value="clocked-out" className="font-bold text-[9px] uppercase italic text-slate-400">Offline</SelectItem>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="clocked-in">Active</SelectItem>
+                                    <SelectItem value="on-break">Break</SelectItem>
+                                    <SelectItem value="on-leave">On Leave</SelectItem>
+                                    <SelectItem value="clocked-out">Offline</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -273,13 +301,13 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="p-0">
                     <Table>
-                        <TableHeader className="bg-slate-50/50">
-                            <TableRow className="border-slate-100 hover:bg-transparent">
-                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest">Personnel</TableHead>
-                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest">Department</TableHead>
-                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-center">Status</TableHead>
-                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest">Metrics</TableHead>
-                                <TableHead className="py-5 px-8 font-black text-slate-400 uppercase text-[9px] tracking-widest text-right">Access</TableHead>
+                        <TableHeader>
+                            <TableRow className="hover:bg-transparent">
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Personnel</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground text-center">Status</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Metrics</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Access</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -288,53 +316,53 @@ export default function AdminDashboard() {
                                 const status = record?.status || "absent"
 
                                 return (
-                                    <TableRow key={emp.id} className="border-slate-50 hover:bg-slate-50/30 transition-all duration-200">
-                                        <TableCell className="py-5 px-8">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-10 w-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 font-black italic relative overflow-hidden text-xs">
+                                    <TableRow key={emp.id} className="hover:bg-muted/50 transition-all duration-200">
+                                        <TableCell className="py-4 px-6">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
                                                     {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : (emp.name?.charAt(0) || "U")}
-                                                    <div className={`absolute bottom-0 right-0 h-2.5 w-2.5 border-2 border-white rounded-full ${status === 'clocked-in' ? 'bg-red-600' :
-                                                        status === 'on-break' ? 'bg-yellow-500' : 'bg-slate-200'
+                                                    <div className={`absolute bottom-0 right-0 h-2.5 w-2.5 border-2 border-white rounded-full ${status === 'clocked-in' ? 'bg-green-500' :
+                                                        status === 'on-break' ? 'bg-yellow-500' : 'bg-slate-300'
                                                         }`} />
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="font-black text-slate-800 uppercase italic text-[11px] leading-tight">{emp.name || "Unknown Identity"}</span>
-                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{emp.email}</span>
+                                                    <span className="font-medium text-foreground text-sm leading-tight">{emp.name || "Unknown Identity"}</span>
+                                                    <span className="text-xs text-muted-foreground">{emp.email}</span>
                                                 </div>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="py-5 px-8">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase italic">
+                                        <TableCell className="py-4 px-6">
+                                            <span className="text-sm text-foreground">
                                                 {emp.department?.name || "Unassigned"}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="py-5 px-8 text-center">
-                                            <Badge variant="outline" className={`px-2.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border-none ${status === 'clocked-in' ? 'bg-red-50 text-red-600' :
-                                                status === 'on-break' ? 'bg-yellow-50 text-yellow-700' :
-                                                    status === 'on-leave' ? 'bg-blue-50 text-blue-600' :
-                                                        status === 'clocked-out' ? 'bg-slate-100 text-slate-400' :
-                                                            'bg-red-50/50 text-red-400'
+                                        <TableCell className="py-4 px-6 text-center">
+                                            <Badge variant="outline" className={`font-normal ${status === 'clocked-in' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                status === 'on-break' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                    status === 'on-leave' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                        status === 'clocked-out' ? 'bg-slate-100 text-slate-500 border-slate-200' :
+                                                            'bg-red-50 text-red-600 border-red-100'
                                                 }`}>
                                                 {status.replace('-', ' ')}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="py-5 px-8">
+                                        <TableCell className="py-4 px-6">
                                             <div className="flex flex-col">
-                                                <div className="flex items-center gap-1.5 text-[9px] font-black text-slate-700">
-                                                    <Clock className="h-2.5 w-2.5 text-slate-300" />
-                                                    <span className="italic">{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}</span>
+                                                <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                                                    <Clock className="h-3 w-3 text-muted-foreground" />
+                                                    <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}</span>
                                                 </div>
-                                                <span className="text-[8px] font-bold text-slate-300 uppercase mt-0.5">{record?.clockIn ? calculateHours(record.clockIn, record.clockOut || new Date().toISOString()) : '0h 0m'}</span>
+                                                <span className="text-xs text-muted-foreground font-mono tabular-nums">{calculateLiveDuration(record)}</span>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="py-5 px-8 text-right">
+                                        <TableCell className="py-4 px-6 text-right">
                                             {record?.mode ? (
-                                                <div className="flex items-center justify-end gap-1.5 text-slate-400 group">
-                                                    <MapPin className="h-2.5 w-2.5 transition-colors group-hover:text-red-500" />
-                                                    <span className="text-[8px] font-black uppercase tracking-widest leading-none">{record.mode}</span>
+                                                <div className="flex items-center justify-end gap-1.5 text-muted-foreground">
+                                                    <MapPin className="h-3 w-3" />
+                                                    <span className="text-xs font-medium">{record.mode}</span>
                                                 </div>
                                             ) : (
-                                                <span className="text-[8px] font-bold text-slate-200 uppercase">Offline</span>
+                                                <span className="text-xs text-muted-foreground">Offline</span>
                                             )}
                                         </TableCell>
                                     </TableRow>

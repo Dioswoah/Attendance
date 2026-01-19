@@ -57,71 +57,75 @@ export default function AdminLoginPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 relative overflow-hidden">
+        <div className="min-h-screen bg-muted/30 flex items-center justify-center p-6 relative overflow-hidden">
             {/* Background elements */}
-            <div className="absolute top-0 right-0 h-96 w-96 bg-red-100 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 opacity-30" />
-            <div className="absolute bottom-0 left-0 h-96 w-96 bg-yellow-50 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2 opacity-30" />
+            <div className="absolute top-0 right-0 h-96 w-96 bg-primary/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
+            <div className="absolute bottom-0 left-0 h-96 w-96 bg-primary/5 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
 
-            <div className="w-full max-w-md space-y-8 animate-in fade-in zoom-in duration-700">
-                <div className="flex flex-col items-center text-center space-y-3">
-                    <div className="h-16 w-16 bg-red-600 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-red-100 mb-2 group active:scale-95 transition-transform cursor-pointer">
-                        <ShieldCheck className="h-8 w-8 text-white group-hover:rotate-12 transition-all" />
+            <div className="w-full max-w-[400px] space-y-6 animate-in fade-in zoom-in duration-500">
+                <div className="flex flex-col items-center text-center space-y-2">
+                    <div className="h-12 w-12 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 mb-2">
+                        <ShieldCheck className="h-6 w-6 text-primary-foreground" />
                     </div>
                     <div className="space-y-1">
-                        <h1 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 leading-none">Security Access</h1>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Restricted Administration Node</p>
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Admin Portal</h1>
+                        <p className="text-sm text-muted-foreground">Restricted access for administrators only</p>
                     </div>
                 </div>
 
-                <Card className="border-none shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] rounded-[2.5rem] overflow-hidden bg-white/80 backdrop-blur-md">
-                    <CardHeader className="bg-slate-50/50 p-8 border-b border-slate-100 text-center">
-                        <CardDescription className="font-bold text-slate-500 text-xs uppercase tracking-widest">Identify yourself to proceed</CardDescription>
+                <Card className="border border-border shadow-sm rounded-xl bg-white overflow-hidden">
+                    <CardHeader className="space-y-1 text-center bg-muted/30 pb-6 border-b border-border/50">
+                        <CardTitle className="text-base font-medium">Authentication Required</CardTitle>
+                        <CardDescription>Enter your admin credentials to continue</CardDescription>
                     </CardHeader>
-                    <CardContent className="p-10">
-                        <form onSubmit={handleLogin} className="space-y-6">
-                            <div className="space-y-3">
-                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Admin Password</Label>
+                    <CardContent className="p-6 pt-6">
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Password</Label>
                                 <div className="relative">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     <Input
                                         type="password"
-                                        placeholder="••••••••••••"
+                                        placeholder="Enter admin password"
                                         value={password}
                                         onChange={(e) => {
                                             setPassword(e.target.value)
                                             setError("")
                                         }}
-                                        className={`h-14 pl-12 rounded-2xl border-2 transition-all font-black tracking-widest ${error ? "border-red-100 bg-red-50 text-red-900" : "border-slate-50 bg-slate-50/50 text-slate-900 focus:border-red-500"
-                                            }`}
+                                        className={`pl-9 h-10 ${error ? "border-destructive focus-visible:ring-destructive" : ""}`}
                                     />
                                 </div>
-                                {error && (
-                                    <p className="text-[10px] font-black text-red-500 uppercase tracking-widest ml-1 animate-in slide-in-from-top-1">
-                                        {error}
-                                    </p>
-                                )}
                             </div>
+
+                            {error && (
+                                <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-1 fade-in">
+                                    <ShieldCheck className="w-4 h-4" />
+                                    {error}
+                                </div>
+                            )}
 
                             <Button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full h-16 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl shadow-xl shadow-red-100 transition-all active:scale-95 italic uppercase tracking-widest"
+                                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-10 font-medium"
                             >
-                                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Authorize Access"}
+                                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Authorize Access"}
                             </Button>
                         </form>
 
-                        <div className="mt-10 pt-8 border-t border-slate-100 flex justify-center">
+                        <div className="mt-6 pt-6 border-t border-border flex justify-center">
                             <Link href="/user">
-                                <Button variant="ghost" className="h-10 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-red-600 transition-colors gap-2">
-                                    <ArrowLeft className="h-3 w-3" /> Back to Staff Portal
+                                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground gap-2">
+                                    <ArrowLeft className="h-4 w-4" /> Back to Staff Portal
                                 </Button>
                             </Link>
                         </div>
                     </CardContent>
                 </Card>
 
-                <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em]">Redadair Fire Group • System v0.1</p>
+                <p className="text-center text-xs text-muted-foreground">
+                    &copy; {new Date().getFullYear()} Redadair Fire Group. All rights reserved.
+                </p>
             </div>
         </div>
     )

@@ -31,7 +31,7 @@ export async function POST(req: Request) {
                 name: body.name,
                 email: body.email,
                 departmentId: body.departmentId,
-                role: body.role || 'USER',
+                roles: body.roles || ['USER'],
                 managerId: body.managerId || null
             }
         })
