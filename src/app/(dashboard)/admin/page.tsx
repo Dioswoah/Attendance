@@ -337,14 +337,21 @@ export default function AdminDashboard() {
                                             </span>
                                         </TableCell>
                                         <TableCell className="py-4 px-6 text-center">
-                                            <Badge variant="outline" className={`font-normal ${status === 'clocked-in' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                status === 'on-break' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                                    status === 'on-leave' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                        status === 'clocked-out' ? 'bg-slate-100 text-slate-500 border-slate-200' :
-                                                            'bg-red-50 text-red-600 border-red-100'
-                                                }`}>
-                                                {status.replace('-', ' ')}
-                                            </Badge>
+                                            <div className="flex flex-col items-center gap-1.5">
+                                                <Badge variant="outline" className={`font-normal ${status === 'clocked-in' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                    status === 'on-break' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                        status === 'on-leave' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                            status === 'clocked-out' ? 'bg-slate-100 text-slate-500 border-slate-200' :
+                                                                'bg-red-50 text-red-600 border-red-100'
+                                                    }`}>
+                                                    {status.replace('-', ' ')}
+                                                </Badge>
+                                                {status === 'on-leave' && record?.returnDate && (
+                                                    <span className="text-[10px] font-semibold text-muted-foreground">
+                                                        Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="py-4 px-6">
                                             <div className="flex flex-col">

@@ -1,6 +1,45 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// NSW Public Holidays 2026
+const NSW_HOLIDAYS_2026 = [
+    '2026-01-01', // New Year's Day
+    '2026-01-26', // Australia Day
+    '2026-04-03', // Good Friday
+    '2026-04-04', // Easter Saturday
+    '2026-04-05', // Easter Sunday
+    '2026-04-06', // Easter Monday
+    '2026-04-25', // Anzac Day
+    '2026-06-08', // King's Birthday
+    '2026-10-05', // Labour Day
+    '2026-12-25', // Christmas Day
+    '2026-12-26', // Boxing Day
+    '2026-12-28', // Boxing Day Holiday
+]
+
+function isWorkingDay(date: Date): boolean {
+    const day = date.getDay()
+    if (day === 0 || day === 6) return false // Weekend
+
+    // Format YYYY-MM-DD to check against holidays
+    // Use localized string parts to avoid UTC shift issues if strictly comparing calendar dates
+    // But since we are using UTC dates in the app generally, let's stick to ISO string split
+    const dateStr = date.toISOString().split('T')[0]
+    if (NSW_HOLIDAYS_2026.includes(dateStr)) return false
+
+    return true
+}
+
+function getNextWorkingDay(date: Date): Date {
+    const next = new Date(date)
+    next.setUTCDate(next.getUTCDate() + 1)
+
+    while (!isWorkingDay(next)) {
+        next.setUTCDate(next.getUTCDate() + 1)
+    }
+    return next
+}
+
 /**
  * Helper to get current UTC date at midnight
  */
@@ -78,7 +117,7 @@ export async function GET(req: Request) {
             ]
         }
 
-        const [attendance, leaves] = await Promise.all([
+        const [attendance, leaves, allFutureLeaves] = await Promise.all([
             prisma.attendance.findMany({
                 where: whereClause,
                 include: {
@@ -100,7 +139,20 @@ export async function GET(req: Request) {
                         }
                     }
                 }
-            })
+            }),
+            // Fetch potential future leaves for chaining return dates
+            // only if we are in "dashboard" mode (no specific filters that would prevent looking ahead)
+            !userId ? prisma.leave.findMany({
+                where: {
+                    status: 'APPROVED',
+                    startDate: { gte: new Date(whereClause.date.gte) } // Start from today onwards
+                },
+                select: {
+                    userId: true,
+                    startDate: true,
+                    endDate: true
+                }
+            }) : Promise.resolve([])
         ])
 
         // Transform Helpers
@@ -119,18 +171,49 @@ export async function GET(req: Request) {
             breakEnd: a.breakEnd?.toISOString()
         })
 
-        const transformLeave = (l: any) => ({
-            id: l.id,
-            userId: l.userId,
-            userName: l.user?.name || 'Unknown',
-            userImage: l.user?.image,
-            department: l.user?.department?.name || 'Unassigned',
-            date: l.startDate.toISOString().split('T')[0],
-            clockIn: null, clockOut: null,
-            mode: 'LEAVE',
-            status: 'on-leave',
-            breakStart: null, breakEnd: null
-        })
+        const transformLeave = (l: any) => {
+            // Calculate Return Date if it's a leave record
+            // Logic: Start from this leave's end date. Check if there is another leave starting next working day.
+            let returnDate = null
+
+            if (!userId && allFutureLeaves.length > 0) {
+                let currentEnd = new Date(l.endDate)
+
+                // Chain leaves
+                let finding = true
+                while (finding) {
+                    const nextWorkDay = getNextWorkingDay(currentEnd)
+                    const nextWorkDayStr = nextWorkDay.toISOString().split('T')[0]
+
+                    // Find a leave that starts on this next work day
+                    const nextLeave = allFutureLeaves.find((fl: any) =>
+                        fl.userId === l.userId &&
+                        fl.startDate.toISOString().split('T')[0] === nextWorkDayStr
+                    )
+
+                    if (nextLeave) {
+                        currentEnd = new Date(nextLeave.endDate)
+                    } else {
+                        returnDate = nextWorkDay
+                        finding = false
+                    }
+                }
+            }
+
+            return {
+                id: l.id,
+                userId: l.userId,
+                userName: l.user?.name || 'Unknown',
+                userImage: l.user?.image,
+                department: l.user?.department?.name || 'Unassigned',
+                date: l.startDate.toISOString().split('T')[0],
+                clockIn: null, clockOut: null,
+                mode: 'LEAVE',
+                status: 'on-leave',
+                breakStart: null, breakEnd: null,
+                returnDate: returnDate ? returnDate.toISOString() : null
+            }
+        }
 
         let transformed: any[] = []
 

@@ -455,7 +455,8 @@ export default function UserPortal() {
             return {
                 ...staff,
                 status: attendanceRecord ? attendanceRecord.status : 'clocked-out', // Default to offline
-                lastActive: attendanceRecord ? attendanceRecord.clockIn : null
+                lastActive: attendanceRecord ? attendanceRecord.clockIn : null,
+                returnDate: attendanceRecord ? attendanceRecord.returnDate : null
             }
         })
         .filter((staff: any) => staff.name?.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -833,7 +834,14 @@ export default function UserPortal() {
                                                         </p>
                                                     </div>
                                                 )}
-                                                {getStaffStatusBadge(staff.status)}
+                                                <div className="flex flex-col items-end gap-1">
+                                                    {getStaffStatusBadge(staff.status)}
+                                                    {staff.status === 'on-leave' && staff.returnDate && (
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
+                                                            Ret: {new Date(staff.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     ))
