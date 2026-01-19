@@ -610,7 +610,7 @@ export default function UserPortal() {
                             </div>
 
                             {/* Clocked In Status - Visible when working or on break */}
-                            {currentAttendance?.clockIn && (
+                            {currentAttendance?.clockIn && currentAttendance?.status !== 'clocked-out' && (
                                 <div className="text-center p-6 rounded-xl bg-[#EFF6F2] border border-[#E0EBE3]">
                                     <p className="text-xs font-bold text-[#006E3F] uppercase tracking-widest mb-3">
                                         Clocked In At
@@ -697,7 +697,7 @@ export default function UserPortal() {
                 </CardContent>
             </Card>
 
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 <Card className="border border-border shadow-sm rounded-xl bg-[#EFF6F2]">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-semibold text-foreground">Hours Worked</CardTitle>
@@ -725,19 +725,6 @@ export default function UserPortal() {
                             {breakTime}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">Total break duration</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="border border-border shadow-sm rounded-xl bg-white">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-semibold text-foreground">Leave Balance</CardTitle>
-                        <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
-                            <Calendar className="w-5 h-5" />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">12 Days</div>
-                        <p className="text-xs text-muted-foreground mt-1">Annual leave remaining</p>
                     </CardContent>
                 </Card>
 
