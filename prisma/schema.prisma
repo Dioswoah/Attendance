@@ -20,6 +20,7 @@ model User {
   updatedAt          DateTime       @updatedAt
   emailVerified      DateTime?
   roles              Role[]         @default([USER])
+  isArchived         Boolean        @default(false)
   accounts           Account[]
   attendance         Attendance[]
   managedDepartments Department[]   @relation("DepartmentManager")

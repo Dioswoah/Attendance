@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown } from "lucide-react"
+import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -28,6 +28,7 @@ export default function UserPortal() {
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
     const [mounted, setMounted] = useState(false)
     const [showLocationDialog, setShowLocationDialog] = useState(false)
+    const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
 
     // Role & Leave Management State
@@ -117,18 +118,21 @@ export default function UserPortal() {
                 const start = new Date(record.clockIn)
                 const end = record.clockOut ? new Date(record.clockOut) : now
 
-                let breakDuration = 0
-                if (record.breakStart) {
-                    const bStart = new Date(record.breakStart)
-                    const bEnd = record.breakEnd ? new Date(record.breakEnd) : now
-                    breakDuration = bEnd.getTime() - bStart.getTime()
+                // Calculate total breaks for this record
+                let sessionBreakMs = 0
+                if (record.breaks && record.breaks.length > 0) {
+                    record.breaks.forEach((b: any) => {
+                        const bStart = new Date(b.startTime)
+                        const bEnd = b.endTime ? new Date(b.endTime) : now
+                        sessionBreakMs += bEnd.getTime() - bStart.getTime()
+                    })
                 }
 
                 const sessionDuration = end.getTime() - start.getTime()
-                const workedDuration = sessionDuration - breakDuration
+                const workedDuration = Math.max(0, sessionDuration - sessionBreakMs)
 
                 totalWorkedMs += workedDuration
-                totalBreakMs += breakDuration
+                totalBreakMs += sessionBreakMs
             })
 
             setWorkedTime(formatDuration(totalWorkedMs))
@@ -247,7 +251,7 @@ export default function UserPortal() {
             } else {
                 const data = await res.json()
                 alert(data.error || "Clock in failed")
-                fetchAttendance() // Sync state just in case we are desynced
+                fetchAttendance()
             }
         } catch (error) {
             console.error("Clock in failed:", error)
@@ -556,10 +560,10 @@ export default function UserPortal() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                    <h1 className="text-4xl md:text-5xl font-black tracking-tight text-foreground">
                         {greeting}, {displayName}
                     </h1>
-                    <p className="text-base text-muted-foreground mt-1">
+                    <p className="text-lg md:text-xl font-medium text-muted-foreground mt-2">
                         {currentTime ? currentTime.toLocaleDateString("en-US", {
                             weekday: "long",
                             year: "numeric",
@@ -572,8 +576,7 @@ export default function UserPortal() {
                     {getStatusText()}
                 </Badge>
             </div>
-            {/* Debug Info */}
-            <p className="text-xs text-muted-foreground font-mono">Debug ID: {userId} | Status: {status}</p>
+
 
             {/* Clock Actions */}
             <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
@@ -633,7 +636,7 @@ export default function UserPortal() {
                         <div className="flex flex-wrap gap-4 items-center">
                             {(!currentAttendance?.status || ['clocked-out', 'on-leave'].includes(currentAttendance.status)) && (
                                 <Button
-                                    onClick={clockIn}
+                                    onClick={handleClockInClick}
                                     disabled={isProcessing}
                                     size="lg"
                                     className="gap-2 bg-[#009B5A] hover:bg-[#00874e] text-white h-12 px-8 text-base font-semibold rounded-lg shadow-sm transition-all active:scale-95"
@@ -655,7 +658,7 @@ export default function UserPortal() {
                                         Start Break
                                     </Button>
                                     <Button
-                                        onClick={clockOut}
+                                        onClick={() => setShowClockOutConfirm(true)}
                                         disabled={isProcessing}
                                         size="lg"
                                         className="gap-2 h-12 px-8 text-base font-semibold rounded-lg shadow-sm bg-[#8B2323] hover:bg-[#701c1c] text-white"
@@ -677,7 +680,7 @@ export default function UserPortal() {
                                         End Break
                                     </Button>
                                     <Button
-                                        onClick={clockOut}
+                                        onClick={() => setShowClockOutConfirm(true)}
                                         disabled={isProcessing}
                                         size="lg"
                                         className="gap-2 h-12 px-8 text-base font-semibold rounded-lg shadow-sm bg-[#8B2323] hover:bg-[#701c1c] text-white"
@@ -827,14 +830,22 @@ export default function UserPortal() {
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 {staff.clockIn && (
-                                                    <div className="text-right hidden sm:block">
-                                                        <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Clock In</p>
-                                                        <p className="text-xs font-bold text-slate-700 font-mono">
-                                                            {formatTime(new Date(staff.clockIn))}
-                                                        </p>
+                                                    <div className="flex flex-col items-end gap-1 px-4 border-r border-border/50 hidden sm:flex">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Entry</p>
+                                                            <p className="text-xs font-bold text-slate-700 font-mono">
+                                                                {formatTime(new Date(staff.clockIn))}
+                                                            </p>
+                                                        </div>
+                                                        {staff.mode && (
+                                                            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                                                {staff.mode === 'OFFICE' ? <Building2 className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
+                                                                {staff.mode === 'WFH' ? 'WFH' : staff.mode}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
-                                                <div className="flex flex-col items-end gap-1">
+                                                <div className="flex flex-col items-end gap-1 min-w-[100px]">
                                                     {getStaffStatusBadge(staff.status)}
                                                     {staff.status === 'on-leave' && staff.returnDate && (
                                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
@@ -898,15 +909,93 @@ export default function UserPortal() {
                 </div>
             </div>
 
-            {/* Hidden Dialogs needed for logic to work */}
+            {/* Clock Out Confirmation Dialog */}
+            <Dialog open={showClockOutConfirm} onOpenChange={setShowClockOutConfirm}>
+                <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-[#8B2323] p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                        <AlertTriangle className="h-12 w-12 text-white/20 mx-auto mb-4" />
+                        <DialogTitle className="text-2xl font-black italic text-white uppercase tracking-tight relative z-10">Confirm Clock Out</DialogTitle>
+                        <DialogDescription className="text-white/60 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
+                            Ending your active duty session
+                        </DialogDescription>
+                    </div>
+
+                    <div className="p-8 space-y-6 bg-white text-center">
+                        <p className="text-slate-600 font-bold text-sm">
+                            Are you really sure that you want to clock out and end your tracking for this session?
+                        </p>
+
+                        <div className="flex flex-col gap-3">
+                            <Button
+                                onClick={async () => {
+                                    await handleAction('clock-out');
+                                    setShowClockOutConfirm(false);
+                                }}
+                                disabled={isProcessing}
+                                className="w-full h-14 bg-[#8B2323] hover:bg-[#701c1c] text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest"
+                            >
+                                {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : "Yes, Clock Out Now"}
+                            </Button>
+
+                            <Button
+                                variant="ghost"
+                                onClick={() => setShowClockOutConfirm(false)}
+                                className="w-full text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground hover:text-slate-900 italic"
+                            >
+                                Negative, Stay Active
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Work Location Selection Dialog */}
             <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Location Check</DialogTitle>
-                        <DialogDescription>Verifying your location...</DialogDescription>
-                    </DialogHeader>
-                    <div className="flex justify-center py-8">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-[oklch(0.32_0.08_25)] p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                        <MapPin className="h-12 w-12 text-white/20 mx-auto mb-4" />
+                        <DialogTitle className="text-2xl font-black italic text-white uppercase tracking-tight relative z-10">Select Work Location</DialogTitle>
+                        <DialogDescription className="text-slate-300 font-bold text-[9px] uppercase tracking-[0.3em] mt-2 relative z-10 leading-relaxed">
+                            Specify your base of operations for this session
+                        </DialogDescription>
+                    </div>
+
+                    <div className="p-8 space-y-4 bg-white">
+                        <div className="grid grid-cols-2 gap-4">
+                            <Button
+                                onClick={() => confirmClockIn('OFFICE')}
+                                disabled={isProcessing}
+                                variant="outline"
+                                className="h-32 flex flex-col items-center justify-center gap-3 border-2 border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white transition-all rounded-[1.5rem] group"
+                            >
+                                <div className="p-3 bg-white border border-slate-100 rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-colors duration-300">
+                                    <Building2 className="w-6 h-6" />
+                                </div>
+                                <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">In Office</span>
+                            </Button>
+
+                            <Button
+                                onClick={() => confirmClockIn('WFH')}
+                                disabled={isProcessing}
+                                variant="outline"
+                                className="h-32 flex flex-col items-center justify-center gap-3 border-2 border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white transition-all rounded-[1.5rem] group"
+                            >
+                                <div className="p-3 bg-white border border-slate-100 rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-colors duration-300">
+                                    <MapPin className="w-6 h-6" />
+                                </div>
+                                <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">WFH</span>
+                            </Button>
+                        </div>
+
+                        <Button
+                            variant="ghost"
+                            onClick={() => setShowLocationDialog(false)}
+                            className="w-full text-[10px] font-black uppercase tracking-[0.4em] text-muted-foreground hover:text-slate-900 italic mt-2"
+                        >
+                            Cancel
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>

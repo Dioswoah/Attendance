@@ -56,6 +56,7 @@ export async function GET(req: Request) {
     const startDateStr = searchParams.get('startDate')
     const endDateStr = searchParams.get('endDate')
     const departmentId = searchParams.get('departmentId')
+    const managerId = searchParams.get('managerId')
 
     let whereClause: any = {}
 
@@ -86,12 +87,16 @@ export async function GET(req: Request) {
     if (departmentId && departmentId !== 'all') {
         whereClause.user = { departmentId }
     }
+    if (managerId) {
+        whereClause.user = { ...whereClause.user, managerId }
+    }
 
     try {
         // Prepare Leave Query
         let leaveWhere: any = { status: 'APPROVED' }
         if (userId) leaveWhere.userId = userId
         if (departmentId && departmentId !== 'all') leaveWhere.user = { departmentId }
+        if (managerId) leaveWhere.user = { ...leaveWhere.user, managerId }
 
         // Date logic for Leaves
         if (startDateStr && endDateStr) {
@@ -168,7 +173,12 @@ export async function GET(req: Request) {
             mode: a.mode,
             status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
             breakStart: a.breakStart?.toISOString(),
-            breakEnd: a.breakEnd?.toISOString()
+            breakEnd: a.breakEnd?.toISOString(),
+            breaks: a.breaks?.map((b: any) => ({
+                id: b.id,
+                startTime: b.startTime.toISOString(),
+                endTime: b.endTime?.toISOString()
+            })) || []
         })
 
         const transformLeave = (l: any) => {
@@ -330,13 +340,48 @@ export async function PATCH(req: Request) {
                 clockOut: now,
                 status: 'PRESENT'
             }
-            // Auto-close break if open
+            // Auto-close open breaks in the Break table
+            await prisma.break.updateMany({
+                where: {
+                    attendanceId: existing.id,
+                    endTime: null
+                },
+                data: {
+                    endTime: now
+                }
+            })
+
+            // Legacy/Convenience fields
             if (existing.breakStart && !existing.breakEnd) {
                 updateData.breakEnd = now
             }
         } else if (action === 'start-break') {
+            // Create a record in the Break table
+            await prisma.break.create({
+                data: {
+                    attendanceId: existing.id,
+                    startTime: now
+                }
+            })
+            // Convenience field (current break)
             updateData = { breakStart: now, breakEnd: null }
         } else if (action === 'end-break') {
+            // Close the latest break in the Break table
+            const latestBreak = await prisma.break.findFirst({
+                where: {
+                    attendanceId: existing.id,
+                    endTime: null
+                },
+                orderBy: { startTime: 'desc' }
+            })
+
+            if (latestBreak) {
+                await prisma.break.update({
+                    where: { id: latestBreak.id },
+                    data: { endTime: now }
+                })
+            }
+            // Convenience field
             updateData = { breakEnd: now }
         }
 

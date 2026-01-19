@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap } from "lucide-react"
+import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap, Home } from "lucide-react"
 import { io } from "socket.io-client"
 
 export default function AdminDashboard() {
@@ -363,13 +363,24 @@ export default function AdminDashboard() {
                                             </div>
                                         </TableCell>
                                         <TableCell className="py-4 px-6 text-right">
-                                            {record?.mode ? (
-                                                <div className="flex items-center justify-end gap-1.5 text-muted-foreground">
-                                                    <MapPin className="h-3 w-3" />
-                                                    <span className="text-xs font-medium">{record.mode}</span>
+                                            {record?.mode && status !== 'on-leave' ? (
+                                                <div className="flex items-center justify-end gap-2">
+                                                    {record.mode === 'OFFICE' ? (
+                                                        <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                            <Building2 className="h-3 w-3" />
+                                                            In Office
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                            <Home className="h-3 w-3" />
+                                                            WFH
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                             ) : (
-                                                <span className="text-xs text-muted-foreground">Offline</span>
+                                                <div className="flex items-center justify-end">
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-2.5 py-1">Offline</span>
+                                                </div>
                                             )}
                                         </TableCell>
                                     </TableRow>

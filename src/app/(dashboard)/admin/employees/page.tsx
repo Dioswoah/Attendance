@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus } from "lucide-react"
+import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore } from "lucide-react"
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<any[]>([])
@@ -35,6 +35,12 @@ export default function EmployeesPage() {
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [processingId, setProcessingId] = useState<string | null>(null)
+
+    const [showArchived, setShowArchived] = useState(false)
+    const [deptFilter, setDeptFilter] = useState("all")
+    const [roleFilter, setRoleFilter] = useState("all")
+    const [managerFilter, setManagerFilter] = useState("all")
+    const [sortBy, setSortBy] = useState("name")
 
     useEffect(() => {
         fetchData()
@@ -123,8 +129,29 @@ export default function EmployeesPage() {
         }
     }
 
+    const handleArchiveEmployee = async (id: string, archive: boolean) => {
+        const action = archive ? "archive" : "unarchive"
+        if (!confirm(`Are you sure you want to ${action} this staff member?`)) return
+
+        setProcessingId(id)
+        try {
+            const res = await fetch(`/api/employees/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isArchived: archive })
+            })
+            if (res.ok) {
+                fetchData()
+            }
+        } catch (error) {
+            console.error(`Failed to ${action} employee`)
+        } finally {
+            setProcessingId(null)
+        }
+    }
+
     const handleDeleteEmployee = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this employee? This action cannot be undone.")) return
+        if (!confirm("Are you sure you want to PERMANENTLY delete this staff member? This action cannot be undone.")) return
 
         setProcessingId(id)
         try {
@@ -141,16 +168,40 @@ export default function EmployeesPage() {
         }
     }
 
-    const filteredEmployees = employees.filter(emp =>
-        emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const filteredEmployees = employees.filter(emp => {
+        const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
+        const matchesArchive = showArchived ? emp.isArchived : !emp.isArchived
+        const matchesDept = deptFilter === "all" || emp.departmentId === deptFilter
+        const currentRoles = emp.roles || (emp.role ? [emp.role] : [])
+        const matchesRole = roleFilter === "all" ? true :
+            roleFilter === "USER_ONLY" ? currentRoles.length === 1 && currentRoles.includes("USER") :
+                currentRoles.includes(roleFilter)
+        const matchesManager = managerFilter === "all" ? true :
+            managerFilter === "none" ? !emp.managerId :
+                emp.managerId === managerFilter
+
+        return matchesSearch && matchesArchive && matchesDept && matchesRole && matchesManager
+    }).sort((a, b) => {
+        if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '')
+        if (sortBy === 'department') {
+            const deptA = a.department?.name || 'Unassigned'
+            const deptB = b.department?.name || 'Unassigned'
+            return deptA.localeCompare(deptB)
+        }
+        if (sortBy === 'manager') {
+            const mgrA = a.manager?.name || 'No Manager'
+            const mgrB = b.manager?.name || 'No Manager'
+            return mgrA.localeCompare(mgrB)
+        }
+        return 0
+    })
 
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-vh-50 space-y-4">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm font-medium text-muted-foreground">Syncing Personnel...</p>
+                <p className="text-sm font-medium text-muted-foreground">Syncing Staff...</p>
             </div>
         )
     }
@@ -159,7 +210,7 @@ export default function EmployeesPage() {
         <div className="space-y-10 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
-                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Personnel</h1>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Staff</h1>
                     <p className="text-muted-foreground text-sm">Staff Directory & Operational Clearance</p>
                 </div>
 
@@ -172,7 +223,7 @@ export default function EmployeesPage() {
                     <DialogContent className="sm:max-w-[450px]">
                         <DialogHeader>
                             <DialogTitle>Add New Staff</DialogTitle>
-                            <DialogDescription>Log new personnel into the central node</DialogDescription>
+                            <DialogDescription>Add new staff member to the system</DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleAddEmployee} className="space-y-4 py-4">
                             <div className="space-y-2">
@@ -242,22 +293,82 @@ export default function EmployeesPage() {
             </div>
 
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                <CardHeader className="border-b border-border p-6">
-                    <div className="relative max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search by identity or node..."
-                            className="pl-9 h-10 w-full"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
+                <CardHeader className="border-b border-border p-6 space-y-4">
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                        <div className="relative flex-1 max-w-md">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search staff..."
+                                className="pl-9 h-10 w-full bg-white font-medium text-sm rounded-lg"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Select value={deptFilter} onValueChange={setDeptFilter}>
+                                <SelectTrigger className="h-10 w-[140px] bg-white text-xs font-bold uppercase tracking-widest border-border hover:bg-slate-50 transition-colors">
+                                    <SelectValue placeholder="Dept" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Depts</SelectItem>
+                                    {departments.map(d => (
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={roleFilter} onValueChange={setRoleFilter}>
+                                <SelectTrigger className="h-10 w-[140px] bg-white text-xs font-bold uppercase tracking-widest border-border hover:bg-slate-50 transition-colors">
+                                    <SelectValue placeholder="Role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Roles</SelectItem>
+                                    <SelectItem value="USER">User</SelectItem>
+                                    <SelectItem value="MANAGER">Manager</SelectItem>
+                                    <SelectItem value="ADMIN">Admin</SelectItem>
+                                    <SelectItem value="USER_ONLY">User Only</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={managerFilter} onValueChange={setManagerFilter}>
+                                <SelectTrigger className="h-10 w-[140px] bg-white text-xs font-bold uppercase tracking-widest border-border hover:bg-slate-50 transition-colors">
+                                    <SelectValue placeholder="Manager" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Managers</SelectItem>
+                                    <SelectItem value="none">No Manager</SelectItem>
+                                    {employees.filter(e => e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
+                                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={sortBy} onValueChange={setSortBy}>
+                                <SelectTrigger className="h-10 w-[140px] bg-white text-xs font-bold uppercase tracking-widest border-border hover:bg-slate-50 transition-colors italic">
+                                    <SelectValue placeholder="Sort By" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="name">Name</SelectItem>
+                                    <SelectItem value="department">Dept</SelectItem>
+                                    <SelectItem value="manager">Manager</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Button
+                                variant={showArchived ? "default" : "outline"}
+                                onClick={() => setShowArchived(!showArchived)}
+                                className="h-10 text-[10px] font-black uppercase tracking-widest px-4 border-2 border-slate-900/10 hover:border-slate-900 transition-all rounded-lg"
+                            >
+                                {showArchived ? "Active Staff" : "Archived"}
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader className="bg-muted/50">
                             <TableRow className="border-border hover:bg-transparent">
-                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Personnel Identity</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Staff Identity</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Email</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Roles</TableHead>
@@ -313,24 +424,64 @@ export default function EmployeesPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell className="py-4 px-6 text-right">
-                                        <div className="flex justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Button
-                                                onClick={() => handleEditClick(emp)}
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                            >
-                                                <Edit2 className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                onClick={() => handleDeleteEmployee(emp.id)}
-                                                disabled={processingId === emp.id}
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                            >
-                                                {processingId === emp.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                            </Button>
+                                        <div className="flex justify-end gap-1">
+                                            {showArchived ? (
+                                                <>
+                                                    <Button
+                                                        onClick={() => handleArchiveEmployee(emp.id, false)}
+                                                        disabled={processingId === emp.id}
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                        title="Unarchive"
+                                                    >
+                                                        {processingId === emp.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArchiveRestore className="h-4 w-4" />}
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => handleDeleteEmployee(emp.id)}
+                                                        disabled={processingId === emp.id}
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                        title="Delete Permanently"
+                                                    >
+                                                        {processingId === emp.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                                    </Button>
+                                                </>
+
+                                            ) : (
+                                                <>
+                                                    <Button
+                                                        onClick={() => handleEditClick(emp)}
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                        title="Edit"
+                                                    >
+                                                        <Edit2 className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => handleArchiveEmployee(emp.id, true)}
+                                                        disabled={processingId === emp.id}
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                                        title="Archive"
+                                                    >
+                                                        {processingId === emp.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => handleDeleteEmployee(emp.id)}
+                                                        disabled={processingId === emp.id}
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                                        title="Delete Permanently"
+                                                    >
+                                                        {processingId === emp.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                                    </Button>
+                                                </>
+                                            )}
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -340,7 +491,7 @@ export default function EmployeesPage() {
                                     <TableCell colSpan={6} className="text-center py-12">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <User className="h-8 w-8 opacity-50" />
-                                            <p className="text-sm">No identities detected matching your search</p>
+                                            <p className="text-sm">No {showArchived ? 'archived' : 'active'} staff members found matching your search</p>
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -355,7 +506,7 @@ export default function EmployeesPage() {
                 <DialogContent className="sm:max-w-[450px]">
                     <DialogHeader>
                         <DialogTitle>Edit Staff Member</DialogTitle>
-                        <DialogDescription>Updating authorized personnel metrics</DialogDescription>
+                        <DialogDescription>Update staff member details and permissions</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleUpdateEmployee} className="space-y-4 py-4">
                         <div className="space-y-2">

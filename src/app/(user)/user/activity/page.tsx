@@ -30,13 +30,31 @@ export default function ActivityLogsPage() {
         if (session?.user?.id) {
             fetchActivityLogs()
         }
-    }, [session])
+    }, [session, dateRange]) // Added dateRange as dependency
 
     const fetchActivityLogs = async () => {
         if (!session?.user?.id) return
         setIsLoading(true)
         try {
-            const res = await fetch(`/api/attendance?userId=${session.user.id}`)
+            let url = `/api/attendance?userId=${session.user.id}`
+
+            // Calculate start and end dates based on range
+            if (dateRange !== 'all') {
+                const now = new Date()
+                let start = new Date()
+
+                if (dateRange === 'today') {
+                    start.setHours(0, 0, 0, 0)
+                } else if (dateRange === 'week') {
+                    start.setDate(now.getDate() - 7)
+                } else if (dateRange === 'month') {
+                    start.setMonth(now.getMonth() - 1)
+                }
+
+                url += `&startDate=${start.toISOString()}&endDate=${now.toISOString()}`
+            }
+
+            const res = await fetch(url)
             if (res.ok) {
                 const attendanceData = await res.json()
                 const activityLogs = convertAttendanceToLogs(attendanceData)
@@ -160,7 +178,7 @@ export default function ActivityLogsPage() {
     }
 
     return (
-        <div className="space-y-8 max-w-7xl mx-auto">
+        <div className="space-y-8 w-full max-w-[1800px] mx-auto">
             {/* Header */}
             <div>
                 <h1 className="text-2xl font-bold tracking-tight text-foreground">Activity Logs</h1>

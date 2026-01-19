@@ -44,7 +44,8 @@ export async function GET(req: Request) {
             reason: l.reason,
             status: l.status,
             duration: l.duration,
-            declineReason: l.declineReason
+            declineReason: l.declineReason,
+            createdAt: l.createdAt.toISOString()
         }))
 
 

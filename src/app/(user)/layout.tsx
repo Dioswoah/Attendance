@@ -86,7 +86,7 @@ export default function UserLayout({
                 {/* Logo */}
                 <div className="p-6 border-sidebar-border relative">
                     <div className={cn("flex items-center gap-3", sidebarCollapsed && "justify-center")}>
-                        <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                        <div className="h-10 w-10 bg-white rounded-lg flex items-center justify-center shrink-0 shadow-sm">
                             <Flame className="h-5 w-5 text-primary fill-primary" />
                         </div>
                         {!sidebarCollapsed && (

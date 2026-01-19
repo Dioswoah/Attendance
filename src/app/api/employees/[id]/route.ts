@@ -8,17 +8,18 @@ export async function PATCH(
     try {
         const { id } = await params
         const body = await req.json()
-        const { name, email, departmentId, roles, managerId } = body
+        const { name, email, departmentId, roles, managerId, isArchived } = body
+        const updateData: any = {}
+        if (name !== undefined) updateData.name = name
+        if (email !== undefined) updateData.email = email
+        if (departmentId !== undefined) updateData.departmentId = departmentId === "unassigned" ? null : departmentId
+        if (roles !== undefined) updateData.roles = roles
+        if (managerId !== undefined) updateData.managerId = managerId === "unassigned" ? null : managerId
+        if (isArchived !== undefined) updateData.isArchived = isArchived
 
         const updated = await prisma.user.update({
             where: { id },
-            data: {
-                name,
-                email,
-                departmentId: departmentId || null,
-                roles: roles || undefined,
-                managerId: managerId === "unassigned" ? null : (managerId || undefined)
-            }
+            data: updateData
         })
 
         return NextResponse.json(updated)
