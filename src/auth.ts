@@ -25,6 +25,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async signIn({ user, account, profile }) {
             if (!user.email) return false;
 
+            // 1. Domain Restriction Guardrail
+            const allowedDomains = ['@redadair.com.au'];
+            const isAllowed = allowedDomains.some(domain => user.email?.endsWith(domain));
+
+            if (!isAllowed) {
+                console.log(`[Auth] Access denied for email: ${user.email}. Domain not allowed.`);
+                // Return URL to redirect user to unauthorized page
+                return '/unauthorized';
+            }
+
             try {
                 // Check if user exists
                 let dbUser = await prisma.user.findUnique({

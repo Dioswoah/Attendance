@@ -607,24 +607,33 @@ export default function EmployeesPage() {
             </Dialog>
             {/* Department Warning Dialog */}
             <Dialog open={showDeptWarning} onOpenChange={setShowDeptWarning}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-amber-600">
-                            <ShieldCheck className="h-5 w-5" />
-                            Department Assignment Required
-                        </DialogTitle>
-                        <DialogDescription>
-                            You must assign a department to this staff member before you can assign a reporting manager.
+                <DialogContent className="max-w-md rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-amber-500 p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                        <ShieldCheck className="h-12 w-12 text-white/30 mx-auto mb-4" />
+                        <DialogTitle className="text-xl font-black italic text-white uppercase tracking-tight relative z-10">Department Required</DialogTitle>
+                        <DialogDescription className="text-white/70 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
+                            Prerequisite Missing
                         </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4 text-sm text-foreground">
-                        Managers are often department-specific. Please select a department first to ensure the correct managerial hierarchy.
                     </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                            <Button>Okay, I'll assign a department</Button>
-                        </DialogClose>
-                    </DialogFooter>
+
+                    <div className="p-8 bg-white space-y-6">
+                        <div className="text-center space-y-2">
+                            <p className="text-slate-700 font-bold text-sm">
+                                You must assign a department to this staff member before you can assign a reporting manager.
+                            </p>
+                            <p className="text-xs text-muted-foreground font-medium">
+                                Managers are department-specific. Please select a department first to ensure the correct managerial hierarchy.
+                            </p>
+                        </div>
+                        <DialogFooter className="sm:justify-center">
+                            <DialogClose asChild>
+                                <Button className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg">
+                                    Okay, I'll Assign a Department
+                                </Button>
+                            </DialogClose>
+                        </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

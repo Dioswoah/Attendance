@@ -1,0 +1,44 @@
+[2026-01-19T22:23:25.033Z] SignIn Error: 
+Invalid `prisma.user.findUnique()` invocation:
+
+
+Authentication failed against database server at `localhost`, the provided database credentials for `attendance_user` are not valid.
+
+Please make sure to provide valid database credentials for the database server at `localhost`.
+Stack: PrismaClientInitializationError: 
+Invalid `prisma.user.findUnique()` invocation:
+
+
+Authentication failed against database server at `localhost`, the provided database credentials for `attendance_user` are not valid.
+
+Please make sure to provide valid database credentials for the database server at `localhost`.
+    at $n.handleRequestError (C:\Users\marcr\Desktop\Attendance\node_modules\@prisma\client\runtime\library.js:121:7615)
+    at $n.handleAndLogRequestError (C:\Users\marcr\Desktop\Attendance\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\marcr\Desktop\Attendance\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\marcr\Desktop\Attendance\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async signIn (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\[root-of-the-server]__ec32f775._.js:108:38)
+    at async handleAuthorized (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\node_modules_@auth_core_83efb00c._.js:4441:30)
+    at async Module.callback (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\node_modules_@auth_core_83efb00c._.js:4058:38)
+    at async AuthInternal (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\node_modules_@auth_core_83efb00c._.js:5039:32)
+    at async Auth (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\node_modules_@auth_core_83efb00c._.js:5298:42)
+    at async AppRouteRouteModule.do (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.dev.js:5:37789)
+    at async AppRouteRouteModule.handle (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.dev.js:5:45045)
+    at async responseGenerator (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\node_modules_next_5d661447._.js:16168:46)
+    at async AppRouteRouteModule.handleResponse (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.dev.js:1:187851)
+    at async handleResponse (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\node_modules_next_5d661447._.js:16232:40)
+    at async handler (C:\Users\marcr\Desktop\Attendance\.next\dev\server\chunks\node_modules_next_5d661447._.js:16286:21)
+    at async DevServer.renderToResponseWithComponentsImpl (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\base-server.js:1413:9)
+    at async DevServer.renderPageComponent (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\base-server.js:1465:24)
+    at async DevServer.renderToResponseImpl (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\base-server.js:1515:32)
+    at async DevServer.pipeImpl (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\base-server.js:1021:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\next-server.js:394:17)
+    at async DevServer.handleRequestImpl (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\base-server.js:912:17)
+    at async C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\dev\next-dev-server.js:382:20
+    at async Span.traceAsyncFn (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\trace\trace.js:157:20)
+    at async DevServer.handleRequest (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\dev\next-dev-server.js:378:24)
+    at async invokeRender (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\lib\router-server.js:240:21)
+    at async handleRequest (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\lib\router-server.js:436:24)
+    at async NextCustomServer.requestHandlerImpl (C:\Users\marcr\Desktop\Attendance\node_modules\next\dist\server\lib\router-server.js:484:13)
+    at async Server.<anonymous> (C:\Users\marcr\Desktop\Attendance\server.ts:19:13)
+User: {"id":"81b1b05d-894b-4eaa-8983-a807e3c59b99","name":"Marc Ramos","email":"marcr@redadair.com.au","image":"https://lh3.googleusercontent.com/a/ACg8ocIgZywwkmDI3pJ80qyNT4xGthLR6Dv6E8xrOBQQw7A1_9H9Gw=s96-c"}
+
