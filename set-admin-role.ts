@@ -12,10 +12,10 @@ const prisma = new PrismaClient()
 async function setAdminRole() {
     console.log('🔧 Updating user roles...\n')
 
-    // CHANGE THIS to your email address
-    const EMAIL_TO_UPDATE = 'testuser@digitalstaff.com.au'
+    // EMAIL to update
+    const EMAIL_TO_UPDATE = 'marcr@redadair.com.au'
 
-    // CHANGE THIS to the role you want (ADMIN or MANAGER)
+    // Multi-roles for the user
     const NEW_ROLE: Role[] = [Role.ADMIN, Role.MANAGER, Role.USER]
 
     try {

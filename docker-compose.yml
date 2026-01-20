@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: attendance_user
-      POSTGRES_PASSWORD: attendance_pass_2024
+      POSTGRES_PASSWORD: Edgeoffaith12@
       POSTGRES_DB: attendance_db
     ports:
       - "5433:5432"
@@ -26,7 +26,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgresql://attendance_user:attendance_pass_2024@postgres:5432/attendance_db
+      - DATABASE_URL=postgresql://attendance_user:Edgeoffaith12@@postgres:5432/attendance_db
       - NEXTAUTH_SECRET=RedadairAdmin2024NextAuthSecret
       - NEXTAUTH_URL=http://localhost:8080
       - ADMIN_PASSWORD=RedadairAdmin2024

@@ -30,7 +30,7 @@ export async function GET(req: Request) {
             orderBy: { createdAt: 'desc' }
         }) as any
 
-        const transformed = leaves.map(l => ({
+        const transformed = leaves.map((l: any) => ({
             id: l.id,
             userId: l.userId,
             userName: l.user.name,

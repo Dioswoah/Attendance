@@ -54,11 +54,27 @@ async function main() {
 
     for (const emp of employees) {
         await prisma.user.upsert({
-            where: { id: emp.id },
-            update: {},
+            where: { email: emp.email },
+            update: {
+                roles: emp.roles
+            },
             create: emp
         })
     }
+
+    // Set marcr@redadair.com.au as ADMIN and MANAGER
+    await prisma.user.upsert({
+        where: { email: 'marcr@redadair.com.au' },
+        update: {
+            roles: [Role.ADMIN, Role.MANAGER, Role.USER]
+        },
+        create: {
+            email: 'marcr@redadair.com.au',
+            name: 'Marcr Admin',
+            roles: [Role.ADMIN, Role.MANAGER, Role.USER],
+            departmentId: managementDept.id
+        }
+    })
 
     console.log('Employees created')
     console.log('Seed completed successfully!')

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore } from "lucide-react"
@@ -41,6 +41,7 @@ export default function EmployeesPage() {
     const [roleFilter, setRoleFilter] = useState("all")
     const [managerFilter, setManagerFilter] = useState("all")
     const [sortBy, setSortBy] = useState("name")
+    const [showDeptWarning, setShowDeptWarning] = useState(false)
 
     useEffect(() => {
         fetchData()
@@ -274,17 +275,25 @@ export default function EmployeesPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label>Assigned Manager</Label>
-                                <Select value={newManagerId} onValueChange={setNewManagerId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select Manager" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
-                                        {employees.filter(e => e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
-                                            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <div onClickCapture={(e) => {
+                                    if (!newDeptId) {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        setShowDeptWarning(true)
+                                    }
+                                }}>
+                                    <Select value={newManagerId} onValueChange={setNewManagerId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select Manager" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
+                                            {employees.filter(e => e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
+                                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                             <Button type="submit" className="w-full">Create Staff Member</Button>
                         </form>
@@ -569,23 +578,53 @@ export default function EmployeesPage() {
                         </div>
                         <div className="space-y-2">
                             <Label>Assigned Manager</Label>
-                            <Select value={editManagerId} onValueChange={setEditManagerId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Manager" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
-                                    {employees.filter(e => (e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN') && e.id !== editingEmp?.id).map(m => (
-                                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <div onClickCapture={(e) => {
+                                if (!editDeptId || editDeptId === "unassigned") {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    setShowDeptWarning(true)
+                                }
+                            }}>
+                                <Select value={editManagerId} onValueChange={setEditManagerId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Manager" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
+                                        {employees.filter(e => (e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN') && e.id !== editingEmp?.id).map(m => (
+                                            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                         <Button type="submit" disabled={isSaving} className="w-full gap-2">
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                             Save Changes
                         </Button>
                     </form>
+                </DialogContent>
+            </Dialog>
+            {/* Department Warning Dialog */}
+            <Dialog open={showDeptWarning} onOpenChange={setShowDeptWarning}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-amber-600">
+                            <ShieldCheck className="h-5 w-5" />
+                            Department Assignment Required
+                        </DialogTitle>
+                        <DialogDescription>
+                            You must assign a department to this staff member before you can assign a reporting manager.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 text-sm text-foreground">
+                        Managers are often department-specific. Please select a department first to ensure the correct managerial hierarchy.
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button>Okay, I'll assign a department</Button>
+                        </DialogClose>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
