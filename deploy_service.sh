@@ -1,16 +1,33 @@
 #!/bin/bash
 
 # Deploy the Cloud Run Service
-echo "Deploying Cloud Run Service 'attendance-app'..."
-gcloud run deploy attendance-app \
-  --image gcr.io/buoyant-purpose-475203-t9/attendance-app:latest \
+# Deploy the Cloud Run Service
+# Load environment variables
+if [ -f .env ]; then
+    echo "Loading configuration from .env..."
+    export $(cat .env | grep -v '^#' | xargs)
+else
+    echo "Error: .env file not found!"
+    exit 1
+fi
+
+echo "Deploying Cloud Run Service '${SERVICE_NAME}'..."
+
+# Constructing the database URL for Cloud Run (using Unix socket)
+CLOUD_RUN_DATABASE_URL="postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
+
+gcloud run deploy ${SERVICE_NAME} \
+  --image gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest \
   --platform managed \
-  --region us-central1 \
+  --region ${REGION} \
   --allow-unauthenticated \
-  --add-cloudsql-instances buoyant-purpose-475203-t9:australia-southeast1:bapteamproject \
+  --add-cloudsql-instances ${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE} \
   --set-env-vars NODE_ENV=production \
-  --set-env-vars NEXTAUTH_SECRET="6pD+C4whgjqx4d9NmlPas9d/Xi0puOW7CjvEx/n16+Q=" \
-  --set-env-vars NEXTAUTH_URL="https://attendance-app-712513641417.us-central1.run.app" \
-  --set-env-vars DATABASE_URL="postgresql://attendance_user:AttendanceSecure2024!@localhost/attendance_db?host=/cloudsql/buoyant-purpose-475203-t9:australia-southeast1:bapteamproject" \
+  --set-env-vars NEXTAUTH_SECRET="${NEXTAUTH_SECRET}" \
+  --set-env-vars NEXTAUTH_URL="${SERVICE_URL}" \
+  --set-env-vars DATABASE_URL="${CLOUD_RUN_DATABASE_URL}" \
+  --set-env-vars AUTH_GOOGLE_ID="${AUTH_GOOGLE_ID}" \
+  --set-env-vars AUTH_GOOGLE_SECRET="${AUTH_GOOGLE_SECRET}" \
+  --set-env-vars ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
   --port 8080 \
   --quiet
