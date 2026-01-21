@@ -23,14 +23,12 @@ function LoginContent() {
     }, [status, router])
 
     useEffect(() => {
-        // Check for unauthorized access attempt
         const error = searchParams.get("error")
-        const callbackUrl = searchParams.get("callbackUrl")
-
-        if (error === "unauthorized" || (callbackUrl && !session)) {
+        // Only show dialog if there's an explicit unauthorized error
+        if (error === "unauthorized") {
             setShowUnauthorizedDialog(true)
         }
-    }, [searchParams, session])
+    }, [searchParams])
 
     const handleGoogleLogin = async () => {
         setIsLoggingIn(true)
