@@ -5,10 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { signIn, useSession } from "next-auth/react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { Lock, ShieldAlert, LogIn, Loader2 } from "lucide-react"
 
-export default function LoginPage() {
+function LoginContent() {
     const { data: session, status } = useSession()
     const searchParams = useSearchParams()
     const router = useRouter()
@@ -122,3 +122,16 @@ export default function LoginPage() {
         </div>
     )
 }
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center bg-zinc-50">
+                <Loader2 className="h-8 w-8 animate-spin text-red-600" />
+            </div>
+        }>
+            <LoginContent />
+        </Suspense>
+    )
+}
+
