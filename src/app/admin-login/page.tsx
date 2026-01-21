@@ -20,20 +20,21 @@ export default function AdminLoginPage() {
     useEffect(() => {
         if (status === "loading") return
 
-        // 1. If NOT logged in (Guest) -> Can see this page (to enter password)
-        if (status === "unauthenticated") return
+        const adminAuth = sessionStorage.getItem("adminAuthenticated")
 
-        // 2. If Logged In...
-        if (session?.user) {
+        // 1. If already have the session key, and we are an ADMIN, skip login
+        if (adminAuth === "true" && session?.user) {
             const roles = (session.user as any).roles || []
-
-            // ... as ADMIN -> Redirect to Admin Dashboard
             if (roles.includes("ADMIN")) {
                 router.replace("/admin")
+                return
             }
-            // ... as USER (non-admin) -> Redirect to Unauthorized Popup
-            else {
-                // Redirecting to root with error flag triggers the popup on the main page
+        }
+
+        // 2. If Logged In but NOT an ADMIN, kick them out
+        if (session?.user) {
+            const roles = (session.user as any).roles || []
+            if (!roles.includes("ADMIN")) {
                 router.replace("/?error=unauthorized&callbackUrl=/admin-login")
             }
         }
@@ -79,7 +80,7 @@ export default function AdminLoginPage() {
         }
     }
 
-    if (status === "loading" || (session && session.user)) {
+    if (status === "loading") {
         return (
             <div className="min-h-screen bg-muted/30 flex items-center justify-center p-6">
                 <Loader2 className="h-8 w-8 animate-spin text-red-600" />

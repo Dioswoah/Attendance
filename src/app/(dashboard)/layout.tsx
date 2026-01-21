@@ -15,9 +15,10 @@ import {
     History,
     ChevronRight,
     Flame,
-    ShieldCheck
+    ShieldCheck,
+    Loader2
 } from "lucide-react"
-import { useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 
 export default function AdminLayout({
@@ -28,12 +29,27 @@ export default function AdminLayout({
     const router = useRouter()
     const pathname = usePathname()
 
+    const [isChecking, setIsChecking] = useState(true)
+
     useEffect(() => {
         const isAuthenticated = sessionStorage.getItem("adminAuthenticated")
         if (!isAuthenticated) {
             router.push("/admin-login")
+        } else {
+            setIsChecking(false)
         }
     }, [router])
+
+    if (isChecking) {
+        return (
+            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-muted/20 gap-4">
+                <Loader2 className="h-10 w-10 animate-spin text-red-600" />
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground animate-pulse">
+                    Verifying Admin Session...
+                </p>
+            </div>
+        )
+    }
 
     const handleLogout = () => {
         sessionStorage.removeItem("adminAuthenticated")
