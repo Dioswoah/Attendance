@@ -21,7 +21,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {
-        await prisma.break.delete({ where: { id } })
+        await prisma.break.update({
+            where: { id },
+            data: { deletedAt: new Date() }
+        })
         return NextResponse.json({ success: true })
     } catch (error) {
         return NextResponse.json({ error: "Failed to delete break record" }, { status: 500 })

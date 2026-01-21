@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -24,20 +24,14 @@ export default function UserLayout({
     const userRoles = (session?.user as any)?.roles || []
     const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
 
-    // DEBUG: Log roles to console
-    console.log('🔍 DEBUG - User Roles:', userRoles)
-    console.log('🔍 DEBUG - Is Manager/Admin:', isManagerOrAdmin)
-    console.log('🔍 DEBUG - Full Session:', session)
-
     // Dynamic navigation items based on role
     const navItems = [
         { name: "Dashboard", href: "/user", icon: LayoutDashboard },
         { name: "Leave Requests", href: "/user/leaves", icon: CalendarDays },
+        { name: "Amend Records", href: "/user/amend-records", icon: Edit },
         { name: "Activity Logs", href: "/user/activity", icon: FileText },
         ...(isManagerOrAdmin ? [{ name: "Manager Control", href: "/user/manager", icon: Users }] : []),
     ]
-
-    console.log('🔍 DEBUG - Nav Items:', navItems.map(i => i.name))
 
     // Wait for session to load to prevent hydration errors
     if (status === "loading") {
@@ -158,7 +152,7 @@ export default function UserLayout({
 
                         <Button
                             variant="ghost"
-                            onClick={() => signOut()}
+                            onClick={() => signOut({ callbackUrl: '/' })}
                             className={cn(
                                 "w-full justify-start h-10 gap-3 text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/5 rounded-lg transition-colors",
                                 sidebarCollapsed && "justify-center px-0"
@@ -252,7 +246,7 @@ export default function UserLayout({
                             </div>
                             <Button
                                 variant="ghost"
-                                onClick={() => signOut()}
+                                onClick={() => signOut({ callbackUrl: '/' })}
                                 className="w-full h-12 gap-3 text-xs font-black uppercase tracking-widest text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl"
                             >
                                 <LogOut className="w-5 h-5" />

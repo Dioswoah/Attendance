@@ -30,10 +30,11 @@ export default function AdminDashboard() {
     useEffect(() => {
         const fetchData = async () => {
             try {
+                const todayStr = new Date().toISOString().split('T')[0]
                 const [empRes, deptRes, attRes] = await Promise.all([
                     fetch('/api/employees'),
                     fetch('/api/departments'),
-                    fetch('/api/attendance')
+                    fetch(`/api/attendance?date=${todayStr}`)
                 ])
 
                 if (empRes.ok && deptRes.ok && attRes.ok) {
@@ -68,17 +69,18 @@ export default function AdminDashboard() {
 
         fetchData()
 
-        const socket = io({
-            path: '/api/socket/io',
-        })
+        // Socket.IO connection disabled to prevent 404 spam
+        // const socket = io({
+        //     path: '/api/socket/io',
+        // })
 
-        socket.on("update-data", () => {
-            fetchData()
-        })
+        // socket.on("update-data", () => {
+        //     fetchData()
+        // })
 
-        return () => {
-            socket.disconnect()
-        }
+        // return () => {
+        //     socket.disconnect()
+        // }
     }, [])
 
     // Live Clock State

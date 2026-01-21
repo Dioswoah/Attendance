@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
-import { sendLeaveRequestEmail } from "@/lib/email"
+import { sendLeaveRequestEmail, sendAdminActionEmail } from "@/lib/email"
 import { auth } from "@/auth"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
     const status = searchParams.get('status')
 
     try {
-        const leaves = await prisma.leave.findMany({
+        const leaveFilter: any = {
             where: {
                 ...(userId && { userId }),
                 user: {
@@ -24,13 +25,44 @@ export async function GET(req: Request) {
                 ...(startDate && endDate && {
                     startDate: { gte: new Date(startDate) },
                     endDate: { lte: new Date(endDate) }
-                })
+                }),
+                deletedAt: null
             },
             include: { user: { include: { department: true } } },
             orderBy: { createdAt: 'desc' }
-        }) as any
+        }
 
-        const transformed = leaves.map((l: any) => ({
+        const requestFilter: any = {
+            where: {
+                ...(userId && { userId }),
+                user: {
+                    ...(departmentId && departmentId !== 'all' && { departmentId }),
+                    ...(managerId && { managerId })
+                },
+                ...(status && { status }),
+                ...(startDate && endDate && {
+                    startDate: { gte: new Date(startDate) },
+                    endDate: { lte: new Date(endDate) }
+                }),
+                deletedAt: null
+            },
+            include: { user: { include: { department: true } } },
+            orderBy: { createdAt: 'desc' }
+        }
+
+        const leaves = await prisma.leave.findMany(leaveFilter)
+        let leaveRequests: any[] = []
+
+        try {
+            const lr = (prisma as any).leaveRequest
+            if (lr) {
+                leaveRequests = await lr.findMany(requestFilter)
+            }
+        } catch (e) {
+            // Silently fail if model is missing from client
+        }
+
+        const transform = (l: any, isRequest: boolean) => ({
             id: l.id,
             userId: l.userId,
             userName: l.user.name,
@@ -45,29 +77,71 @@ export async function GET(req: Request) {
             status: l.status,
             duration: l.duration,
             declineReason: l.declineReason,
-            createdAt: l.createdAt.toISOString()
-        }))
+            createdAt: l.createdAt.toISOString(),
+            isRequest // Flag to help frontend or API distinguish if needed, though ID collision is possible if CUIDs clash (unlikely)
+        })
 
+        const transformedLeaves = leaves.map(l => transform(l, false))
+        const transformedRequests = leaveRequests.map(l => transform(l, true))
 
-        return NextResponse.json(transformed)
+        // combine and sort
+        const combined = [...transformedLeaves, ...transformedRequests].sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
+
+        return NextResponse.json(combined)
     } catch (error) {
         return NextResponse.json({ error: "Failed to fetch leaves" }, { status: 500 })
     }
 }
 
 export async function POST(req: Request) {
-    console.log('[Leave API] POST request received');
+
     try {
         const body = await req.json()
         const { userId, startDate, endDate, type, reason, duration, startTime, endTime } = body
-        console.log('[Leave API] Request body:', { userId, startDate, endDate, type, duration });
+
+
+        const currentYear = new Date().getFullYear();
+
+        // 1. Birthday Check
+        if (type === 'BIRTHDAY') {
+            const startOfYear = new Date(currentYear, 0, 1);
+            const endOfYear = new Date(currentYear, 11, 31);
+
+            const birthdayLeave = await (prisma as any).leave.findFirst({
+                where: {
+                    userId,
+                    type: 'BIRTHDAY',
+                    status: { not: 'DECLINED' },
+                    startDate: {
+                        gte: startOfYear,
+                        lte: endOfYear
+                    }
+                }
+            });
+
+            const birthdayRequest = (prisma as any).leaveRequest ? await (prisma as any).leaveRequest.findFirst({
+                where: {
+                    userId,
+                    type: 'BIRTHDAY',
+                    status: { not: 'DECLINED' },
+                    startDate: {
+                        gte: startOfYear,
+                        lte: endOfYear
+                    }
+                }
+            }) : null;
+
+            if (birthdayLeave || birthdayRequest) {
+                return NextResponse.json({ error: "You have already requested a Birthday Leave for this year." }, { status: 400 });
+            }
+        }
 
         // Check for existing leave requests on the same dates
-        const existingLeave = await prisma.leave.findFirst({
+        const dateCheck = {
             where: {
                 userId,
-                // Strict check: If ANY leave exists (Pending, Approved, OR Declined), block it.
-                // Requirement: "if the existing data shows that the approved as declined then the user cannnot request again"
                 OR: [
                     {
                         startDate: { lte: new Date(endDate) },
@@ -75,14 +149,21 @@ export async function POST(req: Request) {
                     }
                 ]
             }
-        })
+        }
 
-        if (existingLeave) {
-            console.log('[Leave API] Existing leave found, rejecting request');
+        const existingLeave = await (prisma as any).leave.findFirst(dateCheck)
+        const existingRequest = (prisma as any).leaveRequest ? await (prisma as any).leaveRequest.findFirst(dateCheck) : null
+
+        if (existingLeave || existingRequest) {
             return NextResponse.json({ error: "Leave request already exists for this date range" }, { status: 400 })
         }
 
-        const leave = await prisma.leave.create({
+        // Create Leave REQUEST (not Leave)
+        if (!(prisma as any).leaveRequest) {
+            return NextResponse.json({ error: "Leave system is temporarily unavailable" }, { status: 503 })
+        }
+
+        const leaveRequest = await (prisma as any).leaveRequest.create({
             data: {
                 userId,
                 startDate: new Date(startDate),
@@ -95,7 +176,7 @@ export async function POST(req: Request) {
                 status: "PENDING"
             }
         })
-        console.log('[Leave API] Leave created successfully:', leave.id);
+
 
         // Notify Manager
         const user = await prisma.user.findUnique({
@@ -103,7 +184,22 @@ export async function POST(req: Request) {
             include: { manager: true }
         }) as any;
 
-        console.log('[Leave API] User info:', { userId, managerId: user?.managerId, hasManager: !!user?.manager });
+        const session = await auth() as any;
+
+        if (session && session.user.id !== userId) {
+            if (user && user.email && session.accessToken) {
+                await sendAdminActionEmail({
+                    userName: user.name || "Employee",
+                    userEmail: user.email,
+                    adminName: session.user.name || "Administrator",
+                    adminEmail: session.user.email,
+                    adminAccessToken: session.accessToken,
+                    actionType: 'LEAVE',
+                    details: `${type} - ${duration} (${reason || 'No reason specified'})`,
+                    date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`
+                })
+            }
+        }
 
         if (user?.managerId) {
             await prisma.notification.create({
@@ -112,22 +208,13 @@ export async function POST(req: Request) {
                     title: "New Leave Request",
                     message: `${user.name} has requested leave from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}`,
                     type: "LEAVE_REQUEST",
-                    link: "/admin/leaves" // Assuming manager checks here
+                    link: "/admin/leaves"
                 }
             })
-            console.log('[Leave API] Notification created for manager');
 
-            // Send Email Notification to Manager
             if (user.manager && user.manager.email) {
-                console.log('[Leave API] Attempting to send email to manager:', user.manager.email);
-                // Get session to retrieve access token
-                const session = await auth() as any;
                 const accessToken = session?.accessToken;
-
-                console.log('[Leave API] Session info:', { hasSession: !!session, hasAccessToken: !!accessToken });
-
                 if (accessToken) {
-                    console.log('[Leave API] Calling sendLeaveRequestEmail...');
                     await sendLeaveRequestEmail({
                         managerName: user.manager.name || 'Manager',
                         managerEmail: user.manager.email,
@@ -139,25 +226,15 @@ export async function POST(req: Request) {
                         endDate: new Date(endDate).toLocaleDateString(),
                         duration: duration,
                         reason: reason,
-                        leaveId: leave.id
+                        leaveId: leaveRequest.id
                     });
-                    console.log('[Leave API] Email function completed');
-                } else {
-                    console.warn('[Leave API] No access token found in session. Email not sent.');
                 }
-            } else {
-                console.warn('[Leave API] Manager has no email address. Email not sent.');
             }
-        } else {
-            console.warn('[Leave API] User has no manager assigned. No notification or email sent.');
         }
 
-        console.log('[Leave API] Returning success response');
-        // @ts-ignore
-        if (global.io) global.io.emit('update-data')
-        return NextResponse.json(leave)
+        broadcastUpdate('leaves', leaveRequest)
+        return NextResponse.json(leaveRequest)
     } catch (error) {
-        console.error('[Leave API] Error:', error);
-        return NextResponse.json({ error: "Failed to create leave" }, { status: 500 })
+        return NextResponse.json({ error: "Failed to create leave request" }, { status: 500 })
     }
 }

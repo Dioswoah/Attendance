@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { auth } from "@/auth"
+import { sendAdminActionEmail } from "@/lib/email"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 // NSW Public Holidays 2026
-const NSW_HOLIDAYS_2026 = [
+const HOLIDAYS_2026 = [
     '2026-01-01', // New Year's Day
     '2026-01-26', // Australia Day
     '2026-04-03', // Good Friday
@@ -21,11 +24,8 @@ function isWorkingDay(date: Date): boolean {
     const day = date.getDay()
     if (day === 0 || day === 6) return false // Weekend
 
-    // Format YYYY-MM-DD to check against holidays
-    // Use localized string parts to avoid UTC shift issues if strictly comparing calendar dates
-    // But since we are using UTC dates in the app generally, let's stick to ISO string split
     const dateStr = date.toISOString().split('T')[0]
-    if (NSW_HOLIDAYS_2026.includes(dateStr)) return false
+    if (HOLIDAYS_2026.includes(dateStr)) return false
 
     return true
 }
@@ -41,12 +41,24 @@ function getNextWorkingDay(date: Date): Date {
 }
 
 /**
- * Helper to get current UTC date at midnight
+ * Helper to get current Date at midnight in Philippine Time (Asia/Manila)
+ * but returned as a UTC Date object (00:00:00 UTC) for consistency with DB storage.
  */
-function getUTCToday() {
+function getPHTToday() {
     const now = new Date()
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    // valid specific time in Manila
+    const phtString = now.toLocaleDateString("en-US", {
+        timeZone: "Asia/Manila",
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    // phtString format mm/dd/yyyy due to en-US
+    const [month, day, year] = phtString.split('/')
+    return new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)))
 }
+
+
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -58,7 +70,7 @@ export async function GET(req: Request) {
     const departmentId = searchParams.get('departmentId')
     const managerId = searchParams.get('managerId')
 
-    let whereClause: any = {}
+    let whereClause: any = { deletedAt: null }
 
     if (startDateStr && endDateStr) {
         const start = new Date(startDateStr)
@@ -75,7 +87,7 @@ export async function GET(req: Request) {
             targetDate = new Date(dateStr)
             targetDate.setUTCHours(0, 0, 0, 0)
         } else {
-            targetDate = getUTCToday()
+            targetDate = getPHTToday()
         }
 
         const nextDay = new Date(targetDate)
@@ -93,7 +105,7 @@ export async function GET(req: Request) {
 
     try {
         // Prepare Leave Query
-        let leaveWhere: any = { status: 'APPROVED' }
+        let leaveWhere: any = { status: 'APPROVED', deletedAt: null }
         if (userId) leaveWhere.userId = userId
         if (departmentId && departmentId !== 'all') leaveWhere.user = { departmentId }
         if (managerId) leaveWhere.user = { ...leaveWhere.user, managerId }
@@ -273,7 +285,7 @@ export async function POST(req: Request) {
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
-        const targetDate = date ? new Date(date) : getUTCToday()
+        const targetDate = date ? new Date(date) : getPHTToday()
         targetDate.setUTCHours(0, 0, 0, 0)
 
         // Check for an ACTIVE session (not clocked out)
@@ -300,9 +312,30 @@ export async function POST(req: Request) {
             }
         })
 
-        console.log(`[Attendance] Successfully clocked in ${userId}`)
-        // @ts-ignore
-        if (global.io) global.io.emit('update-data')
+        // Notify User if Admin created it
+        const session = await auth() as any
+        if (session && session.user.id !== userId) {
+            const targetUser = await prisma.user.findUnique({ where: { id: userId } })
+            if (targetUser && targetUser.email && session.accessToken) {
+                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}` +
+                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '') +
+                    ` (${attendance.mode})`
+
+                await sendAdminActionEmail({
+                    userName: targetUser.name || "Employee",
+                    userEmail: targetUser.email,
+                    adminName: session.user.name || "Administrator",
+                    adminEmail: session.user.email,
+                    adminAccessToken: session.accessToken,
+                    actionType: 'ATTENDANCE',
+                    details: details,
+                    date: new Date(attendance.date).toLocaleDateString()
+                })
+            }
+        }
+
+
+        broadcastUpdate('attendance', attendance)
         return NextResponse.json(attendance)
     } catch (error) {
         console.error("Attendance POST error:", error)
@@ -317,7 +350,7 @@ export async function PATCH(req: Request) {
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
-        const today = getUTCToday()
+        const today = getPHTToday()
 
         // Find ACTIVE session
         const existing = await prisma.attendance.findFirst({
@@ -390,8 +423,7 @@ export async function PATCH(req: Request) {
             data: updateData
         })
 
-        // @ts-ignore
-        if (global.io) global.io.emit('update-data')
+        broadcastUpdate('attendance', updated)
         return NextResponse.json(updated)
     } catch (error) {
         console.error("Attendance PATCH error:", error)

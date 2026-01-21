@@ -1,26 +1,13 @@
 import NextAuth from "next-auth"
-import Google from "next-auth/providers/google"
+import authConfig from "./auth.config"
 import { prisma } from "@/lib/prisma"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+    ...authConfig,
     session: {
         strategy: "jwt",
         maxAge: 60 * 60, // 1 hour - force session refresh
     },
-    providers: [
-        Google({
-            clientId: process.env.AUTH_GOOGLE_ID,
-            clientSecret: process.env.AUTH_GOOGLE_SECRET,
-            allowDangerousEmailAccountLinking: true,
-            authorization: {
-                params: {
-                    scope: 'openid email profile https://www.googleapis.com/auth/gmail.send',
-                    access_type: 'offline',
-                    prompt: 'consent',
-                }
-            }
-        }),
-    ],
     callbacks: {
         async signIn({ user, account, profile }) {
             if (!user.email) return false;

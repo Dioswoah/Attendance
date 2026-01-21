@@ -20,7 +20,10 @@ export async function GET(req: Request) {
         }
 
         const notifications = await prisma.notification.findMany({
-            where: whereClause,
+            where: {
+                ...whereClause,
+                deletedAt: null
+            },
             orderBy: { createdAt: 'desc' }
         })
         return NextResponse.json(notifications)

@@ -47,6 +47,7 @@ export default function LeaveRequestsPage() {
     const [startTime, setStartTime] = useState<string>("09:00")
     const [endTime, setEndTime] = useState<string>("13:00")
     const [reason, setReason] = useState<string>("")
+    const [editingId, setEditingId] = useState<string | null>(null)
 
     useEffect(() => {
         if (session?.user?.id) {
@@ -64,7 +65,7 @@ export default function LeaveRequestsPage() {
                 setRequests(data)
             }
         } catch (error) {
-            console.error("Failed to fetch leave requests:", error)
+            // Error
         } finally {
             setIsLoading(false)
         }
@@ -94,6 +95,24 @@ export default function LeaveRequestsPage() {
         ? requests
         : requests.filter((r) => r.status === filterStatus)
 
+    const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newStart = e.target.value
+        setStartDate(newStart)
+        if (endDate && newStart > endDate) {
+            setEndDate(newStart) // Auto-correct end date if invalid
+        }
+    }
+
+    const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newEnd = e.target.value
+        if (startDate && newEnd < startDate) {
+            // Don't allow setting end date before start date
+            alert("End date cannot be before start date")
+            return
+        }
+        setEndDate(newEnd)
+    }
+
     const handleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         if (!session?.user?.id) return
@@ -104,27 +123,33 @@ export default function LeaveRequestsPage() {
             const end = new Date(endDate)
             const diffTime = Math.abs(end.getTime() - start.getTime())
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+            const calculatedDuration = duration === 'Full Day' && diffDays > 1 ? `${diffDays} Days` : duration
 
-            const res = await fetch('/api/leaves', {
-                method: 'POST',
+            const payload = {
+                userId: session.user.id,
+                startDate,
+                endDate,
+                type: leaveType,
+                reason,
+                duration: calculatedDuration,
+                startTime: duration !== 'Full Day' ? new Date(`${startDate}T${startTime}:00`).toISOString() : null,
+                endTime: duration !== 'Full Day' ? new Date(`${startDate}T${endTime}:00`).toISOString() : null
+            }
+
+            const url = editingId ? `/api/leaves/${editingId}` : '/api/leaves'
+            const method = editingId ? 'PATCH' : 'POST'
+
+            const res = await fetch(url, {
+                method: method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: session.user.id,
-                    startDate,
-                    endDate,
-                    type: leaveType,
-                    reason,
-                    duration: duration === 'Full Day' && diffDays > 1 ? `${diffDays} Days` : duration,
-                    startTime: duration !== 'Full Day' ? new Date(`${startDate}T${startTime}:00`).toISOString() : null,
-                    endTime: duration !== 'Full Day' ? new Date(`${startDate}T${endTime}:00`).toISOString() : null
-                })
+                body: JSON.stringify(payload)
             })
 
             if (res.ok) {
                 setDialogOpen(false)
                 resetForm()
                 fetchLeaveRequests()
-                alert("Leave request submitted successfully!")
+                alert(editingId ? "Leave request updated successfully!" : "Leave request submitted successfully!")
             } else {
                 const data = await res.json()
                 alert(data.error || "Failed to submit leave request")
@@ -137,7 +162,43 @@ export default function LeaveRequestsPage() {
         }
     }
 
+    const handleEdit = (request: LeaveRequest) => {
+        setEditingId(request.id)
+        setLeaveType(request.type)
+        // Parse duration back to type? Simplification: if it contains "Days" it's Full Day, else it is what it matches
+        if (request.duration === 'Half Day') setDuration('Half Day')
+        else if (request.duration === 'Part Day') setDuration('Part Day')
+        else setDuration('Full Day')
+
+        setStartDate(request.startDate.split('T')[0])
+        setEndDate(request.endDate.split('T')[0])
+
+        if (request.startTime) setStartTime(new Date(request.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
+        if (request.endTime) setEndTime(new Date(request.endTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
+
+        setReason(request.reason)
+        setDialogOpen(true)
+    }
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("Are you sure you want to cancel this leave request?")) return
+
+        try {
+            const res = await fetch(`/api/leaves/${id}`, { method: 'DELETE' })
+            if (res.ok) {
+                fetchLeaveRequests()
+                alert("Leave request cancelled.")
+            } else {
+                alert("Failed to cancel request.")
+            }
+        } catch (e) {
+            console.error(e)
+            alert("Error cancelling request.")
+        }
+    }
+
     const resetForm = () => {
+        setEditingId(null)
         setLeaveType("SICK")
         setDuration("Full Day")
         setStartDate("")
@@ -151,6 +212,19 @@ export default function LeaveRequestsPage() {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 <Loader2 className="h-8 w-8 animate-spin text-red-600" />
+            </div>
+        )
+    }
+
+    if (status === "unauthenticated") {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+                <div className="bg-red-50 p-4 rounded-full">
+                    <X className="h-8 w-8 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold">Access Denied</h3>
+                <p className="text-muted-foreground">You must be signed in to view this page.</p>
+                <Button onClick={() => window.location.href = "/"}>Sign In</Button>
             </div>
         )
     }
@@ -178,9 +252,9 @@ export default function LeaveRequestsPage() {
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-md">
                         <DialogHeader>
-                            <DialogTitle>Request Leave</DialogTitle>
+                            <DialogTitle>{editingId ? "Edit Leave Request" : "Request Leave"}</DialogTitle>
                             <DialogDescription>
-                                Submit a new leave request for approval.
+                                {editingId ? "Update your leave details." : "Submit a new leave request for approval."}
                             </DialogDescription>
                         </DialogHeader>
 
@@ -194,9 +268,10 @@ export default function LeaveRequestsPage() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="SICK">Sick Leave</SelectItem>
-                                        <SelectItem value="VACATION">Vacation</SelectItem>
-                                        <SelectItem value="PERSONAL">Personal</SelectItem>
-                                        <SelectItem value="EMERGENCY">Emergency</SelectItem>
+                                        <SelectItem value="VACATION">Vacation Leave</SelectItem>
+                                        <SelectItem value="BIRTHDAY">Birthday Leave</SelectItem>
+                                        <SelectItem value="MATERNITY">Maternity/Paternity</SelectItem>
+                                        <SelectItem value="OTHER">Other</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -229,7 +304,7 @@ export default function LeaveRequestsPage() {
                                     <Input
                                         type="date"
                                         value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
+                                        onChange={handleStartDateChange}
                                         required
                                         className="h-10"
                                     />
@@ -239,7 +314,7 @@ export default function LeaveRequestsPage() {
                                     <Input
                                         type="date"
                                         value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
+                                        onChange={handleEndDateChange}
                                         required
                                         className="h-10"
                                     />
@@ -288,7 +363,7 @@ export default function LeaveRequestsPage() {
                                     className="h-10 px-8 bg-red-600 hover:bg-red-700 text-white font-medium"
                                 >
                                     {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                    Submit Request
+                                    {editingId ? "Update Request" : "Submit Request"}
                                 </Button>
                             </div>
                         </form>
@@ -315,7 +390,7 @@ export default function LeaveRequestsPage() {
             {/* Requests List */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
                 {filteredRequests.map((request) => (
-                    <Card key={request.id} className="border border-border shadow-sm rounded-xl overflow-hidden bg-white hover:bg-muted/30 transition-all hover:shadow-md flex flex-col">
+                    <Card key={request.id} className="border border-border shadow-sm rounded-xl overflow-hidden bg-white hover:bg-muted/30 transition-all hover:shadow-md flex flex-col group">
                         <CardContent className="p-6 flex-1 flex flex-col gap-4">
                             <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-1">
@@ -368,10 +443,24 @@ export default function LeaveRequestsPage() {
                                 </div>
                             )}
 
-                            <div className="pt-2 border-t border-border mt-2">
+                            <div className="pt-2 border-t border-border mt-2 flex items-center justify-between">
                                 <p className="text-xs text-muted-foreground font-mono">
                                     Submitted: {request.createdAt ? format(new Date(request.createdAt), 'MMM dd, yyyy') : 'Unknown Date'}
                                 </p>
+                                {request.status === 'PENDING' && (
+                                    <div className="flex gap-2">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-100" onClick={() => handleEdit(request)}>
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                            </svg>
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100" onClick={() => handleDelete(request.id)}>
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

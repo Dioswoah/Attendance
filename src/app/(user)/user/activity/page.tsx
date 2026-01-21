@@ -61,7 +61,7 @@ export default function ActivityLogsPage() {
                 setLogs(activityLogs)
             }
         } catch (error) {
-            console.error("Failed to fetch activity logs:", error)
+            // Error
         } finally {
             setIsLoading(false)
         }

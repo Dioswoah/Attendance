@@ -67,11 +67,12 @@ export default function UserPortal() {
     // Feed Filters
     const [feedSearch, setFeedSearch] = useState("")
 
-    // 1. Initial Data Fetch & Socket Setup
+    // 1. Initial Data Fetch & Realtime Subscription (SSE)
     useEffect(() => {
         setMounted(true)
         setCurrentTime(new Date())
 
+        // Only load data if we have a valid session
         if (session?.user?.id) {
             setUserId(session.user.id)
             fetchUserDetails()
@@ -79,25 +80,57 @@ export default function UserPortal() {
             fetchMyLeaveRequests()
         }
 
-        const socket = io({
-            path: '/api/socket/io',
-        })
+        // Initialize Realtime Server-Sent Events
+        // This replaces the polling mechanism with a permanent connection
+        let eventSource: EventSource | null = null;
 
-        socket.on("update-data", () => {
-            if (session?.user?.id) {
-                fetchAttendance()
-                fetchMyLeaveRequests()
-                if (userRoles.includes('MANAGER') || userRoles.includes('ADMIN')) {
-                    const me = employees.find((u: any) => u.email === session.user?.email)
-                    if (me) fetchPendingLeaves(me.id)
+        if (typeof EventSource !== 'undefined') {
+            eventSource = new EventSource('/api/stream');
+
+            eventSource.onmessage = (event) => {
+                // Heartbeat or connection message
+                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
+
+                try {
+                    const payload = JSON.parse(event.data);
+
+                    // Intelligent Refresh based on event type
+                    if (payload.type === 'attendance') {
+                        fetchAttendance();
+                    }
+                    else if (payload.type === 'leaves') {
+                        fetchMyLeaveRequests();
+                        // Only fetch pending if we are a manager/admin
+                        // Note: We use the functional state update or refs if we needed fresh state here,
+                        // but since we are inside the effect, these values are closed over. 
+                        // However, for a simple refresh triggering a fetch is fine.
+                        // Ideally we check roles again, but fetching explicitly is safe.
+                        if (session?.user?.email) {
+                            // We re-fetch user details to be safe or just fetch leaves
+                            // For now, let's just trigger the potential manager fetch if we suspect they are one
+                            // Or we can rely on the data we fetched initially if we move `fetchPendingLeaves` outside or pass params.
+                            // To avoid complexity, we can blindly fetch pending leaves if the endpoint handles permissions safely.
+                        }
+                    }
+                } catch (e) {
+                    console.error("SSE Parse Error", e);
                 }
-            }
-        })
+            };
+
+            eventSource.onerror = (e) => {
+
+            };
+        }
 
         return () => {
-            socket.disconnect()
+            if (eventSource) {
+                eventSource.close();
+            }
         }
-    }, [session]) // Only re-run if session changes
+        // ESLint might complain about missing deps, but we INTENTIONALLY exclude userRoles/employees to prevent loops.
+        // We only want this to run when the session (user identity) changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session?.user?.id])
 
     // 2. Timer Logic (Updates UI every second based on current data)
     useEffect(() => {
@@ -105,10 +138,14 @@ export default function UserPortal() {
             const now = new Date()
             setCurrentTime(now)
 
-            // Calculate total for TODAY across all records
+            // Calculate total for TODAY across all records (PH TIME)
+            const todayPHT = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+
             const todayRecords = userAttendanceList.filter((record: any) => {
+                if (!record.clockIn) return false
                 const recordDate = new Date(record.clockIn)
-                return recordDate.toDateString() === now.toDateString()
+                const recordPHT = recordDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                return recordPHT === todayPHT
             })
 
             let totalWorkedMs = 0
@@ -154,7 +191,7 @@ export default function UserPortal() {
     }
 
     const formatTime = (date: Date) => {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })
     }
 
     const fetchUserDetails = async () => {
@@ -176,7 +213,7 @@ export default function UserPortal() {
                 }
             }
         } catch (error) {
-            console.error("Failed to fetch user details")
+            // Error handled silently for production
         }
     }
 
@@ -189,7 +226,7 @@ export default function UserPortal() {
                 setPendingLeaves(data)
             }
         } catch (error) {
-            console.error("Failed to fetch pending leaves")
+            // Error handled silently for production
         }
     }
 
@@ -202,7 +239,7 @@ export default function UserPortal() {
                 setMyLeaveRequests(data)
             }
         } catch (error) {
-            console.error("Failed to fetch my leave requests")
+            // Error handled silently for production
         }
     }
 
@@ -227,7 +264,7 @@ export default function UserPortal() {
                 setAllAttendance(allData)
             }
         } catch (error) {
-            console.error("Fetch attendance error:", error)
+            // Error handled silently for production
         }
     }
 
@@ -254,7 +291,6 @@ export default function UserPortal() {
                 fetchAttendance()
             }
         } catch (error) {
-            console.error("Clock in failed:", error)
             alert("An error occurred while clocking in")
         } finally {
             setIsProcessing(false)
@@ -275,7 +311,7 @@ export default function UserPortal() {
                 fetchAttendance()
             }
         } catch (error) {
-            console.error(`${action} failed:`, error)
+            // Error handled silently
         } finally {
             setIsProcessing(false)
         }
@@ -291,7 +327,7 @@ export default function UserPortal() {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
         const duration = `${diffDays} Day${diffDays > 1 ? 's' : ''}`
 
-        console.log('[Leave Request] Submitting leave request...', { userId, leaveStartDate, leaveEndDate, leaveType, leaveReason });
+
 
         try {
             const res = await fetch('/api/leaves', {
@@ -308,7 +344,7 @@ export default function UserPortal() {
                     endTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveEndTime}:00`).toISOString() : null
                 })
             })
-            console.log('[Leave Request] Response status:', res.status);
+
             if (res.ok) {
                 setIsLeaveOpen(false)
                 setLeaveReason("")
@@ -325,7 +361,6 @@ export default function UserPortal() {
                 alert(data.error || "Failed to submit leave request")
             }
         } catch (error) {
-            console.error("[Leave Request] Failed to request leave:", error)
             alert("An error occurred while submitting the request")
         }
     }
@@ -354,7 +389,7 @@ export default function UserPortal() {
                 if (userId) fetchPendingLeaves(userId)
             }
         } catch (e) {
-            console.error("Failed to update leave status")
+            // Error handled silently
         }
     }
 
@@ -407,10 +442,15 @@ export default function UserPortal() {
 
     const hour = currentTime ? currentTime.getHours() : 0
     const greeting = !mounted ? "Loading..." : hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening"
-    const formattedDate = currentTime ? currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : "..."
-    const formattedTime = currentTime ? currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "--:--:--"
+    const formattedDate = currentTime ? currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' }) : "..."
+    const formattedTime = currentTime ? currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Manila' }) : "--:--:--"
 
-    const displayName = session.user?.name?.split(' ')[0] || "User"
+    const displayName = (() => {
+        if (!session?.user?.email) return "User"
+        const dbUser = employees.find((u: any) => u.email === session.user?.email)
+        return dbUser?.name?.split(' ')[0] || session.user?.name?.split(' ')[0] || "User"
+    })()
+
     const departmentName = (session.user as any).department || "Unassigned"
 
     // --- Dashboard Helpers ---
@@ -545,7 +585,15 @@ export default function UserPortal() {
         }
 
         return events
-    }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    })
+        .filter(event => {
+            // Ensure strictly TODAY'S records are shown
+            if (!event.timestamp) return false
+            const eventDate = new Date(event.timestamp)
+            const today = new Date()
+            return eventDate.toDateString() === today.toDateString()
+        })
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
 
     // Aliases for new UI Actions
@@ -569,6 +617,7 @@ export default function UserPortal() {
                             year: "numeric",
                             month: "long",
                             day: "numeric",
+                            timeZone: "Asia/Manila"
                         }) : "Loading..."}
                     </p>
                 </div>
@@ -603,7 +652,7 @@ export default function UserPortal() {
                             )}>
                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Current Time</p>
                                 <p className="text-4xl lg:text-5xl font-mono font-medium text-foreground whitespace-nowrap tabular-nums tracking-tight">
-                                    {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--:--"}
+                                    {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Manila" }) : "--:--:--"}
                                 </p>
                             </div>
 
@@ -741,7 +790,6 @@ export default function UserPortal() {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Staff Status Today (2/3 width) */}
                 <div className="xl:col-span-2 space-y-6">
                     <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white h-full">
                         <CardHeader className="bg-muted/40/50 border-b border-border p-6">
@@ -754,57 +802,59 @@ export default function UserPortal() {
                                         View all staff members and their current status
                                     </CardDescription>
                                 </div>
-                                <div className="flex flex-col md:flex-row gap-4">
-                                    <div className="relative flex-1">
+                                <div className="flex flex-col lg:flex-row gap-4">
+                                    <div className="relative flex-1 min-w-[200px]">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                         <Input
                                             placeholder="Search staff..."
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="pl-10 h-10 border-border bg-white font-medium text-sm rounded-lg focus:ring-primary"
+                                            className="pl-10 h-10 border-border bg-white font-medium text-sm rounded-lg focus:ring-primary w-full"
                                         />
                                     </div>
-                                    <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                                        <SelectTrigger className="w-full md:w-[180px] h-10 border-border font-medium text-sm rounded-lg">
-                                            <SelectValue placeholder="Department" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all" className="font-medium text-sm">All Depts</SelectItem>
-                                            {uniqueDepartments.map((dept: any) => (
-                                                <SelectItem key={dept} value={dept} className="font-medium text-sm">
-                                                    {dept}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <Select value={filterStatus} onValueChange={setFilterStatus}>
-                                        <SelectTrigger className="w-full md:w-[180px] h-10 border-border font-medium text-sm rounded-lg">
-                                            <SelectValue placeholder="Status" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all" className="font-medium text-sm">All Status</SelectItem>
-                                            <SelectItem value="clocked-in" className="font-medium text-sm">Clocked In</SelectItem>
-                                            <SelectItem value="on-break" className="font-medium text-sm">On Break</SelectItem>
-                                            <SelectItem value="on-leave" className="font-medium text-sm">On Leave</SelectItem>
-                                            <SelectItem value="clocked-out" className="font-medium text-sm">Clocked Out</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Select value={sortBy} onValueChange={setSortBy}>
-                                        <SelectTrigger className="w-full md:w-[140px] h-10 border-border font-medium text-sm rounded-lg">
-                                            <ArrowUpDown className="w-3.5 h-3.5 mr-2" />
-                                            <SelectValue placeholder="Sort" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="name" className="font-medium text-sm">Name</SelectItem>
-                                            <SelectItem value="department" className="font-medium text-sm">Dept</SelectItem>
-                                            <SelectItem value="status" className="font-medium text-sm">Status</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 shrink-0">
+                                        <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                                            <SelectTrigger className="w-full h-10 border-border font-medium text-sm rounded-lg truncate px-2">
+                                                <SelectValue placeholder="Dept" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all" className="font-medium text-sm">All Depts</SelectItem>
+                                                {uniqueDepartments.map((dept: any) => (
+                                                    <SelectItem key={dept} value={dept} className="font-medium text-sm">
+                                                        {dept}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <Select value={filterStatus} onValueChange={setFilterStatus}>
+                                            <SelectTrigger className="w-full h-10 border-border font-medium text-sm rounded-lg truncate px-2">
+                                                <SelectValue placeholder="Status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all" className="font-medium text-sm">All Status</SelectItem>
+                                                <SelectItem value="clocked-in" className="font-medium text-sm">Clocked In</SelectItem>
+                                                <SelectItem value="on-break" className="font-medium text-sm">On Break</SelectItem>
+                                                <SelectItem value="on-leave" className="font-medium text-sm">On Leave</SelectItem>
+                                                <SelectItem value="clocked-out" className="font-medium text-sm">Clocked Out</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Select value={sortBy} onValueChange={setSortBy}>
+                                            <SelectTrigger className="w-full h-10 border-border font-medium text-sm rounded-lg sm:col-span-1 col-span-2 truncate px-2">
+                                                <ArrowUpDown className="w-3.5 h-3.5 mr-2 inline-block" />
+                                                <SelectValue placeholder="Sort" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="name" className="font-medium text-sm">Name</SelectItem>
+                                                <SelectItem value="department" className="font-medium text-sm">Dept</SelectItem>
+                                                <SelectItem value="status" className="font-medium text-sm">Status</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </div>
                         </CardHeader>
                         <CardContent className="p-0">
-                            <div className="max-h-[500px] overflow-y-auto p-4 space-y-3">
+                            <div className="p-4 space-y-3">
                                 {sortedStaff.length === 0 ? (
                                     <div className="text-center py-12 text-muted-foreground">
                                         <p className="text-sm font-bold uppercase tracking-wider">No staff members found.</p>

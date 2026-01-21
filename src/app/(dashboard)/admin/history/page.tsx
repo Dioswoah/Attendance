@@ -30,7 +30,9 @@ import {
     MoreHorizontal,
     ExternalLink,
     Clock3,
-    Coffee
+    Coffee,
+    Building2,
+    Home
 } from "lucide-react"
 import { format, eachDayOfInterval, parseISO, isSameDay } from "date-fns"
 import * as XLSX from 'xlsx'
@@ -55,6 +57,7 @@ export default function HistoryPage() {
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [searchTerm, setSearchTerm] = useState("")
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
+    const [includeArchived, setIncludeArchived] = useState(false)
     const [viewingStaff, setViewingStaff] = useState<any | null>(null)
 
     // Duration Helpers
@@ -105,6 +108,24 @@ export default function HistoryPage() {
 
     useEffect(() => {
         fetchInitialData()
+
+        // Realtime Subscription via SSE
+        let eventSource: EventSource | null = null;
+
+        if (typeof EventSource !== 'undefined') {
+            eventSource = new EventSource('/api/stream');
+            eventSource.onmessage = (event) => {
+                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
+
+                // For history/dashboard, ANY attendance update should trigger a refresh
+                // We can be optimistic and simple here
+                refreshData();
+            };
+        }
+
+        return () => {
+            if (eventSource) eventSource.close();
+        }
     }, [])
 
     const fetchInitialData = async () => {
@@ -119,7 +140,7 @@ export default function HistoryPage() {
             if (attRes.ok) setHistory(await attRes.json())
             if (staffRes.ok) setAllStaff(await staffRes.json())
         } catch (error) {
-            console.error("Fetch history error:", error)
+            // Error handled silently for production
         } finally {
             setLoading(false)
         }
@@ -133,6 +154,39 @@ export default function HistoryPage() {
         } finally {
             setRefreshing(false)
         }
+    }
+
+    const [attendanceRecords, setAttendanceRecords] = useState<any[]>([])
+
+    // Live Clock State (for Event Log)
+    const [now, setNow] = useState(new Date())
+    useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 1000)
+        return () => clearInterval(timer)
+    }, [])
+
+    const calculateLiveDuration = (record: any) => {
+        if (!record || !record.clockIn) return "0h 0m 0s"
+        const start = new Date(record.clockIn)
+        const end = record.clockOut ? new Date(record.clockOut) : now
+
+        let breakDur = 0
+        if (record.breakStart) {
+            const bStart = new Date(record.breakStart)
+            let effectiveEnd = now
+            if (record.breakEnd) effectiveEnd = new Date(record.breakEnd)
+            else if (record.clockOut) effectiveEnd = new Date(record.clockOut)
+
+            breakDur = effectiveEnd.getTime() - bStart.getTime()
+        }
+
+        let total = (end.getTime() - start.getTime()) - breakDur
+        if (total < 0) total = 0
+
+        const h = Math.floor(total / (1000 * 60 * 60))
+        const m = Math.floor((total / (1000 * 60)) % 60)
+        const s = Math.floor((total / 1000) % 60)
+        return `${h}h ${m}m ${s}s`
     }
 
     const setQuickRange = (range: 'today' | '7days' | '30days' | 'month') => {
@@ -156,8 +210,9 @@ export default function HistoryPage() {
         end: parseISO(endDate)
     })
 
-    const employees = (selectedStaffIds.length > 0 || selectedDept !== 'all'
+    const employees = (selectedStaffIds.length > 0 || selectedDept !== 'all' || includeArchived
         ? allStaff
+            .filter(s => (includeArchived ? true : !s.isArchived))
             .filter(s => (selectedStaffIds.length === 0 || selectedStaffIds.includes(s.id)))
             .filter(s => (selectedDept === 'all' || s.departmentId === selectedDept))
             .map(s => ({
@@ -166,24 +221,49 @@ export default function HistoryPage() {
                 dept: s.department?.name || 'Unassigned'
             }))
         : Array.from(new Set(history.map(h => h.userId))).map(id => {
+            // When falling back to history history, we also need to respect archive status unless toggled
             const record = history.find(h => h.userId === id)
+            // We need to check if this user is archived. Find in allStaff.
+            const staffInfo = allStaff.find(s => s.id === id)
+            if (!includeArchived && staffInfo?.isArchived) return null
+
             return {
                 id,
                 name: record.userName,
                 dept: record.department
             }
-        })
+        }).filter(Boolean) as any[]
     ).filter(emp => {
         const matchesSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             emp.dept.toLowerCase().includes(searchTerm.toLowerCase())
         return matchesSearch
     })
 
-    const filteredStaffForDropdown = allStaff.filter(s => {
-        const matchesDept = selectedDept === 'all' || s.departmentId === selectedDept
-        const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
-        return matchesDept && matchesQuery
-    })
+    const filteredStaffForDropdown = allStaff
+        .filter(s => (includeArchived ? true : !s.isArchived))
+        .filter(s => {
+            const matchesDept = selectedDept === 'all' || s.departmentId === selectedDept
+            const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
+            return matchesDept && matchesQuery
+        })
+
+    const toggleAllArchived = () => {
+        const archivedIds = allStaff.filter(s => s.isArchived).map(s => s.id)
+        if (archivedIds.every(id => selectedStaffIds.includes(id))) {
+            setSelectedStaffIds(prev => prev.filter(id => !archivedIds.includes(id)))
+        } else {
+            setSelectedStaffIds(prev => [...new Set([...prev, ...archivedIds])])
+        }
+    }
+
+    const toggleAllStaff = () => {
+        const visibleIds = filteredStaffForDropdown.map(s => s.id)
+        if (visibleIds.every(id => selectedStaffIds.includes(id))) {
+            setSelectedStaffIds(prev => prev.filter(id => !visibleIds.includes(id)))
+        } else {
+            setSelectedStaffIds(prev => [...new Set([...prev, ...visibleIds])])
+        }
+    }
 
     const toggleStaffSelection = (id: string) => {
         setSelectedStaffIds(prev =>
@@ -273,14 +353,30 @@ export default function HistoryPage() {
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardContent className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <div className="space-y-2">
-                            <Label>Start Date</Label>
-                            <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>End Date</Label>
-                            <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                        </div>
+                        {activeTab === 'daily' ? (
+                            <div className="space-y-2 col-span-2 md:col-span-2">
+                                <Label>Date</Label>
+                                <Input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={e => {
+                                        setStartDate(e.target.value)
+                                        setEndDate(e.target.value)
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            <>
+                                <div className="space-y-2">
+                                    <Label>Start Date</Label>
+                                    <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>End Date</Label>
+                                    <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                                </div>
+                            </>
+                        )}
                         <div className="space-y-2">
                             <Label>Department</Label>
                             <Select value={selectedDept} onValueChange={(val) => {
@@ -315,7 +411,7 @@ export default function HistoryPage() {
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-[300px] p-0" align="start">
-                                    <div className="p-2 border-b border-border">
+                                    <div className="p-2 border-b border-border space-y-2">
                                         <div className="relative">
                                             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                             <Input
@@ -325,6 +421,33 @@ export default function HistoryPage() {
                                                 onChange={e => setStaffSearchQuery(e.target.value)}
                                             />
                                         </div>
+                                        <div
+                                            className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-muted/30"
+                                            onClick={toggleAllStaff}
+                                        >
+                                            <Checkbox
+                                                checked={filteredStaffForDropdown.length > 0 && filteredStaffForDropdown.every(s => selectedStaffIds.includes(s.id))}
+                                                onCheckedChange={toggleAllStaff}
+                                            />
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-sm font-bold text-foreground leading-none truncate">Select All Staff</span>
+                                            </div>
+                                        </div>
+                                        {includeArchived && (
+                                            <div
+                                                className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-amber-50/50"
+                                                onClick={toggleAllArchived}
+                                            >
+                                                <Checkbox
+                                                    checked={allStaff.filter(s => s.isArchived).length > 0 && allStaff.filter(s => s.isArchived).every(s => selectedStaffIds.includes(s.id))}
+                                                    onCheckedChange={toggleAllArchived}
+                                                />
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-sm font-bold text-amber-700 leading-none truncate">All Archived Staff</span>
+                                                    <span className="text-[10px] text-amber-600/70 truncate">Quick Select</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="max-h-[300px] overflow-y-auto p-1">
                                         {filteredStaffForDropdown.length === 0 ? (
@@ -367,10 +490,22 @@ export default function HistoryPage() {
                             </Popover>
                         </div>
                     </div>
+                    <div className="flex items-end justify-end">
+                        <div className="flex items-center space-x-2 bg-muted/30 p-2 rounded-lg border border-border">
+                            <Checkbox
+                                id="include-archived"
+                                checked={includeArchived}
+                                onCheckedChange={(c) => setIncludeArchived(!!c)}
+                            />
+                            <Label htmlFor="include-archived" className="text-xs font-medium cursor-pointer">
+                                Include Archived Staff
+                            </Label>
+                        </div>
+                    </div>
 
                     <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-4 border-t border-border">
                         <div className="flex flex-wrap gap-2">
-                            {['today', '7days', '30days', 'month'].map(r => (
+                            {activeTab !== 'daily' && ['today', '7days', '30days', 'month'].map(r => (
                                 <Button
                                     key={r}
                                     onClick={() => setQuickRange(r as any)}
@@ -387,10 +522,6 @@ export default function HistoryPage() {
                                 <RefreshCcw className={cn("h-3.5 w-3.5 mr-2", refreshing && "animate-spin")} />
                                 Refresh
                             </Button>
-                            <Button onClick={handleExport} size="sm" className="h-9">
-                                <Download className="h-3.5 w-3.5 mr-2" />
-                                Export
-                            </Button>
                         </div>
                     </div>
                 </CardContent>
@@ -400,7 +531,7 @@ export default function HistoryPage() {
             <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
                 {[
                     { id: 'matrix', label: 'Attendance Matrix', icon: LayoutGrid },
-                    { id: 'daily', label: 'Event Log', icon: FileText },
+                    { id: 'daily', label: 'Daily Event Log', icon: FileText },
                     { id: 'summary', label: 'Performance Summary', icon: Users },
                 ].map(tab => (
                     <Button
@@ -435,9 +566,15 @@ export default function HistoryPage() {
                         </div>
                         <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
                             <span className="font-medium text-foreground">Period:</span>
-                            <span>{format(parseISO(startDate), "MMM dd")}</span>
-                            <ArrowRight className="h-3.5 w-3.5" />
-                            <span>{format(parseISO(endDate), "MMM dd, yyyy")}</span>
+                            {activeTab === 'daily' || startDate === endDate ? (
+                                <span>{format(parseISO(endDate), "MMM dd, yyyy")}</span>
+                            ) : (
+                                <>
+                                    <span>{format(parseISO(startDate), "MMM dd")}</span>
+                                    <ArrowRight className="h-3.5 w-3.5" />
+                                    <span>{format(parseISO(endDate), "MMM dd, yyyy")}</span>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -446,7 +583,7 @@ export default function HistoryPage() {
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow className="hover:bg-transparent border-border">
-                                        <TableHead className="py-3 px-6 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 w-[200px]">Personnel</TableHead>
+                                        <TableHead className="py-3 px-6 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 w-[200px]">Staff</TableHead>
                                         <TableHead className="py-3 px-6 font-medium text-muted-foreground">Department</TableHead>
                                         {dateRange.map(date => (
                                             <TableHead key={date.toISOString()} className="py-3 px-2 text-center font-medium text-muted-foreground min-w-[60px]">
@@ -508,7 +645,7 @@ export default function HistoryPage() {
                                             <TableCell colSpan={dateRange.length + 3} className="py-12 text-center">
                                                 <div className="flex flex-col items-center gap-2 text-muted-foreground opacity-50">
                                                     <Users className="h-8 w-8" />
-                                                    <p className="text-sm font-medium">No records matching criteria</p>
+                                                    <p className="text-sm font-medium">No records</p>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -516,40 +653,111 @@ export default function HistoryPage() {
                                 </TableBody>
                             </Table>
                         ) : activeTab === 'daily' ? (
-                            <div className="divide-y divide-border">
-                                {history.slice(0, 50).map((rec, i) => (
-                                    <div key={rec.id || i} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-all">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium text-sm">
-                                                {rec.userName?.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-sm text-foreground">{rec.userName}</p>
-                                                <p className="text-xs text-muted-foreground mt-0.5">{rec.department} • {format(parseISO(rec.date), "MMM dd, yyyy")}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-6">
-                                            <div className="text-right hidden sm:block">
-                                                <p className="text-sm font-medium text-foreground">
-                                                    {rec.clockIn ? format(parseISO(rec.clockIn), "HH:mm") : '---'}
-                                                    <span className="mx-2 text-muted-foreground">-</span>
-                                                    {rec.clockOut ? format(parseISO(rec.clockOut), "HH:mm") : '---'}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground mt-0.5">Shift Window</p>
-                                            </div>
-                                            <Badge variant="secondary" className={cn(
-                                                "font-medium",
-                                                rec.status === 'clocked-in' ? "bg-green-100 text-green-700" :
-                                                    rec.status === 'on-break' ? "bg-yellow-100 text-yellow-700" :
-                                                        rec.status === 'on-leave' ? "bg-blue-100 text-blue-700" :
-                                                            "bg-slate-100 text-slate-700"
-                                            )}>
-                                                {rec.status.replace('-', ' ')}
-                                            </Badge>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Personnel</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground text-center">Status</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Metrics</TableHead>
+                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Access</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {employees.map((emp) => {
+                                        // For daily log, we likely want to show Today's data primarily, or list all days?
+                                        // Based on user request "daily dashboard or todays log", let's filter for just TODAY or the selected range's relevant "latest" status if range is 1 day.
+                                        // If range > 1 day, "Event Log" usually implies a list of events. But user said "daily dashboard... status of staff for today".
+
+                                        // Let's assume we show the latest status for each employee within the selected range, OR if the range is 'today', it shows exactly today's.
+                                        // Given the user wants "Todays log", but the date picker allows range... 
+                                        // We will iterate through employees and find their record for the *End Date* (usually "today" if default).
+
+                                        const record = history.find(h => h.userId === emp.id && isSameDay(parseISO(h.date), parseISO(endDate)))
+                                        const status = record?.status || "absent"
+
+                                        return (
+                                            <TableRow key={emp.id} className="hover:bg-muted/50 transition-all duration-200">
+                                                <TableCell className="py-4 px-6">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
+                                                            {emp.name?.charAt(0) || "U"}
+                                                            <div className={`absolute bottom-0 right-0 h-2.5 w-2.5 border-2 border-white rounded-full ${status === 'clocked-in' ? 'bg-green-500' :
+                                                                status === 'on-break' ? 'bg-yellow-500' : 'bg-slate-300'
+                                                                }`} />
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium text-foreground text-sm leading-tight">{emp.name || "Unknown Identity"}</span>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="py-4 px-6">
+                                                    <span className="text-sm text-foreground">
+                                                        {emp.dept || "Unassigned"}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="py-4 px-6 text-center">
+                                                    <div className="flex flex-col items-center gap-1.5">
+                                                        <Badge variant="outline" className={`font-normal ${status === 'clocked-in' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                            status === 'on-break' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                                status === 'on-leave' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                    status === 'clocked-out' ? 'bg-slate-100 text-slate-500 border-slate-200' :
+                                                                        'bg-red-50 text-red-600 border-red-100'
+                                                            }`}>
+                                                            {status.replace('-', ' ')}
+                                                        </Badge>
+                                                        {status === 'on-leave' && record?.returnDate && (
+                                                            <span className="text-[10px] font-semibold text-muted-foreground">
+                                                                Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="py-4 px-6">
+                                                    <div className="flex flex-col">
+                                                        <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                                                            <Clock className="h-3 w-3 text-muted-foreground" />
+                                                            <span>{record?.clockIn ? format(parseISO(record.clockIn), "HH:mm") : '---'}</span>
+                                                        </div>
+                                                        {/* For historical records, we can't show "Live" duration if it's not today. If it is today, we can. */}
+                                                        {isSameDay(parseISO(endDate), new Date()) ? (
+                                                            <span className="text-xs text-muted-foreground font-mono tabular-nums">{calculateLiveDuration(record)}</span>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                                                                {record && record.clockOut && record.clockIn
+                                                                    ? formatDuration((new Date(record.clockOut).getTime() - new Date(record.clockIn).getTime()))
+                                                                    : '---'}
+                                                            </span>
+                                                        )}
+
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="py-4 px-6 text-right">
+                                                    {record?.mode && status !== 'on-leave' ? (
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            {record.mode === 'OFFICE' ? (
+                                                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                                    <Building2 className="h-3 w-3" />
+                                                                    In Office
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                                    <Home className="h-3 w-3" />
+                                                                    WFH
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center justify-end">
+                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-2.5 py-1">Offline</span>
+                                                        </div>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
                         ) : (
                             <div className="p-0">
                                 <Table>
@@ -684,6 +892,6 @@ export default function HistoryPage() {
                     </div>
                 ))}
             </div>
-        </div>
+        </div >
     )
 }

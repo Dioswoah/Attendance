@@ -26,27 +26,71 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import * as XLSX from 'xlsx'
 import { format } from "date-fns"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Users, ChevronDown } from "lucide-react"
 
 export default function ExportPage() {
     const [generating, setGenerating] = useState(false)
     const [departments, setDepartments] = useState<any[]>([])
+    const [allStaff, setAllStaff] = useState<any[]>([])
 
     // Filters
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [selectedDept, setSelectedDept] = useState("all")
+    const [includeArchived, setIncludeArchived] = useState(false)
+    const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
+    const [staffSearchQuery, setStaffSearchQuery] = useState("")
 
     useEffect(() => {
-        fetchDepartments()
+        fetchData()
     }, [])
 
-    const fetchDepartments = async () => {
+    const fetchData = async () => {
         try {
-            const res = await fetch('/api/departments')
-            if (res.ok) setDepartments(await res.json())
+            const [deptRes, staffRes] = await Promise.all([
+                fetch('/api/departments'),
+                fetch('/api/employees')
+            ])
+
+            if (deptRes.ok) setDepartments(await deptRes.json())
+            if (staffRes.ok) setAllStaff(await staffRes.json())
         } catch (error) {
-            console.error("Fetch departments error:", error)
+            console.error("Fetch data error:", error)
         }
+    }
+
+    const filteredStaffForDropdown = allStaff
+        .filter(s => (includeArchived ? true : !s.isArchived))
+        .filter(s => {
+            const matchesDept = selectedDept === 'all' || s.departmentId === selectedDept
+            const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
+            return matchesDept && matchesQuery
+        })
+
+    const toggleAllStaff = () => {
+        const visibleIds = filteredStaffForDropdown.map(s => s.id)
+        if (visibleIds.every(id => selectedStaffIds.includes(id))) {
+            setSelectedStaffIds(prev => prev.filter(id => !visibleIds.includes(id)))
+        } else {
+            setSelectedStaffIds(prev => [...new Set([...prev, ...visibleIds])])
+        }
+    }
+
+    const toggleAllArchived = () => {
+        const archivedIds = allStaff.filter(s => s.isArchived).map(s => s.id)
+        if (archivedIds.every(id => selectedStaffIds.includes(id))) {
+            setSelectedStaffIds(prev => prev.filter(id => !archivedIds.includes(id)))
+        } else {
+            setSelectedStaffIds(prev => [...new Set([...prev, ...archivedIds])])
+        }
+    }
+
+    const toggleStaffSelection = (id: string) => {
+        setSelectedStaffIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        )
     }
 
     const setQuickRange = (range: 'today' | '7days' | '30days' | 'month') => {
@@ -98,7 +142,21 @@ export default function ExportPage() {
         try {
             const res = await fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}`)
             if (res.ok) {
-                const data = await res.json()
+                const rawData = await res.json()
+
+                // Filter data based on selected staff and archive status
+                const data = rawData.filter((record: any) => {
+                    // Check if user is in selected list (if selection is active)
+                    if (selectedStaffIds.length > 0) {
+                        return selectedStaffIds.includes(record.userId)
+                    }
+
+                    // Otherwise, check archive status if no specific selection
+                    const user = allStaff.find(s => s.id === record.userId)
+                    if (!includeArchived && user?.isArchived) return false
+
+                    return true
+                })
 
                 // Sheet 1: Logs (Sorted)
                 const sortedData = [...data].sort((a, b) => {
@@ -175,7 +233,7 @@ export default function ExportPage() {
                     <CardDescription className="text-sm text-muted-foreground">Configure chronological and structural parameters</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <div className="space-y-2">
                             <Label>Start Date</Label>
                             <Input
@@ -189,22 +247,123 @@ export default function ExportPage() {
                             <Input
                                 type="date"
                                 value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
+                                onChange={(e) => {
+                                    if (e.target.value < startDate) {
+                                        alert("End Data cannot be earlier than Start Date")
+                                        return
+                                    }
+                                    setEndDate(e.target.value)
+                                }}
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label>Department Scope</Label>
-                            <Select value={selectedDept} onValueChange={setSelectedDept}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="All Departments" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Departments</SelectItem>
-                                    {departments.map(d => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Staff Filter</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full justify-between h-10 font-normal">
+                                    <div className="flex items-center gap-2 truncate">
+                                        <Users className="h-4 w-4 text-muted-foreground" />
+                                        {selectedStaffIds.length === 0 ? (
+                                            <span className="text-muted-foreground">All Staff</span>
+                                        ) : (
+                                            <span>{selectedStaffIds.length} Selected</span>
+                                        )}
+                                    </div>
+                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[300px] p-0" align="start">
+                                <div className="p-2 border-b border-border space-y-2">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search staff..."
+                                            className="pl-8 h-8 text-xs"
+                                            value={staffSearchQuery}
+                                            onChange={e => setStaffSearchQuery(e.target.value)}
+                                        />
+                                    </div>
+                                    <div
+                                        className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-muted/30"
+                                        onClick={toggleAllStaff}
+                                    >
+                                        <Checkbox
+                                            checked={filteredStaffForDropdown.length > 0 && filteredStaffForDropdown.every(s => selectedStaffIds.includes(s.id))}
+                                            onCheckedChange={toggleAllStaff}
+                                        />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-sm font-bold text-foreground leading-none truncate">Select All Staff</span>
+                                        </div>
+                                    </div>
+                                    {includeArchived && (
+                                        <div
+                                            className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-amber-50/50"
+                                            onClick={toggleAllArchived}
+                                        >
+                                            <Checkbox
+                                                checked={allStaff.filter(s => s.isArchived).length > 0 && allStaff.filter(s => s.isArchived).every(s => selectedStaffIds.includes(s.id))}
+                                                onCheckedChange={toggleAllArchived}
+                                            />
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-sm font-bold text-amber-700 leading-none truncate">All Archived Staff</span>
+                                                <span className="text-[10px] text-amber-600/70 truncate">Quick Select</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="max-h-[300px] overflow-y-auto p-1">
+                                    {filteredStaffForDropdown.length === 0 ? (
+                                        <div className="p-4 text-center text-xs text-muted-foreground">
+                                            No staff in this department
+                                        </div>
+                                    ) : (
+                                        filteredStaffForDropdown.map(staff => (
+                                            <div
+                                                key={staff.id}
+                                                className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors"
+                                                onClick={() => toggleStaffSelection(staff.id)}
+                                            >
+                                                <Checkbox
+                                                    id={`staff-${staff.id}`}
+                                                    checked={selectedStaffIds.includes(staff.id)}
+                                                    onCheckedChange={() => toggleStaffSelection(staff.id)}
+                                                />
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-sm font-medium leading-none truncate">{staff.name}</span>
+                                                    <span className="text-[10px] text-muted-foreground truncate">{staff.department?.name || 'No Dept'}</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                {selectedStaffIds.length > 0 && (
+                                    <div className="p-2 border-t border-border">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="w-full h-8 text-xs text-primary hover:text-primary transition-colors"
+                                            onClick={() => setSelectedStaffIds([])}
+                                        >
+                                            Clear Selection
+                                        </Button>
+                                    </div>
+                                )}
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+
+
+                    <div className="flex items-center justify-end">
+                        <div className="flex items-center space-x-2 bg-muted/30 p-2 rounded-lg border border-border">
+                            <Checkbox
+                                id="include-archived"
+                                checked={includeArchived}
+                                onCheckedChange={(c) => setIncludeArchived(!!c)}
+                            />
+                            <Label htmlFor="include-archived" className="text-xs font-medium cursor-pointer">
+                                Include Archived Staff
+                            </Label>
                         </div>
                     </div>
 
@@ -286,6 +445,6 @@ export default function ExportPage() {
                     </div>
                 </Card>
             </div>
-        </div>
+        </div >
     )
 }

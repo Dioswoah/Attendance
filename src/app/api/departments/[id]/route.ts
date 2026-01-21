@@ -38,8 +38,9 @@ export async function DELETE(
             data: { departmentId: null }
         })
 
-        await prisma.department.delete({
-            where: { id }
+        await prisma.department.update({
+            where: { id },
+            data: { deletedAt: new Date() }
         })
 
         return NextResponse.json({ success: true })

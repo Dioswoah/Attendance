@@ -65,7 +65,7 @@ export default function ManualEntryPage() {
     const [lvEmpId, setLvEmpId] = useState("")
     const [lvStart, setLvStart] = useState(format(new Date(), "yyyy-MM-dd"))
     const [lvEnd, setLvEnd] = useState(format(new Date(), "yyyy-MM-dd"))
-    const [lvType, setLvType] = useState("Annual Leave")
+    const [lvType, setLvType] = useState("SICK")
     const [lvDuration, setLvDuration] = useState("Full Day")
     const [lvStartTime, setLvStartTime] = useState("09:00")
     const [lvEndTime, setLvEndTime] = useState("13:00")
@@ -129,6 +129,12 @@ export default function ManualEntryPage() {
 
     const handleAttendanceSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        if (attOut && attOut < attIn) {
+            alert("Clock Out time cannot be earlier than Clock In time.")
+            return
+        }
+
         setProcessing(true)
         try {
             const clockIn = new Date(`${attDate}T${attIn}:00`)
@@ -158,6 +164,12 @@ export default function ManualEntryPage() {
 
     const handleLeaveSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        if (lvStart && lvEnd && new Date(lvEnd) < new Date(lvStart)) {
+            alert("End date cannot be earlier than start date.")
+            return
+        }
+
         setProcessing(true)
         try {
             const res = await fetch('/api/leaves', {
@@ -183,6 +195,12 @@ export default function ManualEntryPage() {
 
     const handleBreakSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        if (brOut && brOut < brIn) {
+            alert("Session End time cannot be earlier than Session Start time.")
+            return
+        }
+
         setProcessing(true)
         try {
             const startTime = new Date(`${brDate}T${brIn}:00`)
@@ -230,7 +248,8 @@ export default function ManualEntryPage() {
                 clockIn: rec.clockIn,
                 clockOut: rec.clockOut,
                 mode: rec.mode,
-                date: rec.date
+                date: rec.date,
+                status: rec.status
             })
         } else if (activeTab === 'leaves') {
             setEditForm({
@@ -238,7 +257,8 @@ export default function ManualEntryPage() {
                 endDate: rec.endDate,
                 type: rec.type,
                 duration: rec.duration,
-                reason: rec.reason
+                reason: rec.reason,
+                status: rec.status
             })
         } else if (activeTab === 'breaks') {
             setEditForm({
@@ -277,7 +297,7 @@ export default function ManualEntryPage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Manual Entry</h1>
-                    <p className="text-muted-foreground text-sm">Administrative Intelligence & Node Overrides</p>
+                    <p className="text-muted-foreground text-sm">Admin Override Tools</p>
                 </div>
                 <div className="flex items-center gap-2 bg-destructive/10 px-3 py-1.5 rounded-full border border-destructive/20">
                     <div className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
@@ -333,10 +353,10 @@ export default function ManualEntryPage() {
                 <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                     <CardHeader className="border-b border-border p-6 bg-muted/20">
                         <CardTitle className="text-lg font-semibold text-foreground">
-                            Manual {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Initialization
+                            Manual {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Record
                         </CardTitle>
                         <CardDescription className="text-sm text-muted-foreground">
-                            Securing data injection for departmental audit
+                            Create a new attendance record for a staff member.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="p-8">
@@ -391,13 +411,20 @@ export default function ManualEntryPage() {
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Clock Out</Label>
-                                            <Input type="time" value={attOut} onChange={e => setAttOut(e.target.value)} />
+                                            <Input type="time" value={attOut} onChange={e => {
+                                                const val = e.target.value
+                                                if (attIn && val < attIn) {
+                                                    alert("Clock Out time cannot be earlier than Clock In time.")
+                                                    return
+                                                }
+                                                setAttOut(val)
+                                            }} />
                                         </div>
                                     </div>
                                 </div>
                                 <Button type="submit" disabled={processing} className="w-full">
                                     {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
-                                    {status === 'success' ? "Sync Complete" : "Authorize Final Entry"}
+                                    {status === 'success' ? "Successfully Recorded" : "Authorize Final Entry"}
                                 </Button>
                             </form>
                         )}
@@ -437,7 +464,11 @@ export default function ManualEntryPage() {
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {['Annual Leave', 'Sick Leave', 'Compassionate', 'Unpaid Leave'].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                                <SelectItem value="SICK">Sick Leave</SelectItem>
+                                                <SelectItem value="VACATION">Vacation Leave</SelectItem>
+                                                <SelectItem value="BIRTHDAY">Birthday Leave</SelectItem>
+                                                <SelectItem value="MATERNITY">Maternity/Paternity</SelectItem>
+                                                <SelectItem value="OTHER">Other</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -447,10 +478,17 @@ export default function ManualEntryPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label>End Date</Label>
-                                        <Input type="date" value={lvEnd} onChange={e => setLvEnd(e.target.value)} required />
+                                        <Input type="date" value={lvEnd} onChange={e => {
+                                            const newEnd = e.target.value
+                                            if (lvStart && newEnd < lvStart) {
+                                                alert("End date cannot be before start date")
+                                                return
+                                            }
+                                            setLvEnd(newEnd)
+                                        }} required />
                                     </div>
                                     <div className="space-y-3 md:col-span-2">
-                                        <Label className="block text-center mb-2">Duration Parameter</Label>
+                                        <Label className="block text-center mb-2">Work Duration</Label>
                                         <div className="flex justify-center gap-2">
                                             {['Full Day', 'Half Day', 'Part Day'].map(d => (
                                                 <Button
@@ -479,13 +517,13 @@ export default function ManualEntryPage() {
                                         </div>
                                     )}
                                     <div className="space-y-2 md:col-span-2">
-                                        <Label>Justification Remarks</Label>
+                                        <Label>Additional Details</Label>
                                         <Input placeholder="Enter audit remarks..." value={lvReason} onChange={e => setLvReason(e.target.value)} />
                                     </div>
                                 </div>
                                 <Button type="submit" disabled={processing} className="w-full">
                                     {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
-                                    {status === 'success' ? "Authorization Complete" : "Grant Manual Leave"}
+                                    {status === 'success' ? "Successfully Recorded" : "Grant Manual Leave"}
                                 </Button>
                             </form>
                         )}
@@ -528,12 +566,19 @@ export default function ManualEntryPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Session End</Label>
-                                        <Input type="time" value={brOut} onChange={e => setBrOut(e.target.value)} />
+                                        <Input type="time" value={brOut} onChange={e => {
+                                            const val = e.target.value
+                                            if (brIn && val < brIn) {
+                                                alert("Session End time cannot be earlier than Session Start time.")
+                                                return
+                                            }
+                                            setBrOut(val)
+                                        }} />
                                     </div>
                                 </div>
                                 <Button type="submit" disabled={processing} className="w-full">
                                     {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
-                                    {status === 'success' ? "Break Sync Complete" : "Register Manual Break"}
+                                    {status === 'success' ? "Successfully Recorded" : "Register Manual Break"}
                                 </Button>
                             </form>
                         )}
@@ -545,7 +590,7 @@ export default function ManualEntryPage() {
                     <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white p-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                             <div className="space-y-2">
-                                <Label>Node Focus</Label>
+                                <Label>Department</Label>
                                 <Select value={filterDept} onValueChange={setFilterDept}>
                                     <SelectTrigger>
                                         <SelectValue />
@@ -584,7 +629,17 @@ export default function ManualEntryPage() {
                                         <TableHead className="py-4 px-6 font-medium text-muted-foreground">Staff Name</TableHead>
                                         <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
                                         <TableHead className="py-4 px-6 font-medium text-muted-foreground">Date</TableHead>
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">{activeTab === 'leaves' ? 'Leave Type' : 'Work Time'}</TableHead>
+                                        {activeTab === 'attendance' ? (
+                                            <>
+                                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Clock In</TableHead>
+                                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Clock Out</TableHead>
+                                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Total Hours</TableHead>
+                                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Status</TableHead>
+                                            </>
+                                        ) : (
+                                            <TableHead className="py-4 px-6 font-medium text-muted-foreground">{activeTab === 'leaves' ? 'Leave Type' : 'Work Time'}</TableHead>
+                                        )}
+                                        {activeTab === 'leaves' && <TableHead className="py-4 px-6 font-medium text-muted-foreground">Status</TableHead>}
                                         <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Admin</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -602,28 +657,56 @@ export default function ManualEntryPage() {
                                                         ? format(parseISO(rec.clockIn || rec.date || rec.startTime), "dd MMM yyyy")
                                                         : '---'}
                                             </TableCell>
-                                            <TableCell className="py-4 px-6">
-                                                {activeTab === 'attendance' && (
-                                                    <div className="flex gap-2 items-center text-sm font-medium">
-                                                        <span className="text-primary">{rec.clockIn ? format(parseISO(rec.clockIn), "HH:mm") : '---'}</span>
-                                                        <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
-                                                        <span className="text-muted-foreground">{rec.clockOut ? format(parseISO(rec.clockOut), "HH:mm") : '---'}</span>
-                                                    </div>
-                                                )}
-                                                {activeTab === 'leaves' && (
-                                                    <div className="flex flex-col gap-0.5">
-                                                        <span className="font-medium text-sm text-foreground">{rec.type}</span>
-                                                        <span className="text-xs text-muted-foreground">{rec.duration}</span>
-                                                    </div>
-                                                )}
-                                                {activeTab === 'breaks' && (
-                                                    <div className="flex gap-2 items-center text-sm font-medium text-yellow-600">
-                                                        <span>{rec.startTime ? format(parseISO(rec.startTime), "HH:mm") : '---'}</span>
-                                                        <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
-                                                        <span>{rec.endTime ? format(parseISO(rec.endTime), "HH:mm") : '---'}</span>
-                                                    </div>
-                                                )}
-                                            </TableCell>
+                                            {activeTab === 'attendance' ? (
+                                                <>
+                                                    <TableCell className="py-4 px-6 text-sm text-primary font-medium">{rec.clockIn ? format(parseISO(rec.clockIn), "HH:mm") : '---'}</TableCell>
+                                                    <TableCell className="py-4 px-6 text-sm text-muted-foreground">{rec.clockOut ? format(parseISO(rec.clockOut), "HH:mm") : '---'}</TableCell>
+                                                    <TableCell className="py-4 px-6 text-sm font-semibold">
+                                                        {rec.clockIn && rec.clockOut ?
+                                                            ((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60 * 60)).toFixed(2) + ' hrs'
+                                                            : '---'}
+                                                    </TableCell>
+                                                    <TableCell className="py-4 px-6">
+                                                        <span className={cn(
+                                                            "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase",
+                                                            rec.status === 'PRESENT' ? "bg-green-100 text-green-800" :
+                                                                rec.status === 'ABSENT' ? "bg-red-100 text-red-800" :
+                                                                    rec.status === 'LATE' ? "bg-yellow-100 text-yellow-800" :
+                                                                        "bg-gray-100 text-gray-800"
+                                                        )}>
+                                                            {rec.status || 'PRESENT'}
+                                                        </span>
+                                                    </TableCell>
+                                                </>
+                                            ) : (
+                                                <TableCell className="py-4 px-6">
+                                                    {activeTab === 'leaves' && (
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="font-medium text-sm text-foreground">{rec.type}</span>
+                                                            <span className="text-xs text-muted-foreground">{rec.duration}</span>
+                                                        </div>
+                                                    )}
+                                                    {activeTab === 'breaks' && (
+                                                        <div className="flex gap-2 items-center text-sm font-medium text-yellow-600">
+                                                            <span>{rec.startTime ? format(parseISO(rec.startTime), "HH:mm") : '---'}</span>
+                                                            <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
+                                                            <span>{rec.endTime ? format(parseISO(rec.endTime), "HH:mm") : '---'}</span>
+                                                        </div>
+                                                    )}
+                                                </TableCell>
+                                            )}
+                                            {activeTab === 'leaves' && (
+                                                <TableCell className="py-4 px-6">
+                                                    <span className={cn(
+                                                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                                                        rec.status === 'APPROVED' ? "bg-green-100 text-green-800" :
+                                                            rec.status === 'DECLINED' ? "bg-red-100 text-red-800" :
+                                                                "bg-yellow-100 text-yellow-800"
+                                                    )}>
+                                                        {rec.status}
+                                                    </span>
+                                                </TableCell>
+                                            )}
                                             <TableCell className="py-4 px-6 text-right">
                                                 <div className="flex justify-end gap-1 transition-opacity">
                                                     <Button onClick={() => startEditing(rec)} variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10">
@@ -638,10 +721,13 @@ export default function ManualEntryPage() {
                                     ))}
                                     {filteredRecords.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="py-12 text-center">
+                                            <TableCell
+                                                colSpan={activeTab === 'attendance' ? 8 : activeTab === 'leaves' ? 6 : 5}
+                                                className="py-12 text-center"
+                                            >
                                                 <div className="flex flex-col items-center gap-2 text-muted-foreground opacity-50">
                                                     <AlertCircle className="h-8 w-8" />
-                                                    <p className="text-sm font-medium">No records detected in temporal segment</p>
+                                                    <p className="text-sm font-medium">No records detected</p>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -688,6 +774,18 @@ export default function ManualEntryPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label>Status</Label>
+                                    <Select value={editForm.status} onValueChange={s => setEditForm({ ...editForm, status: s })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="PRESENT">Present</SelectItem>
+                                            <SelectItem value="ABSENT">Absent</SelectItem>
+                                            <SelectItem value="LATE">Late</SelectItem>
+                                            <SelectItem value="HALF_DAY">Half Day</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </>
                         )}
                         {activeTab === 'leaves' && (
@@ -705,6 +803,19 @@ export default function ManualEntryPage() {
                                 <div className="space-y-2">
                                     <Label>Reason</Label>
                                     <Input value={editForm.reason || ""} onChange={e => setEditForm({ ...editForm, reason: e.target.value })} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Status</Label>
+                                    <Select value={editForm.status} onValueChange={s => setEditForm({ ...editForm, status: s })}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="PENDING">Pending</SelectItem>
+                                            <SelectItem value="APPROVED">Approved</SelectItem>
+                                            <SelectItem value="DECLINED">Declined</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </>
                         )}
@@ -734,6 +845,6 @@ export default function ManualEntryPage() {
                     </form>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }

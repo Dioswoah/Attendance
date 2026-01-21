@@ -178,3 +178,167 @@ Content-Type: text/html; charset=utf-8
     console.error("[Email Service] FAILED to send status update email:", error);
   }
 }
+
+interface LeaveActionEmailProps {
+  managerName: string;
+  managerEmail: string;
+  userName: string;
+  userEmail: string;
+  userAccessToken: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  action: 'UPDATED' | 'CANCELLED';
+  originalSubject?: string; // To help with threading
+}
+
+export async function sendLeaveActionEmail({
+  managerName,
+  managerEmail,
+  userName,
+  userEmail,
+  userAccessToken,
+  leaveType,
+  startDate,
+  endDate,
+  action,
+}: LeaveActionEmailProps) {
+  try {
+    console.log(`[Email Service] Sending ${action} email to ${managerEmail} from ${userEmail}`);
+
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET,
+      process.env.NEXTAUTH_URL
+    );
+
+    oauth2Client.setCredentials({ access_token: userAccessToken });
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    // Try to maintain threading by using a similar subject
+    const subject = `Re: Leave Request: ${userName} - ${leaveType}`;
+    const actionText = action === 'UPDATED' ? 'updated' : 'cancelled';
+    const color = action === 'UPDATED' ? '#1976d2' : '#757575'; // Blue for update, Grey for cancel
+
+    const emailContent = `From: "${userName}" <${userEmail}>
+To: ${managerEmail}
+Subject: ${subject}
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+  <div style="background-color: ${color}; padding: 20px; text-align: center;">
+    <h2 style="margin: 0; color: #ffffff;">Leave Request ${actionText === 'updated' ? 'Updated' : 'Cancelled'}</h2>
+  </div>
+  <div style="padding: 20px;">
+    <p>Hi <strong>${managerName}</strong>,</p>
+    <p><strong>${userName}</strong> has ${actionText} their leave request.</p>
+    
+    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
+      <p style="margin: 5px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
+      <p style="margin: 5px 0;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
+      ${action === 'UPDATED' ? '<p style="margin: 5px 0; font-style: italic;">The request details have been modified.</p>' : ''}
+    </div>
+
+    <p>Please log in to the <a href="${process.env.NEXTAUTH_URL}" style="color: ${color}; text-decoration: none; font-weight: bold;">Admin Portal</a> to review.</p>
+  </div>
+  <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
+    <p style="margin: 0;">This is an automated message.</p>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+
+    console.log(`[Email Service] ${action} email sent successfully.`);
+  } catch (error) {
+    console.error(`[Email Service] FAILED to send ${action} email:`, error);
+  }
+}
+
+interface AdminActionEmailProps {
+  userName: string;
+  userEmail: string;
+  adminName: string; // "Administrator" or specific admin name
+  adminEmail: string;
+  adminAccessToken: string;
+  actionType: 'ATTENDANCE' | 'LEAVE' | 'BREAK';
+  details: string; // "Clocked in at 09:00", "Annual Leave from ...", "Break: 12:00 - 13:00"
+  date: string;
+}
+
+export async function sendAdminActionEmail({
+  userName,
+  userEmail,
+  adminName,
+  adminEmail,
+  adminAccessToken,
+  actionType,
+  details,
+  date
+}: AdminActionEmailProps) {
+  try {
+    console.log(`[Email Service] Sending Admin Action (${actionType}) email to ${userEmail}`);
+
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET,
+      process.env.NEXTAUTH_URL
+    );
+
+    oauth2Client.setCredentials({ access_token: adminAccessToken });
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const subject = `Record Update: New ${actionType.toLowerCase()} entry added`;
+    const color = '#ff9800'; // Orange for admin action
+
+    const emailContent = `From: "${adminName}" <${adminEmail}>
+To: ${userEmail}
+Subject: ${subject}
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+  <div style="background-color: ${color}; padding: 20px; text-align: center;">
+    <h2 style="margin: 0; color: #ffffff;">New Record Added</h2>
+  </div>
+  <div style="padding: 20px;">
+    <p>Hi <strong>${userName}</strong>,</p>
+    <p>An administrator has manually added a new <strong>${actionType.toLowerCase()}</strong> record to your profile.</p>
+    
+    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
+      <p style="margin: 5px 0;"><strong>Date:</strong> ${date}</p>
+      <p style="margin: 5px 0;"><strong>Details:</strong> ${details}</p>
+    </div>
+
+    <p>Please log in to the <a href="${process.env.NEXTAUTH_URL}" style="color: ${color}; text-decoration: none; font-weight: bold;">User Portal</a> to review your records.</p>
+  </div>
+  <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
+    <p style="margin: 0;">This is an automated message.</p>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+
+    console.log(`[Email Service] Admin action email sent successfully.`);
+  } catch (error) {
+    console.error(`[Email Service] FAILED to send admin action email:`, error);
+  }
+}

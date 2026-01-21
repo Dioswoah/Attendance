@@ -55,24 +55,25 @@ export function NotificationBell({ role, userId: propUserId }: NotificationBellP
                 setUnreadCount(data.filter((n: Notification) => !n.read).length)
             }
         } catch (error) {
-            console.error("Failed to fetch notifications")
+            // Error handled
         }
     }
 
     useEffect(() => {
         fetchNotifications()
 
-        const socket = io({
-            path: '/api/socket/io',
-        })
+        // Socket.IO connection temporarily disabled to prevent 404 spam
+        // const socket = io({
+        //     path: '/api/socket/io',
+        // })
 
-        socket.on("update-data", () => {
-            fetchNotifications()
-        })
+        // socket.on("update-data", () => {
+        //     fetchNotifications()
+        // })
 
-        return () => {
-            socket.disconnect()
-        }
+        // return () => {
+        //     socket.disconnect()
+        // }
     }, [session, role, propUserId])
 
     const markAsRead = async (id?: string) => {
@@ -98,7 +99,7 @@ export function NotificationBell({ role, userId: propUserId }: NotificationBellP
             await fetch(url, { method: 'PUT' })
             fetchNotifications()
         } catch (error) {
-            console.error("Failed to mark read")
+            // Error handled
         }
     }
 

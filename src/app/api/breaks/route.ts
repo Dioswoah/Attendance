@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { sendAdminActionEmail } from "@/lib/email"
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -78,6 +80,27 @@ export async function POST(req: Request) {
                 endTime: endTime ? new Date(endTime) : null
             }
         })
+
+        // Notify User if Admin created it
+        const session = await auth() as any
+        if (session && session.user.id !== userId) {
+            const targetUser = await prisma.user.findUnique({ where: { id: userId } })
+            if (targetUser && targetUser.email && session.accessToken) {
+                const details = `Start: ${new Date(breakRecord.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` +
+                    (breakRecord.endTime ? `, End: ${new Date(breakRecord.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '')
+
+                await sendAdminActionEmail({
+                    userName: targetUser.name || "Employee",
+                    userEmail: targetUser.email,
+                    adminName: session.user.name || "Administrator",
+                    adminEmail: session.user.email,
+                    adminAccessToken: session.accessToken,
+                    actionType: 'BREAK',
+                    details: details,
+                    date: new Date(attendance.date).toLocaleDateString()
+                })
+            }
+        }
 
         return NextResponse.json(breakRecord)
     } catch (error) {

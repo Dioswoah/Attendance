@@ -35,8 +35,9 @@ export async function DELETE(
 ) {
     try {
         const { id } = await params
-        await prisma.user.delete({
-            where: { id }
+        await prisma.user.update({
+            where: { id },
+            data: { deletedAt: new Date() }
         })
         return NextResponse.json({ success: true })
     } catch (error) {

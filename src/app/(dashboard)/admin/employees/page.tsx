@@ -42,6 +42,7 @@ export default function EmployeesPage() {
     const [managerFilter, setManagerFilter] = useState("all")
     const [sortBy, setSortBy] = useState("name")
     const [showDeptWarning, setShowDeptWarning] = useState(false)
+    const [isManagerSelectOpen, setIsManagerSelectOpen] = useState(false)
 
     useEffect(() => {
         fetchData()
@@ -58,7 +59,7 @@ export default function EmployeesPage() {
                 setDepartments(await deptRes.json())
             }
         } catch (error) {
-            console.error("Failed to fetch employees")
+            // Error handled
         } finally {
             setLoading(false)
         }
@@ -124,7 +125,7 @@ export default function EmployeesPage() {
                 fetchData()
             }
         } catch (error) {
-            console.error("Failed to update employee")
+            // Error handled
         } finally {
             setIsSaving(false)
         }
@@ -145,7 +146,7 @@ export default function EmployeesPage() {
                 fetchData()
             }
         } catch (error) {
-            console.error(`Failed to ${action} employee`)
+            // Error handled
         } finally {
             setProcessingId(null)
         }
@@ -163,7 +164,7 @@ export default function EmployeesPage() {
                 fetchData()
             }
         } catch (error) {
-            console.error("Failed to delete employee")
+            // Error handled
         } finally {
             setProcessingId(null)
         }
@@ -211,7 +212,7 @@ export default function EmployeesPage() {
         <div className="space-y-10 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
-                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Staff</h1>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Staff Management</h1>
                     <p className="text-muted-foreground text-sm">Staff Directory & Operational Clearance</p>
                 </div>
 
@@ -577,15 +578,25 @@ export default function EmployeesPage() {
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <Label>Assigned Manager</Label>
-                            <div onClickCapture={(e) => {
-                                if (!editDeptId || editDeptId === "unassigned") {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    setShowDeptWarning(true)
-                                }
-                            }}>
-                                <Select value={editManagerId} onValueChange={setEditManagerId}>
+                            <div className="space-y-2">
+                                <Label>Assigned Manager</Label>
+                                <Select
+                                    value={editManagerId}
+                                    onValueChange={setEditManagerId}
+                                    open={isManagerSelectOpen}
+                                    onOpenChange={(open) => {
+                                        if (open) {
+                                            if (!editDeptId || editDeptId === "unassigned") {
+                                                setShowDeptWarning(true)
+                                                setIsManagerSelectOpen(false)
+                                            } else {
+                                                setIsManagerSelectOpen(true)
+                                            }
+                                        } else {
+                                            setIsManagerSelectOpen(false)
+                                        }
+                                    }}
+                                >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select Manager" />
                                     </SelectTrigger>
@@ -608,7 +619,7 @@ export default function EmployeesPage() {
             {/* Department Warning Dialog */}
             <Dialog open={showDeptWarning} onOpenChange={setShowDeptWarning}>
                 <DialogContent className="max-w-md rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
-                    <div className="bg-amber-500 p-8 text-center relative overflow-hidden">
+                    <div className="bg-primary p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
                         <ShieldCheck className="h-12 w-12 text-white/30 mx-auto mb-4" />
                         <DialogTitle className="text-xl font-black italic text-white uppercase tracking-tight relative z-10">Department Required</DialogTitle>

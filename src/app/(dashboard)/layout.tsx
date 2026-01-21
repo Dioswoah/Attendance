@@ -14,7 +14,8 @@ import {
     Clock,
     History,
     ChevronRight,
-    Flame
+    Flame,
+    ShieldCheck
 } from "lucide-react"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -45,6 +46,7 @@ export default function AdminLayout({
         { href: "/admin/departments", label: "Departments", icon: Building2 },
         { href: "/admin/manual-entry", label: "Manual Entry", icon: Clock },
         { href: "/admin/history", label: "Record", icon: History },
+        { href: "/admin/manager-activity", label: "Manager Activity", icon: ShieldCheck },
         { href: "/admin/reports", label: "Export", icon: FileText },
         { href: "/admin/settings", label: "Settings", icon: Settings },
     ]

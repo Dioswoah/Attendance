@@ -29,14 +29,16 @@ interface Request {
     userImage?: string
     department?: string
     type: string
-    duration: string
+    duration?: string
     startDate: string
     endDate: string
     startTime?: string
     endTime?: string
+    time?: string // For attendance
     reason: string
     status: string
     createdAt: string
+    kind?: 'LEAVE' | 'ATTENDANCE'
 }
 
 export default function ManagerControlPage() {
@@ -80,15 +82,38 @@ export default function ManagerControlPage() {
         setIsLoading(true)
         try {
             // Parallel fetch for all needed data
-            const [pendingRes, approvedRes, employeesRes, attendanceRes] = await Promise.all([
+            const [pendingLeaveRes, pendingAttRes, approvedRes, employeesRes, attendanceRes] = await Promise.all([
                 fetch(`/api/leaves?managerId=${session.user.id}&status=PENDING`),
+                fetch(`/api/attendance-requests?managerId=${session.user.id}&status=PENDING`),
                 fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED`),
                 fetch('/api/employees'),
                 fetch('/api/attendance') // For today's sidebar status
             ])
 
-            if (pendingRes.ok) setPendingRequests(await pendingRes.json())
-            if (approvedRes.ok) setApprovedLeaves(await approvedRes.json())
+            let combinedPending: Request[] = []
+
+            if (pendingLeaveRes.ok) {
+                const leaves = await pendingLeaveRes.json()
+                combinedPending = [...combinedPending, ...leaves.map((l: any) => ({ ...l, kind: 'LEAVE' }))]
+            }
+            if (pendingAttRes.ok) {
+                const attRequests = await pendingAttRes.json()
+                combinedPending = [...combinedPending, ...attRequests.map((r: any) => ({
+                    ...r,
+                    kind: 'ATTENDANCE',
+                    userName: r.user.name,
+                    userImage: r.user.image,
+                    department: r.user.department?.name,
+                    startDate: r.date,
+                    endDate: r.date,
+                    duration: 'Correction', // or show time
+                    type: r.type
+                }))]
+            }
+
+            setPendingRequests(combinedPending)
+
+            if (approvedRes.ok) setApprovedLeaves(await approvedRes.json()) // Only leaves affect calendar for now, or maybe approved attendance requests should trigger re-fetch of attendance data
 
             let allEmployees = []
             if (employeesRes.ok) {
@@ -107,7 +132,7 @@ export default function ManagerControlPage() {
             fetchMonthlyAttendance()
 
         } catch (error) {
-            console.error("Failed to fetch manager data:", error)
+            // Error
         } finally {
             setIsLoading(false)
         }
@@ -129,7 +154,7 @@ export default function ManagerControlPage() {
                 setMonthlyAttendance(await res.json())
             }
         } catch (error) {
-            console.error("Failed to fetch monthly attendance", error)
+            // Error
         }
     }
 
@@ -153,7 +178,11 @@ export default function ManagerControlPage() {
             const body: any = { status: actionType === "approve" ? "APPROVED" : "DECLINED" }
             if (actionType === "deny" && denyReason) body.declineReason = denyReason
 
-            const res = await fetch(`/api/leaves/${selectedRequest.id}`, {
+            const endpoint = selectedRequest.kind === 'ATTENDANCE'
+                ? `/api/attendance-requests/${selectedRequest.id}`
+                : `/api/leaves/${selectedRequest.id}`
+
+            const res = await fetch(endpoint, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -172,7 +201,7 @@ export default function ManagerControlPage() {
                 alert("Failed to update request")
             }
         } catch (error) {
-            console.error("Action failed", error)
+            // Action failed
         } finally {
             setIsSubmitting(false)
         }
@@ -385,14 +414,18 @@ export default function ManagerControlPage() {
                                                             <p className="font-semibold capitalize">{request.type.toLowerCase().replace('_', ' ')}</p>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-lg">
-                                                            <p className="text-xs text-muted-foreground mb-1">Duration</p>
-                                                            <p className="font-semibold">{request.duration}</p>
+                                                            <p className="text-xs text-muted-foreground mb-1">Duration/Time</p>
+                                                            <p className="font-semibold">
+                                                                {request.kind === 'ATTENDANCE' && request.time
+                                                                    ? format(new Date(request.time), 'hh:mm a')
+                                                                    : request.duration}
+                                                            </p>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-lg col-span-2">
                                                             <p className="text-xs text-muted-foreground mb-1">Date Range</p>
                                                             <div className="flex items-center gap-2 font-medium">
                                                                 <CalendarIcon className="w-4 h-4 text-primary" />
-                                                                {format(parseISO(request.startDate), 'MMM dd')} - {format(parseISO(request.endDate), 'MMM dd, yyyy')}
+                                                                {format(parseISO(request.startDate), 'MMM dd, yyyy')}
                                                             </div>
                                                         </div>
                                                     </div>

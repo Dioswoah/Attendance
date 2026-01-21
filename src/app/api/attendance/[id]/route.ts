@@ -24,7 +24,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {
-        await prisma.attendance.delete({ where: { id } })
+        await prisma.attendance.update({
+            where: { id },
+            data: { deletedAt: new Date() }
+        })
         return NextResponse.json({ success: true })
     } catch (error) {
         return NextResponse.json({ error: "Failed to delete attendance record" }, { status: 500 })

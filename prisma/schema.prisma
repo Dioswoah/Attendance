@@ -18,6 +18,7 @@ model User {
   managerId          String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
+  deletedAt          DateTime?
   emailVerified      DateTime?
   roles              Role[]         @default([USER])
   isArchived         Boolean        @default(false)
@@ -26,6 +27,8 @@ model User {
   managedDepartments Department[]   @relation("DepartmentManager")
   leaves             Leave[]
   notifications      Notification[]
+  attendanceRequests AttendanceRequest[]
+  leaveRequests      LeaveRequest[]
   sessions           Session[]
   ledTeams           Team[]         @relation("TeamLeader")
   department         Department?    @relation(fields: [departmentId], references: [id])
@@ -48,6 +51,7 @@ model Account {
   session_state     String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([provider, providerAccountId])
@@ -59,6 +63,7 @@ model Session {
   expires      DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -66,6 +71,7 @@ model VerificationToken {
   identifier String
   token      String
   expires    DateTime
+  createdAt  DateTime @default(now())
 
   @@id([identifier, token])
 }
@@ -76,6 +82,7 @@ model Department {
   managerId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
   manager   User?    @relation("DepartmentManager", fields: [managerId], references: [id])
   teams     Team[]
   users     User[]
@@ -88,6 +95,7 @@ model Team {
   leaderId     String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
   department   Department @relation(fields: [departmentId], references: [id])
   leader       User?      @relation("TeamLeader", fields: [leaderId], references: [id])
   users        User[]
@@ -107,6 +115,7 @@ model Attendance {
   notes      String?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
+  deletedAt  DateTime?
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   breaks     Break[]
 
@@ -120,13 +129,33 @@ model Leave {
   endDate       DateTime
   type          String
   reason        String?
-  status        String    @default("PENDING")
+  status        String    @default("APPROVED") // Changed default to APPROVED since requests handle pending
   duration      String
   startTime     DateTime?
   endTime       DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
   declineReason String?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LeaveRequest {
+  id            String    @id @default(cuid())
+  userId        String
+  startDate     DateTime
+  endDate       DateTime
+  type          String
+  reason        String?
+  status        String    @default("PENDING")
+  duration      String
+  startTime     DateTime?
+  endTime       DateTime?
+  declineReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -137,6 +166,7 @@ model Break {
   endTime      DateTime?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
   attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
 }
 
@@ -149,12 +179,16 @@ model Notification {
   read      Boolean  @default(false)
   link      String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())
+  deletedAt DateTime?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SystemSettings {
-  key   String @id
-  value String
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())
 }
 
 enum Role {
@@ -175,4 +209,20 @@ enum WorkMode {
   OFFICE
   WFH
   OTHER
+}
+
+model AttendanceRequest {
+  id            String    @id @default(cuid())
+  userId        String
+  date          DateTime
+  type          String    // CLOCK_IN, CLOCK_OUT, BREAK_START, BREAK_END
+  time          DateTime
+  reason        String?
+  status        String    @default("PENDING") // PENDING, APPROVED, DECLINED
+  declineReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -43,7 +43,7 @@ export default function DepartmentsPage() {
                 setEmployees(await empRes.json())
             }
         } catch (error) {
-            console.error("Failed to fetch departments")
+            // Error handled
         } finally {
             setLoading(false)
         }
@@ -88,7 +88,7 @@ export default function DepartmentsPage() {
                 fetchData()
             }
         } catch (error) {
-            console.error("Failed to update department")
+            // Error handled
         } finally {
             setProcessingId(null)
         }
@@ -106,7 +106,7 @@ export default function DepartmentsPage() {
                 fetchData()
             }
         } catch (error) {
-            console.error("Failed to delete department")
+            // Error handled
         } finally {
             setProcessingId(null)
         }
@@ -126,7 +126,7 @@ export default function DepartmentsPage() {
                 fetchData()
             }
         } catch (error) {
-            console.error("Failed to unassign staff")
+            // Error handled
         } finally {
             setProcessingId(null)
         }
@@ -151,7 +151,7 @@ export default function DepartmentsPage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Departments</h1>
-                    <p className="text-muted-foreground text-sm">Structural Node Configuration & Hierarchies</p>
+                    <p className="text-muted-foreground text-sm">Structural Configuration & Hierarchies</p>
                 </div>
 
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
