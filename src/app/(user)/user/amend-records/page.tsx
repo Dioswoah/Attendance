@@ -109,24 +109,24 @@ export default function AmendRecordsPage() {
 
         switch (recordType) {
             case "CLOCK_IN":
-                if (record.clockIn) timeStr = format(new Date(record.clockIn), 'hh:mm a')
+                if (record.clockIn) timeStr = new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
                 break
             case "CLOCK_OUT":
-                if (record.clockOut) timeStr = format(new Date(record.clockOut), 'hh:mm a')
+                if (record.clockOut) timeStr = new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
                 break
             case "BREAK_START":
                 // Check breaks array for latest or just show main if simplified
                 if (record.breaks && record.breaks.length > 0) {
-                    timeStr = record.breaks.map((b: any) => format(new Date(b.startTime), 'hh:mm a')).join(', ')
+                    timeStr = record.breaks.map((b: any) => new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })).join(', ')
                 } else if (record.breakStart) {
-                    timeStr = format(new Date(record.breakStart), 'hh:mm a')
+                    timeStr = new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
                 }
                 break
             case "BREAK_END":
                 if (record.breaks && record.breaks.length > 0) {
-                    timeStr = record.breaks.map((b: any) => b.endTime ? format(new Date(b.endTime), 'hh:mm a') : 'Active').join(', ')
+                    timeStr = record.breaks.map((b: any) => b.endTime ? new Date(b.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' }) : 'Active').join(', ')
                 } else if (record.breakEnd) {
-                    timeStr = format(new Date(record.breakEnd), 'hh:mm a')
+                    timeStr = new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
                 }
                 break
         }
@@ -393,7 +393,7 @@ export default function AmendRecordsPage() {
                                     <div className="flex items-center gap-2 text-sm text-foreground/80">
                                         <Clock className="w-4 h-4 text-red-600" />
                                         <span className="font-mono font-medium">
-                                            {new Date(req.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            {new Date(req.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })}
                                         </span>
                                     </div>
                                     <p className="text-xs text-muted-foreground italic">"{req.reason}"</p>

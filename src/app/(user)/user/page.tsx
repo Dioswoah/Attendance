@@ -193,38 +193,62 @@ export default function UserPortal() {
     // 3. Break Limit Monitoring Effect
     useEffect(() => {
         const checkBreakLimit = async () => {
+            if (!userId) return
+
             // 45 minutes = 2700000 ms
             // 60 minutes = 3600000 ms
             const WARNING_MS = 45 * 60 * 1000
             const LIMIT_MS = 60 * 60 * 1000
+            const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
 
             if (breakTotalMs >= WARNING_MS && breakTotalMs < LIMIT_MS && !warningTriggered) {
-                setWarningTriggered(true)
-                setBreakDialogType("WARNING")
-                setShowBreakDialog(true)
-                // Report to server (In-app notif)
-                await fetch('/api/attendance/break-limit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'WARNING', totalBreakTime: breakTime, limit: '1 hour' })
-                })
+                const alreadyAck = localStorage.getItem(`break_warning_ack_${userId}_${today}`)
+                if (!alreadyAck) {
+                    setWarningTriggered(true)
+                    setBreakDialogType("WARNING")
+                    setShowBreakDialog(true)
+                    // Report to server (In-app notif)
+                    await fetch('/api/attendance/break-limit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'WARNING', totalBreakTime: breakTime, limit: '1 hour' })
+                    })
+                }
             } else if (breakTotalMs >= LIMIT_MS && !limitTriggered) {
-                setLimitTriggered(true)
-                setBreakDialogType("EXCEEDED")
-                setShowBreakDialog(true)
-                // Report to server (In-app notif + Email)
-                await fetch('/api/attendance/break-limit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'EXCEEDED', totalBreakTime: breakTime, limit: '1 hour' })
-                })
+                const alreadyAck = localStorage.getItem(`break_limit_ack_${userId}_${today}`)
+                if (!alreadyAck) {
+                    setLimitTriggered(true)
+                    setBreakDialogType("EXCEEDED")
+                    setShowBreakDialog(true)
+                    // Report to server (In-app notif + Email)
+                    await fetch('/api/attendance/break-limit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'EXCEEDED', totalBreakTime: breakTime, limit: '1 hour' })
+                    })
+                }
             }
         }
 
         if (breakTotalMs > 0) {
             checkBreakLimit()
         }
-    }, [breakTotalMs, warningTriggered, limitTriggered, breakTime])
+    }, [breakTotalMs, warningTriggered, limitTriggered, breakTime, userId])
+
+    const handleBreakAcknowledge = () => {
+        if (!userId) {
+            setShowBreakDialog(false)
+            return
+        }
+
+        const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        const key = breakDialogType === "WARNING"
+            ? `break_warning_ack_${userId}_${today}`
+            : `break_limit_ack_${userId}_${today}`
+
+        localStorage.setItem(key, "true")
+        setShowBreakDialog(false)
+    }
 
     const formatDuration = (ms: number) => {
         if (ms < 0) ms = 0
@@ -493,7 +517,7 @@ export default function UserPortal() {
         )
     }
 
-    const hour = currentTime ? currentTime.getHours() : 0
+    const hour = currentTime ? parseInt(currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Manila' })) : 0
     const greeting = !mounted ? "Loading..." : hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening"
     const formattedDate = currentTime ? currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' }) : "..."
     const formattedTime = currentTime ? currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Manila' }) : "--:--:--"
@@ -649,11 +673,11 @@ export default function UserPortal() {
         return events
     })
         .filter(event => {
-            // Ensure strictly TODAY'S records are shown
+            // Ensure strictly TODAY'S records are shown (using PHT)
             if (!event.timestamp) return false
-            const eventDate = new Date(event.timestamp)
-            const today = new Date()
-            return eventDate.toDateString() === today.toDateString()
+            const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+            const eventPHT = new Date(event.timestamp).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+            return eventPHT === todayPHT
         })
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
@@ -961,7 +985,7 @@ export default function UserPortal() {
                                                     {getStaffStatusBadge(staff.status)}
                                                     {staff.status === 'on-leave' && staff.returnDate && (
                                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
-                                                            Ret: {new Date(staff.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                                                            Ret: {new Date(staff.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Asia/Manila' })}
                                                         </span>
                                                     )}
                                                 </div>
@@ -993,7 +1017,7 @@ export default function UserPortal() {
                                     {activityFeed.map((event: any, index: number) => {
                                         const timeString = (() => {
                                             try {
-                                                return event.timestamp ? new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '--:--'
+                                                return event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' }) : '--:--'
                                             } catch (e) {
                                                 return '--:--'
                                             }
@@ -1228,7 +1252,7 @@ export default function UserPortal() {
                         </p>
 
                         <Button
-                            onClick={() => setShowBreakDialog(false)}
+                            onClick={handleBreakAcknowledge}
                             className={cn(
                                 "w-full h-14 text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all active:scale-95",
                                 breakDialogType === "WARNING" ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-900 hover:bg-slate-800"

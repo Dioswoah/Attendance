@@ -204,7 +204,7 @@ export default function AdminDashboard() {
                                                 {record.status.replace('-', ' ')}
                                             </Badge>
                                             <p className="text-xs text-muted-foreground mt-1 font-mono">
-                                                {new Date(record.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}
                                             </p>
                                         </div>
                                     </div>
@@ -350,7 +350,7 @@ export default function AdminDashboard() {
                                                 </Badge>
                                                 {status === 'on-leave' && record?.returnDate && (
                                                     <span className="text-[10px] font-semibold text-muted-foreground">
-                                                        Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                                                        Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Asia/Manila' })}
                                                     </span>
                                                 )}
                                             </div>
@@ -359,7 +359,7 @@ export default function AdminDashboard() {
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                                                     <Clock className="h-3 w-3 text-muted-foreground" />
-                                                    <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}</span>
+                                                    <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : '---'}</span>
                                                 </div>
                                                 <span className="text-xs text-muted-foreground font-mono tabular-nums">{calculateLiveDuration(record)}</span>
                                             </div>

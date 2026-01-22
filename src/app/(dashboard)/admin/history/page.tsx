@@ -286,8 +286,8 @@ export default function HistoryPage() {
                 Employee: r.userName,
                 Dept: r.department,
                 Date: r.date,
-                'Clock In': r.clockIn ? format(parseISO(r.clockIn), "HH:mm") : '-',
-                'Clock Out': r.clockOut ? format(parseISO(r.clockOut), "HH:mm") : '-',
+                'Clock In': r.clockIn ? new Date(r.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '-',
+                'Clock Out': r.clockOut ? new Date(r.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '-',
                 'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
                 'Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2)),
                 'Work Location': r.mode
@@ -622,7 +622,7 @@ export default function HistoryPage() {
                                                                                     "bg-slate-300"
                                                                     )} />
                                                                     <span className="text-[10px] text-muted-foreground font-medium opacity-0 group-hover/mark:opacity-100 transition-opacity absolute -mt-6 bg-popover px-1.5 py-0.5 rounded shadow-sm border border-border">
-                                                                        {record.clockIn ? format(parseISO(record.clockIn), "HH:mm") : '--'}
+                                                                        {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '--'}
                                                                     </span>
                                                                 </div>
                                                             ) : (
@@ -708,7 +708,7 @@ export default function HistoryPage() {
                                                         </Badge>
                                                         {status === 'on-leave' && record?.returnDate && (
                                                             <span className="text-[10px] font-semibold text-muted-foreground">
-                                                                Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                                                                Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Asia/Manila' })}
                                                             </span>
                                                         )}
                                                     </div>
@@ -717,7 +717,7 @@ export default function HistoryPage() {
                                                     <div className="flex flex-col">
                                                         <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                                                             <Clock className="h-3 w-3 text-muted-foreground" />
-                                                            <span>{record?.clockIn ? format(parseISO(record.clockIn), "HH:mm") : '---'}</span>
+                                                            <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '---'}</span>
                                                         </div>
                                                         {/* For historical records, we can't show "Live" duration if it's not today. If it is today, we can. */}
                                                         {isSameDay(parseISO(endDate), new Date()) ? (

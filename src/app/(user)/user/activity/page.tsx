@@ -76,7 +76,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-in`,
                     date: new Date(record.clockIn).toISOString().split('T')[0],
                     type: "clock-in",
-                    time: new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                    time: new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
                     details: `Clocked in from ${record.mode.toLowerCase()}`
                 })
             }
@@ -86,7 +86,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-break-start`,
                     date: new Date(record.breakStart).toISOString().split('T')[0],
                     type: "break-start",
-                    time: new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                    time: new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
                     details: "Started break"
                 })
             }
@@ -96,7 +96,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-break-end`,
                     date: new Date(record.breakEnd).toISOString().split('T')[0],
                     type: "break-end",
-                    time: new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                    time: new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
                     details: "Ended break"
                 })
             }
@@ -106,7 +106,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-out`,
                     date: new Date(record.clockOut).toISOString().split('T')[0],
                     type: "clock-out",
-                    time: new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                    time: new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
                     details: "Clocked out"
                 })
             }

@@ -3,9 +3,21 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ShieldAlert, ArrowLeft, Lock } from "lucide-react"
 
 export default function UnauthorizedPage() {
+    const { data: session, status } = useSession()
+    const router = useRouter()
+
+    useEffect(() => {
+        if (status === "authenticated" && session?.user?.email?.endsWith("@redadair.com.au")) {
+            router.push("/user")
+        }
+    }, [session, status, router])
+
     return (
         <div className="min-h-screen w-full flex items-center justify-center bg-muted/20 p-4">
             <Card className="w-full max-w-md border border-border shadow-2xl rounded-[2rem] overflow-hidden bg-white">

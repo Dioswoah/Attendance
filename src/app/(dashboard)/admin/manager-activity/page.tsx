@@ -291,9 +291,9 @@ export default function ManagerActivityPage() {
                                 type: leaf.type,
                                 reason: leaf.reason,
                                 status: leaf.status,
-                                startTime: leaf.startTime ? format(parseISO(leaf.startTime), "HH:mm") : "",
-                                endTime: leaf.endTime ? format(parseISO(leaf.endTime), "HH:mm") : "",
-                                time: leaf.time ? format(parseISO(leaf.time), "HH:mm") : ""
+                                startTime: leaf.startTime ? new Date(leaf.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : "",
+                                endTime: leaf.endTime ? new Date(leaf.endTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : "",
+                                time: leaf.time ? new Date(leaf.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : ""
                             })
                             setIsEditDialogOpen(true)
                         }}
@@ -417,7 +417,7 @@ export default function ManagerActivityPage() {
                                                 return (
                                                     <TableRow key={leaf.id}>
                                                         <TableCell className="pl-6 font-medium text-muted-foreground">
-                                                            {format(parseISO(leaf.createdAt || new Date().toISOString()), "MMM dd, yyyy")}
+                                                            {new Date(leaf.createdAt || new Date().toISOString()).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'Asia/Manila' })}
                                                         </TableCell>
                                                         <TableCell>
                                                             <div className="flex flex-col">
