@@ -22,30 +22,47 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
 
         if (leaveRequest) {
-            const isManager = session.user.id !== leaveRequest.userId // Or check role 'MANAGER' | 'ADMIN'
+            const roles = session.user.roles || []
+            const isAdmin = roles.includes('ADMIN')
+            const isTargetManager = leaveRequest.user.managerId === session.user.id
+            const isManager = isAdmin || isTargetManager
+            const isUserEditing = session.user.id === leaveRequest.userId && !isManager
 
             // Update Request
             const updatedRequest = await prisma.leaveRequest.update({
                 where: { id },
                 data: {
-                    status: body.status,
-                    declineReason: body.declineReason,
+                    status: isUserEditing ? "PENDING" : (body.status || leaveRequest.status),
+                    declineReason: isUserEditing ? null : (body.declineReason || leaveRequest.declineReason),
                     // @ts-ignore
-                    isArchived: body.isArchived,
-                    // Allow editing pending request details?
+                    isArchived: body.isArchived !== undefined ? body.isArchived : leaveRequest.isArchived,
                     startDate: body.startDate ? new Date(body.startDate) : undefined,
                     endDate: body.endDate ? new Date(body.endDate) : undefined,
-                    reason: body.reason,
-                    type: body.type,
-                    duration: body.duration,
-                    startTime: body.startTime ? new Date(body.startTime) : undefined,
-                    endTime: body.endTime ? new Date(body.endTime) : undefined,
+                    reason: body.reason !== undefined ? body.reason : leaveRequest.reason,
+                    type: body.type !== undefined ? body.type : leaveRequest.type,
+                    duration: body.duration !== undefined ? body.duration : leaveRequest.duration,
+                    startTime: body.startTime !== undefined ? (body.startTime ? new Date(body.startTime) : null) : undefined,
+                    endTime: body.endTime !== undefined ? (body.endTime ? new Date(body.endTime) : null) : undefined,
                 },
                 include: { user: true }
             })
 
-            // If Approved, Create OFFICIAL LEAVE record
-            if (body.status === 'APPROVED' && leaveRequest.status !== 'APPROVED') {
+            // If user edited an APPROVED request, we MUST soft-delete the existing official Leave record
+            if (isUserEditing && leaveRequest.status === 'APPROVED') {
+                await prisma.leave.updateMany({
+                    where: {
+                        userId: leaveRequest.userId,
+                        startDate: leaveRequest.startDate,
+                        endDate: leaveRequest.endDate,
+                        type: leaveRequest.type,
+                        deletedAt: null
+                    },
+                    data: { deletedAt: new Date() }
+                })
+            }
+
+            // If Manager Approved, Create OFFICIAL LEAVE record
+            if (!isUserEditing && body.status === 'APPROVED' && leaveRequest.status !== 'APPROVED') {
                 // Create Leave
                 await prisma.leave.create({
                     data: {

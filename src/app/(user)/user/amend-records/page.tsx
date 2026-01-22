@@ -401,7 +401,7 @@ export default function AmendRecordsPage() {
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
                                     {getStatusBadge(req.status)}
-                                    {req.status === 'PENDING' && (
+                                    {(!req.isArchived) && (
                                         <div className="flex gap-2">
                                             <Button variant="ghost" size="sm" className="text-blue-500 hover:text-blue-700 h-8 text-xs font-bold uppercase tracking-wider" onClick={() => handleEdit(req)}>
                                                 Edit

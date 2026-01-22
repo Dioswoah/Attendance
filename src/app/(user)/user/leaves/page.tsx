@@ -494,7 +494,7 @@ export default function LeaveRequestsPage() {
                                 <p className="text-xs text-muted-foreground font-mono">
                                     Submitted: {request.createdAt ? format(new Date(request.createdAt), 'MMM dd, yyyy') : 'Unknown Date'}
                                 </p>
-                                {request.status === 'PENDING' && (
+                                {(!request.isArchived) && (
                                     <div className="flex gap-2">
                                         <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-100" onClick={() => handleEdit(request)}>
                                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">

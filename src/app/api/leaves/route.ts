@@ -142,6 +142,7 @@ export async function POST(req: Request) {
         const dateCheck = {
             where: {
                 userId,
+                deletedAt: null,
                 OR: [
                     {
                         startDate: { lte: new Date(endDate) },

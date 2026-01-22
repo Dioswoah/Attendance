@@ -8,8 +8,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params
     try {
         const body = await req.json()
-        const { status, declineReason } = body // APPROVED or DECLINED
         const session = await auth() as any
+        if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
         // Fetch request
         const request = await prisma.attendanceRequest.findUnique({
@@ -18,21 +18,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
         if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+        const roles = session.user.roles || []
+        const isAdmin = roles.includes('ADMIN')
+        const isManager = request.user.managerId === session.user.id
+        const isUserEditing = session.user.id === request.userId && !isAdmin && !isManager
+
         // Update Request
         const updatedRequest = await prisma.attendanceRequest.update({
             where: { id },
             data: {
-                status: body.status,
-                declineReason: body.declineReason,
+                status: isUserEditing ? "PENDING" : (body.status || request.status),
+                declineReason: isUserEditing ? null : (body.declineReason || request.declineReason),
                 // Allow editing if body provides them
                 time: body.time ? new Date(body.time) : undefined,
-                type: body.type,
-                reason: body.reason,
+                type: body.type !== undefined ? body.type : request.type,
+                reason: body.reason !== undefined ? body.reason : request.reason,
                 date: body.date ? new Date(body.date) : undefined,
                 // @ts-ignore
-                isArchived: body.isArchived,
+                isArchived: body.isArchived !== undefined ? body.isArchived : request.isArchived,
             }
         })
+
+        const status = updatedRequest.status
+        const declineReason = updatedRequest.declineReason
 
         if (status === 'APPROVED') {
             // Update Attendance
@@ -101,7 +109,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 endDate: new Date(request.date).toLocaleDateString(),
                 status: status as 'APPROVED' | 'DECLINED',
                 updatedAt: new Date().toLocaleDateString(),
-                declineReason: declineReason
+                declineReason: declineReason || undefined
             })
         }
 
