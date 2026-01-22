@@ -21,7 +21,7 @@ export async function GET(req: Request) {
                     ...(departmentId && departmentId !== 'all' && { departmentId }),
                     ...(managerId && { managerId })
                 },
-                ...(status && { status }),
+                ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
                     startDate: { gte: new Date(startDate) },
                     endDate: { lte: new Date(endDate) }
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
                     ...(departmentId && departmentId !== 'all' && { departmentId }),
                     ...(managerId && { managerId })
                 },
-                ...(status && { status }),
+                ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
                     startDate: { gte: new Date(startDate) },
                     endDate: { lte: new Date(endDate) }

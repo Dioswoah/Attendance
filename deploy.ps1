@@ -1,5 +1,9 @@
 # Deployment script for Google Cloud Run
-# This script automates the deployment process
+# This script automates the deployment process using GCR and Cloud Run
+
+param(
+    [switch]$SkipBuild
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -9,6 +13,7 @@ function Get-EnvVar {
     if (Test-Path $File) {
         Get-Content $File | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
             $key, $value = $_.Split('=', 2)
+            $key = $key.Trim()
             $value = $value.Trim().Trim('"').Trim("'")
             Set-Variable -Name $key -Value $value -Scope script
         }
@@ -31,22 +36,57 @@ foreach ($var in $RequiredVars) {
     }
 }
 
-Write-Host "=== Attendance System - Cloud Run Deployment ===" -ForegroundColor Green
+Write-Host "=== Attendance System - Cloud Run Deployment (GCR) ===" -ForegroundColor Green
 
-Write-Host "Step 1: Building Docker image..." -ForegroundColor Yellow
-gcloud builds submit --tag "gcr.io/$PROJECT_ID/$SERVICE_NAME"
+# Define Image Tag for Container Registry
+$IMAGE_TAG = "gcr.io/$PROJECT_ID/$SERVICE_NAME"
 
-Write-Host "Step 2: Deploying to Cloud Run..." -ForegroundColor Yellow
+Write-Host "Step 1: Building and pushing Docker image to GCR..." -ForegroundColor Yellow
+if (-not $SkipBuild) {
+    gcloud builds submit --tag $IMAGE_TAG
+} else {
+    Write-Host "Skipping build as requested." -ForegroundColor Cyan
+}
 
-# Constructing the database URL for Cloud Run (using Unix socket)
-$CLOUD_RUN_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
+Write-Host "Step 2: Running database migrations..." -ForegroundColor Yellow
+$CLOUD_SQL_CONN = "${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
+$CLOUD_RUN_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN"
+
+# Check if migration job exists, create if not, then update and execute
+$jobExists = gcloud run jobs describe migrate-db --region $REGION --quiet 2>$null
+if (-not $jobExists) {
+    Write-Host "Creating migrate-db job..." -ForegroundColor Cyan
+    gcloud run jobs create migrate-db `
+      --image $IMAGE_TAG `
+      --region $REGION `
+      --set-env-vars "NODE_ENV=production,DATABASE_URL=$CLOUD_RUN_DATABASE_URL" `
+      --set-cloudsql-instances $CLOUD_SQL_CONN `
+      --command "npm" `
+      --args "run,db:setup" `
+      --quiet
+} else {
+    Write-Host "Updating migrate-db job..." -ForegroundColor Cyan
+    gcloud run jobs update migrate-db `
+      --image $IMAGE_TAG `
+      --region $REGION `
+      --set-env-vars "NODE_ENV=production,DATABASE_URL=$CLOUD_RUN_DATABASE_URL" `
+      --set-cloudsql-instances $CLOUD_SQL_CONN `
+      --command "npm" `
+      --args "run,db:setup" `
+      --quiet
+}
+
+Write-Host "Executing migration job..." -ForegroundColor Cyan
+gcloud run jobs execute migrate-db --region $REGION --wait
+
+Write-Host "Step 3: Deploying to Cloud Run..." -ForegroundColor Yellow
 
 gcloud run deploy $SERVICE_NAME `
-  --image "gcr.io/$PROJECT_ID/$SERVICE_NAME" `
+  --image $IMAGE_TAG `
   --platform managed `
   --region $REGION `
   --allow-unauthenticated `
-  --add-cloudsql-instances "${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}" `
+  --add-cloudsql-instances $CLOUD_SQL_CONN `
   --set-env-vars "NODE_ENV=production" `
   --set-env-vars "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" `
   --set-env-vars "NEXTAUTH_URL=$SERVICE_URL" `
@@ -58,11 +98,13 @@ gcloud run deploy $SERVICE_NAME `
   --memory 512Mi `
   --cpu 1 `
   --min-instances 0 `
-  --max-instances 20
+  --max-instances 20 `
+  --quiet
 
 Write-Host "Deployment complete!" -ForegroundColor Green
 Write-Host "Your application is available at:"
 Write-Host "$SERVICE_URL" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "IMPORTANT: You MUST add the following URL to your Google Cloud Console > APIs & Services > Credentials > OAuth 2.0 Client IDs > Authorized redirect URIs:" -ForegroundColor Red
-Write-Host "$SERVICE_URL/api/auth/callback/google" -ForegroundColor Yellow
+Write-Host "IMPORTANT: Ensure $SERVICE_URL/api/auth/callback/google is in your Google OAuth Redirect URIs." -ForegroundColor Red
+
+

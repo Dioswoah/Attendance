@@ -18,7 +18,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2 } from "lucide-react"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 
@@ -39,6 +39,7 @@ interface Request {
     status: string
     createdAt: string
     kind?: 'LEAVE' | 'ATTENDANCE'
+    declineReason?: string
 }
 
 export default function ManagerControlPage() {
@@ -46,6 +47,7 @@ export default function ManagerControlPage() {
 
     // Requests State
     const [pendingRequests, setPendingRequests] = useState<Request[]>([])
+    const [requestHistory, setRequestHistory] = useState<Request[]>([])
 
     // Calendar & Team State
     const [approvedLeaves, setApprovedLeaves] = useState<Request[]>([])
@@ -82,12 +84,13 @@ export default function ManagerControlPage() {
         setIsLoading(true)
         try {
             // Parallel fetch for all needed data
-            const [pendingLeaveRes, pendingAttRes, approvedRes, employeesRes, attendanceRes] = await Promise.all([
+            const [pendingLeaveRes, pendingAttRes, approvedRes, employeesRes, attendanceRes, historyRes] = await Promise.all([
                 fetch(`/api/leaves?managerId=${session.user.id}&status=PENDING`),
                 fetch(`/api/attendance-requests?managerId=${session.user.id}&status=PENDING`),
                 fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED`),
                 fetch('/api/employees'),
-                fetch('/api/attendance') // For today's sidebar status
+                fetch('/api/attendance'), // For today's sidebar status
+                fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED,DECLINED`)
             ])
 
             let combinedPending: Request[] = []
@@ -112,6 +115,11 @@ export default function ManagerControlPage() {
             }
 
             setPendingRequests(combinedPending)
+
+            if (historyRes.ok) {
+                const history = await historyRes.json()
+                setRequestHistory(history.map((l: any) => ({ ...l, kind: 'LEAVE' })))
+            }
 
             if (approvedRes.ok) setApprovedLeaves(await approvedRes.json()) // Only leaves affect calendar for now, or maybe approved attendance requests should trigger re-fetch of attendance data
 
@@ -190,10 +198,13 @@ export default function ManagerControlPage() {
 
             if (res.ok) {
                 // Remove from pending
-                setPendingRequests(prev => prev.filter(r => r.id !== selectedRequest.id))
+                const request = selectedRequest // Save reference
+                setPendingRequests(prev => prev.filter(r => r.id !== request.id))
+                // Add to history
+                setRequestHistory(prev => [{ ...request, status: actionType === "approve" ? "APPROVED" : "DECLINED" }, ...prev])
                 // If approved, add to approved list (optimistic update or re-fetch)
                 if (actionType === "approve") {
-                    setApprovedLeaves(prev => [...prev, { ...selectedRequest, status: 'APPROVED' }])
+                    setApprovedLeaves(prev => [...prev, { ...request, status: 'APPROVED' }])
                 }
                 setSelectedRequest(null)
                 setActionType(null)
@@ -202,6 +213,28 @@ export default function ManagerControlPage() {
             }
         } catch (error) {
             // Action failed
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleDeleteHistory = async (request: Request) => {
+        if (!confirm(`Are you sure you want to delete this ${request.kind?.toLowerCase() || 'leave'} record? This will notify the administrators.`)) return
+
+        setIsSubmitting(true)
+        try {
+            const endpoint = request.kind === 'ATTENDANCE'
+                ? `/api/attendance-requests/${request.id}`
+                : `/api/leaves/${request.id}`
+
+            const res = await fetch(endpoint, { method: 'DELETE' })
+            if (res.ok) {
+                setRequestHistory(prev => prev.filter(r => r.id !== request.id))
+            } else {
+                alert("Failed to delete record")
+            }
+        } catch (error) {
+            console.error(error)
         } finally {
             setIsSubmitting(false)
         }
@@ -349,6 +382,9 @@ export default function ManagerControlPage() {
                                 </span>
                             )}
                         </TabsTrigger>
+                        <TabsTrigger value="history" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                            Request History
+                        </TabsTrigger>
                         <TabsTrigger value="calendar" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
                             Team Calendar
                         </TabsTrigger>
@@ -426,6 +462,9 @@ export default function ManagerControlPage() {
                                                             <div className="flex items-center gap-2 font-medium">
                                                                 <CalendarIcon className="w-4 h-4 text-primary" />
                                                                 {format(parseISO(request.startDate), 'MMM dd, yyyy')}
+                                                                {request.startDate !== request.endDate && (
+                                                                    <> - {format(parseISO(request.endDate), 'MMM dd, yyyy')}</>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -448,6 +487,102 @@ export default function ManagerControlPage() {
                                                         className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto"
                                                     >
                                                         <X className="w-4 h-4 mr-2" /> Deny
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </div>
+                                </Card>
+                            ))
+                        )}
+                    </div>
+                </TabsContent>
+
+                {/* --- HISTORY TAB --- */}
+                <TabsContent value="history" className="space-y-6 animate-in slide-in-from-left-4 duration-300">
+                    <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
+                        <div className="flex items-center gap-2">
+                            <Clock className="w-5 h-5 text-blue-600" />
+                            <h2 className="font-semibold text-foreground">Decision Archive</h2>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4">
+                        {requestHistory.length === 0 ? (
+                            <Card className="border-dashed shadow-none bg-muted/30">
+                                <CardContent className="flex flex-col items-center justify-center py-20 text-center">
+                                    <h3 className="text-lg font-semibold">No History</h3>
+                                    <p className="text-muted-foreground">You haven't approved or denied any requests yet.</p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            requestHistory.map(request => (
+                                <Card key={request.id} className="group hover:shadow-md transition-all border-border bg-white overflow-hidden opacity-90">
+                                    <div className="flex flex-col lg:flex-row">
+                                        <div className={cn("lg:w-1", request.status === 'APPROVED' ? "bg-green-500" : "bg-red-500")} />
+                                        <CardContent className="flex-1 p-6">
+                                            <div className="flex flex-col lg:flex-row gap-6 items-start">
+                                                <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                                                    <AvatarFallback className="bg-slate-900 text-white font-bold">{request.userName.charAt(0)}</AvatarFallback>
+                                                </Avatar>
+                                                <div className="flex-1 space-y-4">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                        <div>
+                                                            <h3 className="font-bold text-lg text-foreground">{request.userName}</h3>
+                                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{request.department || 'Team Member'}</p>
+                                                        </div>
+                                                        <Badge variant="outline" className={cn(
+                                                            "font-bold",
+                                                            request.status === 'APPROVED' ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                                                        )}>
+                                                            {request.status}
+                                                        </Badge>
+                                                    </div>
+                                                    <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                        <div className="bg-muted/30 p-3 rounded-lg">
+                                                            <p className="text-xs text-muted-foreground mb-1">Leave Type</p>
+                                                            <p className="font-semibold capitalize">{request.type.toLowerCase().replace('_', ' ')}</p>
+                                                        </div>
+                                                        <div className="bg-muted/30 p-3 rounded-lg">
+                                                            <p className="text-xs text-muted-foreground mb-1">Duration</p>
+                                                            <p className="font-semibold">{request.duration}</p>
+                                                        </div>
+                                                        <div className="bg-muted/30 p-3 rounded-lg col-span-2">
+                                                            <p className="text-xs text-muted-foreground mb-1">Date Range</p>
+                                                            <div className="flex items-center gap-2 font-medium">
+                                                                <CalendarIcon className="w-4 h-4 text-primary" />
+                                                                {format(parseISO(request.startDate), 'MMM dd, yyyy')}
+                                                                {request.startDate !== request.endDate && (
+                                                                    <> - {format(parseISO(request.endDate), 'MMM dd, yyyy')}</>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                                                        <p className="text-sm italic text-slate-600">"{request.reason}"</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex lg:flex-col gap-2 pt-2 lg:pt-0">
+                                                    <Button
+                                                        onClick={() => {
+                                                            setSelectedRequest(request)
+                                                            setActionType(request.status === 'APPROVED' ? 'deny' : 'approve')
+                                                            setDenyReason(request.declineReason || "")
+                                                        }}
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                    >
+                                                        <MessageSquare className="w-4 h-4 mr-2" /> Modify
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => handleDeleteHistory(request)}
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                    >
+                                                        <Trash2 className="w-4 h-4 mr-2" /> Delete
                                                     </Button>
                                                 </div>
                                             </div>

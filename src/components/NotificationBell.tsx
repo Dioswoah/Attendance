@@ -62,18 +62,28 @@ export function NotificationBell({ role, userId: propUserId }: NotificationBellP
     useEffect(() => {
         fetchNotifications()
 
-        // Socket.IO connection temporarily disabled to prevent 404 spam
-        // const socket = io({
-        //     path: '/api/socket/io',
-        // })
+        // Realtime Subscription via SSE
+        let eventSource: EventSource | null = null;
+        if (typeof EventSource !== 'undefined') {
+            eventSource = new EventSource('/api/stream');
+            eventSource.onmessage = (event) => {
+                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
+                try {
+                    const payload = JSON.parse(event.data);
+                    // Refresh if notification event (we broadcast 'notification' in some places)
+                    // Or generically refresh on any data update relevant to the user
+                    if (payload.type === 'notification' || payload.type === 'attendance' || payload.type === 'leaves') {
+                        fetchNotifications();
+                    }
+                } catch (e) {
+                    // Parse error
+                }
+            };
+        }
 
-        // socket.on("update-data", () => {
-        //     fetchNotifications()
-        // })
-
-        // return () => {
-        //     socket.disconnect()
-        // }
+        return () => {
+            if (eventSource) eventSource.close();
+        }
     }, [session, role, propUserId])
 
     const markAsRead = async (id?: string) => {

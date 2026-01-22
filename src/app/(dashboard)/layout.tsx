@@ -73,8 +73,8 @@ export default function AdminLayout({
             <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col bg-white border-r border-border sm:flex">
                 <div className="flex h-16 items-center px-6 border-b border-border">
                     <Link href="/admin" className="flex items-center gap-3 group">
-                        <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center transition-transform group-hover:scale-105">
-                            <Flame className="h-4 w-4 text-primary-foreground fill-primary-foreground" />
+                        <div className="h-10 w-10 bg-white border border-border rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shadow-sm overflow-hidden p-1">
+                            <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex flex-col">
                             <span className="text-base font-bold tracking-tight text-foreground leading-none">Redadair</span>

@@ -63,6 +63,20 @@ export default function ManagerActivityPage() {
     const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
 
+    // Edit State
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+    const [editingItem, setEditingItem] = useState<any>(null)
+    const [editForm, setEditForm] = useState<any>({
+        startDate: "",
+        endDate: "",
+        type: "",
+        reason: "",
+        status: "",
+        startTime: "",
+        endTime: "",
+        time: ""
+    })
+
     useEffect(() => {
         fetchData()
     }, [startDate, endDate])
@@ -152,6 +166,52 @@ export default function ManagerActivityPage() {
         }
     }
 
+    const handleEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editingItem) return
+        setProcessingId(editingItem.id)
+
+        const endpoint = editingItem.kind === 'ATTENDANCE'
+            ? `/api/attendance-requests/${editingItem.id}`
+            : `/api/leaves/${editingItem.id}`
+
+        try {
+            const body: any = {
+                status: editForm.status,
+                type: editForm.type,
+                reason: editForm.reason,
+            }
+
+            if (editingItem.kind === 'ATTENDANCE') {
+                body.date = editForm.startDate
+                body.time = `${editForm.startDate}T${editForm.time}:00`
+            } else {
+                body.startDate = editForm.startDate
+                body.endDate = editForm.endDate
+                if (editForm.startTime) body.startTime = `${editForm.startDate}T${editForm.startTime}:00`
+                if (editForm.endTime) body.endTime = `${editForm.endDate}T${editForm.endTime}:00`
+            }
+
+            const res = await fetch(endpoint, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            })
+
+            if (res.ok) {
+                toast.success("Record updated successfully")
+                setIsEditDialogOpen(false)
+                fetchData()
+            } else {
+                toast.error("Failed to update record")
+            }
+        } catch (error) {
+            toast.error("Error updating record")
+        } finally {
+            setProcessingId(null)
+        }
+    }
+
     const handleDelete = async (item: any) => {
         if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return
 
@@ -190,7 +250,7 @@ export default function ManagerActivityPage() {
 
     const renderActionButtons = (leaf: any) => (
         <div className="flex items-center justify-end gap-2">
-            {leaf.status === 'PENDING' && (
+            {leaf.status === 'PENDING' ? (
                 <>
                     <Button
                         size="icon"
@@ -208,6 +268,7 @@ export default function ManagerActivityPage() {
                         className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
                         onClick={() => {
                             setSelectedLeafForAction(leaf)
+                            setDeclineReason(leaf.declineReason || "")
                             setIsDeclineDialogOpen(true)
                         }}
                         disabled={!!processingId}
@@ -216,6 +277,48 @@ export default function ManagerActivityPage() {
                         <XCircle className="h-4 w-4" />
                     </Button>
                 </>
+            ) : (
+                <div className="flex gap-1">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2"
+                        onClick={() => {
+                            setEditingItem(leaf)
+                            setEditForm({
+                                startDate: leaf.startDate?.split('T')[0] || leaf.startDate || leaf.date?.split('T')[0] || "",
+                                endDate: leaf.endDate?.split('T')[0] || leaf.endDate || "",
+                                type: leaf.type,
+                                reason: leaf.reason,
+                                status: leaf.status,
+                                startTime: leaf.startTime ? format(parseISO(leaf.startTime), "HH:mm") : "",
+                                endTime: leaf.endTime ? format(parseISO(leaf.endTime), "HH:mm") : "",
+                                time: leaf.time ? format(parseISO(leaf.time), "HH:mm") : ""
+                            })
+                            setIsEditDialogOpen(true)
+                        }}
+                        disabled={!!processingId}
+                    >
+                        Edit
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-700 hover:bg-slate-50 px-2"
+                        onClick={() => {
+                            if (leaf.status === 'APPROVED') {
+                                setSelectedLeafForAction(leaf)
+                                setDeclineReason(leaf.declineReason || "")
+                                setIsDeclineDialogOpen(true)
+                            } else {
+                                handleStatusUpdate(leaf, 'APPROVED')
+                            }
+                        }}
+                        disabled={!!processingId}
+                    >
+                        Modify
+                    </Button>
+                </div>
             )}
             <Button
                 size="icon"
@@ -530,6 +633,133 @@ export default function ManagerActivityPage() {
                             {processingId ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Decline"}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Dialog */}
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <UserCog className="h-5 w-5" />
+                            Edit Request Details
+                        </DialogTitle>
+                        <DialogDescription>
+                            Modify the core details of this {editingItem?.kind.toLowerCase()} record.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleEditSubmit} className="space-y-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs uppercase font-bold text-muted-foreground">Type</Label>
+                                <Select value={editForm.type} onValueChange={(v) => setEditForm({ ...editForm, type: v })}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {editingItem?.kind === 'ATTENDANCE' ? (
+                                            <>
+                                                <SelectItem value="CLOCK_IN">Clock In</SelectItem>
+                                                <SelectItem value="CLOCK_OUT">Clock Out</SelectItem>
+                                                <SelectItem value="BREAK_START">Break Start</SelectItem>
+                                                <SelectItem value="BREAK_END">Break End</SelectItem>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <SelectItem value="ANNUAL">Annual Leave</SelectItem>
+                                                <SelectItem value="SICK">Sick Leave</SelectItem>
+                                                <SelectItem value="PERSONAL">Personal Leave</SelectItem>
+                                                <SelectItem value="MATERNITY">Maternity</SelectItem>
+                                                <SelectItem value="OTHER">Other</SelectItem>
+                                            </>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs uppercase font-bold text-muted-foreground">Status</Label>
+                                <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="APPROVED">Approved</SelectItem>
+                                        <SelectItem value="DECLINED">Declined</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs uppercase font-bold text-muted-foreground">{editingItem?.kind === 'ATTENDANCE' ? 'Date' : 'Start Date'}</Label>
+                                <Input
+                                    type="date"
+                                    value={editForm.startDate}
+                                    onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                                />
+                            </div>
+                            {editingItem?.kind === 'LEAVE' && (
+                                <div className="space-y-2">
+                                    <Label className="text-xs uppercase font-bold text-muted-foreground">End Date</Label>
+                                    <Input
+                                        type="date"
+                                        value={editForm.endDate}
+                                        onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            {editingItem?.kind === 'ATTENDANCE' ? (
+                                <div className="space-y-2">
+                                    <Label className="text-xs uppercase font-bold text-muted-foreground">Time</Label>
+                                    <Input
+                                        type="time"
+                                        value={editForm.time}
+                                        onChange={(e) => setEditForm({ ...editForm, time: e.target.value })}
+                                    />
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs uppercase font-bold text-muted-foreground">Start Time</Label>
+                                        <Input
+                                            type="time"
+                                            value={editForm.startTime}
+                                            onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs uppercase font-bold text-muted-foreground">End Time</Label>
+                                        <Input
+                                            type="time"
+                                            value={editForm.endTime}
+                                            onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-xs uppercase font-bold text-muted-foreground">Reason</Label>
+                            <Textarea
+                                value={editForm.reason}
+                                onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
+                                className="h-20"
+                            />
+                        </div>
+
+                        <DialogFooter className="pt-4">
+                            <Button variant="outline" type="button" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                            <Button type="submit" disabled={!!processingId}>
+                                {processingId ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                Save Changes
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
         </div>

@@ -22,8 +22,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const updatedRequest = await prisma.attendanceRequest.update({
             where: { id },
             data: {
-                status,
-                declineReason
+                status: body.status,
+                declineReason: body.declineReason,
+                // Allow editing if body provides them
+                time: body.time ? new Date(body.time) : undefined,
+                type: body.type,
+                reason: body.reason,
+                date: body.date ? new Date(body.date) : undefined,
+                // @ts-ignore
+                isArchived: body.isArchived,
             }
         })
 

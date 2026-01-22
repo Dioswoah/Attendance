@@ -67,6 +67,13 @@ export default function UserPortal() {
     // Feed Filters
     const [feedSearch, setFeedSearch] = useState("")
 
+    // Break Limit Monitoring State
+    const [breakTotalMs, setBreakTotalMs] = useState(0)
+    const [warningTriggered, setWarningTriggered] = useState(false)
+    const [limitTriggered, setLimitTriggered] = useState(false)
+    const [showBreakDialog, setShowBreakDialog] = useState(false)
+    const [breakDialogType, setBreakDialogType] = useState<"WARNING" | "EXCEEDED">("WARNING")
+
     // 1. Initial Data Fetch & Realtime Subscription (SSE)
     useEffect(() => {
         setMounted(true)
@@ -174,6 +181,7 @@ export default function UserPortal() {
 
             setWorkedTime(formatDuration(totalWorkedMs))
             setBreakTime(formatDuration(totalBreakMs))
+            setBreakTotalMs(totalBreakMs)
         }
 
         calculateTimes()
@@ -181,6 +189,42 @@ export default function UserPortal() {
 
         return () => clearInterval(timeInterval)
     }, [userAttendanceList])
+
+    // 3. Break Limit Monitoring Effect
+    useEffect(() => {
+        const checkBreakLimit = async () => {
+            // 45 minutes = 2700000 ms
+            // 60 minutes = 3600000 ms
+            const WARNING_MS = 45 * 60 * 1000
+            const LIMIT_MS = 60 * 60 * 1000
+
+            if (breakTotalMs >= WARNING_MS && breakTotalMs < LIMIT_MS && !warningTriggered) {
+                setWarningTriggered(true)
+                setBreakDialogType("WARNING")
+                setShowBreakDialog(true)
+                // Report to server (In-app notif)
+                await fetch('/api/attendance/break-limit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'WARNING', totalBreakTime: breakTime, limit: '1 hour' })
+                })
+            } else if (breakTotalMs >= LIMIT_MS && !limitTriggered) {
+                setLimitTriggered(true)
+                setBreakDialogType("EXCEEDED")
+                setShowBreakDialog(true)
+                // Report to server (In-app notif + Email)
+                await fetch('/api/attendance/break-limit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'EXCEEDED', totalBreakTime: breakTime, limit: '1 hour' })
+                })
+            }
+        }
+
+        if (breakTotalMs > 0) {
+            checkBreakLimit()
+        }
+    }, [breakTotalMs, warningTriggered, limitTriggered, breakTime])
 
     const formatDuration = (ms: number) => {
         if (ms < 0) ms = 0
@@ -277,10 +321,14 @@ export default function UserPortal() {
         setIsProcessing(true)
 
         try {
+            // LOCK to PHT (+08:00)
+            const clockInTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })
+            const clockInISO = new Date(clockInTime).toISOString()
+
             const res = await fetch('/api/attendance', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: session.user.id, mode })
+                body: JSON.stringify({ userId: session.user.id, mode, clockIn: clockInISO })
             })
             if (res.ok) {
                 setShowLocationDialog(false)
@@ -321,8 +369,8 @@ export default function UserPortal() {
         e.preventDefault()
         if (!userId) return
 
-        const start = new Date(leaveStartDate)
-        const end = new Date(leaveEndDate)
+        const start = new Date(leaveStartDate + "T00:00:00+08:00")
+        const end = new Date(leaveEndDate + "T00:00:00+08:00")
         const diffTime = Math.abs(end.getTime() - start.getTime())
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
         const duration = `${diffDays} Day${diffDays > 1 ? 's' : ''}`
@@ -340,8 +388,8 @@ export default function UserPortal() {
                     type: leaveType,
                     reason: leaveReason,
                     duration: leaveDurationType === 'Full Day' && diffDays > 1 ? `${diffDays} Days` : leaveDurationType,
-                    startTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveStartTime}:00`).toISOString() : null,
-                    endTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveEndTime}:00`).toISOString() : null
+                    startTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveStartTime}:00+08:00`).toISOString() : null,
+                    endTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveEndTime}:00+08:00`).toISOString() : null
                 })
             })
 
@@ -413,12 +461,12 @@ export default function UserPortal() {
 
                 <div className="w-full max-w-[400px] space-y-6 animate-in fade-in zoom-in duration-500">
                     <div className="flex flex-col items-center text-center space-y-4">
-                        <div className="h-16 w-16 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-600/20 mb-2">
-                            <Lock className="h-8 w-8 text-white" />
+                        <div className="h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-lg mb-2 overflow-hidden border border-border/50 p-1">
+                            <img src="/logo.png" alt="RSA Logo" className="w-full h-full object-cover" />
                         </div>
                         <div className="space-y-2">
                             <h1 className="text-3xl font-bold tracking-tight text-foreground">Redadair</h1>
-                            <p className="text-muted-foreground uppercase tracking-widest text-xs font-semibold">Attendance System</p>
+                            <p className="text-muted-foreground uppercase tracking-widest text-xs font-semibold">Staff Availability</p>
                         </div>
                     </div>
 
@@ -516,6 +564,15 @@ export default function UserPortal() {
             return dept === filterDepartment
         })
         .sort((a: any, b: any) => {
+            // Priority Status Grouping: Clocked In / On Break > Others
+            const priorityStatuses = ["clocked-in", "on-break"]
+            const aIsPriority = priorityStatuses.includes(a.status)
+            const bIsPriority = priorityStatuses.includes(b.status)
+
+            if (aIsPriority && !bIsPriority) return -1
+            if (!aIsPriority && bIsPriority) return 1
+
+            // Secondary sorting based on user selection
             switch (sortBy) {
                 case "name": return (a.name || "").localeCompare(b.name || "")
                 case "department":
@@ -1066,7 +1123,7 @@ export default function UserPortal() {
                             Submit a new leave request for approval
                         </DialogDescription>
                     </div>
-                    <form onSubmit={handleLeaveSubmit} className="p-8 space-y-6 bg-white">
+                    <form onSubmit={requestLeave} className="p-8 space-y-6 bg-white">
                         <div className="space-y-4">
                             <div className="space-y-2">
                                 <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Leave Type</Label>
@@ -1134,6 +1191,52 @@ export default function UserPortal() {
                         </div>
                         <Button type="submit" className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-lg transition-all active:scale-95 italic uppercase tracking-widest">Submit Request</Button>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Break Time Warning/Limit Dialog */}
+            <Dialog open={showBreakDialog} onOpenChange={setShowBreakDialog}>
+                <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className={cn(
+                        "p-8 text-center relative overflow-hidden transition-colors duration-500",
+                        breakDialogType === "WARNING" ? "bg-amber-500" : "bg-red-600"
+                    )}>
+                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/20 to-transparent" />
+                        <Coffee className="h-12 w-12 text-white/30 mx-auto mb-4" />
+                        <DialogTitle className="text-2xl font-black italic text-white uppercase tracking-tight relative z-10">
+                            {breakDialogType === "WARNING" ? "Take Note" : "Limit Exceeded"}
+                        </DialogTitle>
+                        <DialogDescription className="text-white/80 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
+                            {breakDialogType === "WARNING"
+                                ? "You are approaching your daily break limit"
+                                : "You have gone over the daily break time limit"}
+                        </DialogDescription>
+                    </div>
+                    <div className="p-8 space-y-6 bg-white text-center">
+                        <div className="flex flex-col items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic">Current Break Usage</span>
+                            <span className={cn(
+                                "text-5xl font-black italic tracking-tighter",
+                                breakDialogType === "WARNING" ? "text-amber-600" : "text-red-700"
+                            )}>{breakTime}</span>
+                        </div>
+
+                        <p className="text-sm text-slate-500 font-medium">
+                            {breakDialogType === "WARNING"
+                                ? "You have approximately 15 minutes left. Please plan to return to work shortly."
+                                : "The 1-hour daily break limit has been reached. An automated notification has been sent."}
+                        </p>
+
+                        <Button
+                            onClick={() => setShowBreakDialog(false)}
+                            className={cn(
+                                "w-full h-14 text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all active:scale-95",
+                                breakDialogType === "WARNING" ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-900 hover:bg-slate-800"
+                            )}
+                        >
+                            Understood
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

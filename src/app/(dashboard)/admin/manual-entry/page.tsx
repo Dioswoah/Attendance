@@ -137,15 +137,16 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            const clockIn = new Date(`${attDate}T${attIn}:00`)
-            const clockOut = attOut ? new Date(`${attDate}T${attOut}:00`) : null
+            // LOCK to PHT (+08:00)
+            const clockIn = new Date(`${attDate}T${attIn}:00+08:00`)
+            const clockOut = attOut ? new Date(`${attDate}T${attOut}:00+08:00`) : null
 
             const res = await fetch('/api/attendance', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: attEmpId,
-                    date: attDate,
+                    date: new Date(`${attDate}T00:00:00+08:00`).toISOString(),
                     clockIn: clockIn.toISOString(),
                     clockOut: clockOut?.toISOString(),
                     mode: attMode
@@ -183,8 +184,8 @@ export default function ManualEntryPage() {
                     reason: lvReason,
                     duration: lvDuration,
                     status: 'APPROVED',
-                    startTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvStartTime}:00`).toISOString() : null,
-                    endTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvEndTime}:00`).toISOString() : null
+                    startTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvStartTime}:00+08:00`).toISOString() : null,
+                    endTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvEndTime}:00+08:00`).toISOString() : null
                 })
             })
             if (res.ok) showStatus('success')
@@ -203,15 +204,16 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            const startTime = new Date(`${brDate}T${brIn}:00`)
-            const endTime = brOut ? new Date(`${brDate}T${brOut}:00`) : null
+            // LOCK to PHT (+08:00)
+            const startTime = new Date(`${brDate}T${brIn}:00+08:00`)
+            const endTime = brOut ? new Date(`${brDate}T${brOut}:00+08:00`) : null
 
             const res = await fetch('/api/breaks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: brEmpId,
-                    date: brDate,
+                    date: new Date(`${brDate}T00:00:00+08:00`).toISOString(),
                     startTime: startTime.toISOString(),
                     endTime: endTime?.toISOString()
                 })
@@ -756,12 +758,18 @@ export default function ManualEntryPage() {
                                     <div className="space-y-2">
                                         <Label>Clock In</Label>
                                         <Input type="time" value={editForm.clockIn ? format(parseISO(editForm.clockIn), "HH:mm") : ""}
-                                            onChange={e => setEditForm({ ...editForm, clockIn: `${editForm.date}T${e.target.value}:00Z` })} />
+                                            onChange={e => {
+                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00+08:00`);
+                                                setEditForm({ ...editForm, clockIn: localDate.toISOString() });
+                                            }} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Clock Out</Label>
                                         <Input type="time" value={editForm.clockOut ? format(parseISO(editForm.clockOut), "HH:mm") : ""}
-                                            onChange={e => setEditForm({ ...editForm, clockOut: `${editForm.date}T${e.target.value}:00Z` })} />
+                                            onChange={e => {
+                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00+08:00`);
+                                                setEditForm({ ...editForm, clockOut: localDate.toISOString() });
+                                            }} />
                                     </div>
                                 </div>
                                 <div className="space-y-2">
@@ -829,12 +837,18 @@ export default function ManualEntryPage() {
                                     <div className="space-y-2">
                                         <Label>Start Time</Label>
                                         <Input type="time" value={editForm.startTime ? format(parseISO(editForm.startTime), "HH:mm") : ""}
-                                            onChange={e => setEditForm({ ...editForm, startTime: `${editForm.date}T${e.target.value}:00Z` })} />
+                                            onChange={e => {
+                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
+                                                setEditForm({ ...editForm, startTime: localDate.toISOString() });
+                                            }} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>End Time</Label>
                                         <Input type="time" value={editForm.endTime ? format(parseISO(editForm.endTime), "HH:mm") : ""}
-                                            onChange={e => setEditForm({ ...editForm, endTime: `${editForm.date}T${e.target.value}:00Z` })} />
+                                            onChange={e => {
+                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
+                                                setEditForm({ ...editForm, endTime: localDate.toISOString() });
+                                            }} />
                                     </div>
                                 </div>
                             </>

@@ -342,3 +342,65 @@ Content-Type: text/html; charset=utf-8
     console.error(`[Email Service] FAILED to send admin action email:`, error);
   }
 }
+
+interface BreakLimitEmailProps {
+  userName: string;
+  userEmail: string;
+  userAccessToken: string;
+  totalBreakTime: string;
+  limit: string;
+}
+
+export async function sendBreakLimitEmail({
+  userName,
+  userEmail,
+  userAccessToken,
+  totalBreakTime,
+  limit
+}: BreakLimitEmailProps) {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET
+    );
+    oauth2Client.setCredentials({ access_token: userAccessToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const emailContent = `From: "Attendance System" <${userEmail}>
+To: ${userEmail}
+Subject: Break Time Limit Exceeded
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+  <div style="background-color: #d32f2f; padding: 20px; text-align: center;">
+    <h2 style="margin: 0; color: #ffffff;">Break Limit Alert</h2>
+  </div>
+  <div style="padding: 20px;">
+    <p>Hi <strong>${userName}</strong>,</p>
+    <p>This is an automated notification that you have exceeded the daily break time limit.</p>
+    
+    <div style="background-color: #fef2f2; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px solid #fee2e2;">
+      <p style="margin: 5px 0;"><strong>Daily Limit:</strong> ${limit}</p>
+      <p style="margin: 5px 0;"><strong>Total Used Today:</strong> ${totalBreakTime}</p>
+    </div>
+
+    <p>Please ensure you are following the company's break policy. If you believe this is an error, please contact your manager or update your records via the portal.</p>
+    <p><a href="${process.env.NEXTAUTH_URL}" style="color: #d32f2f; text-decoration: none; font-weight: bold;">User Portal</a></p>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+    console.log("[Email Service] Break limit email sent.");
+  } catch (error) {
+    console.error("[Email Service] FAILED to send break limit email:", error);
+  }
+}

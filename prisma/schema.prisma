@@ -137,6 +137,7 @@ model Leave {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
   declineReason String?
+  isArchived    Boolean   @default(false)
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -152,6 +153,7 @@ model LeaveRequest {
   startTime     DateTime?
   endTime       DateTime?
   declineReason String?
+  isArchived    Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
@@ -220,6 +222,7 @@ model AttendanceRequest {
   reason        String?
   status        String    @default("PENDING") // PENDING, APPROVED, DECLINED
   declineReason String?
+  isArchived    Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?

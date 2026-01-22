@@ -38,8 +38,8 @@ export default function UserLayout({
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center space-y-4">
-                    <div className="h-12 w-12 rounded-xl bg-red-600 flex items-center justify-center animate-bounce shadow-lg mx-auto">
-                        <Flame className="h-6 w-6 text-white fill-white" />
+                    <div className="h-14 w-14 rounded-2xl bg-white flex items-center justify-center animate-bounce shadow-xl mx-auto p-2">
+                        <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
                     <p className="text-xs font-black uppercase tracking-widest text-sidebar-foreground/50">Loading...</p>
                 </div>
@@ -80,13 +80,13 @@ export default function UserLayout({
                 {/* Logo */}
                 <div className="p-6 border-sidebar-border relative">
                     <div className={cn("flex items-center gap-3", sidebarCollapsed && "justify-center")}>
-                        <div className="h-10 w-10 bg-white rounded-lg flex items-center justify-center shrink-0 shadow-sm">
-                            <Flame className="h-5 w-5 text-primary fill-primary" />
+                        <div className="h-11 w-11 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-md p-1.5 transition-transform hover:scale-105">
+                            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         {!sidebarCollapsed && (
                             <div className="flex flex-col">
                                 <span className="text-lg font-bold text-sidebar-foreground tracking-tight leading-none">Redadair</span>
-                                <span className="text-xs font-medium text-sidebar-foreground/60">Attendance System</span>
+                                <span className="text-xs font-medium text-sidebar-foreground/60">Staff Availability</span>
                             </div>
                         )}
                     </div>
@@ -185,8 +185,8 @@ export default function UserLayout({
                         {/* Mobile Logo */}
                         <div className="p-6 border-sidebar-border flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="h-12 w-12 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-100">
-                                    <Flame className="h-6 w-6 text-white fill-white" />
+                                <div className="h-12 w-12 bg-white rounded-xl flex items-center justify-center shadow-lg border border-red-50 p-2">
+                                    <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-base font-black italic uppercase tracking-tighter text-slate-900 leading-none">Redadair</span>
@@ -270,8 +270,8 @@ export default function UserLayout({
                         <Menu className="h-5 w-5" />
                     </Button>
                     <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 bg-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-red-100">
-                            <Flame className="h-4 w-4 text-white fill-white" />
+                        <div className="h-9 w-9 bg-white rounded-lg flex items-center justify-center shadow-md p-1.5">
+                            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         <span className="text-xs font-black italic uppercase tracking-tighter text-slate-900">Redadair</span>
                     </div>

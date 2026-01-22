@@ -29,6 +29,7 @@ interface LeaveRequest {
     status: LeaveStatus
     createdAt: string
     declineReason?: string
+    isArchived?: boolean
 }
 
 export default function LeaveRequestsPage() {
@@ -38,6 +39,7 @@ export default function LeaveRequestsPage() {
     const [filterStatus, setFilterStatus] = useState<string>("all")
     const [isLoading, setIsLoading] = useState(true)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [showArchived, setShowArchived] = useState(false)
 
     // Form state
     const [leaveType, setLeaveType] = useState<string>("SICK")
@@ -91,9 +93,11 @@ export default function LeaveRequestsPage() {
         return `${hour12}:${minutes} ${ampm}`
     }
 
-    const filteredRequests = filterStatus === "all"
-        ? requests
-        : requests.filter((r) => r.status === filterStatus)
+    const filteredRequests = requests.filter((r) => {
+        const matchesStatus = filterStatus === "all" || r.status === filterStatus
+        const matchesArchive = showArchived ? r.isArchived : !r.isArchived
+        return matchesStatus && matchesArchive
+    })
 
     const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newStart = e.target.value
@@ -194,6 +198,36 @@ export default function LeaveRequestsPage() {
         } catch (e) {
             console.error(e)
             alert("Error cancelling request.")
+        }
+    }
+
+    const handleArchive = async (id: string) => {
+        try {
+            const res = await fetch(`/api/leaves/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isArchived: true })
+            })
+            if (res.ok) {
+                setRequests(prev => prev.map(r => r.id === id ? { ...r, isArchived: true } : r))
+            }
+        } catch (e) {
+            console.error(e)
+        }
+    }
+
+    const handleUnarchive = async (id: string) => {
+        try {
+            const res = await fetch(`/api/leaves/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isArchived: false })
+            })
+            if (res.ok) {
+                setRequests(prev => prev.map(r => r.id === id ? { ...r, isArchived: false } : r))
+            }
+        } catch (e) {
+            console.error(e)
         }
     }
 
@@ -385,6 +419,19 @@ export default function LeaveRequestsPage() {
                         <SelectItem value="DECLINED">Denied</SelectItem>
                     </SelectContent>
                 </Select>
+                <div className="flex items-center gap-2 ml-auto">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowArchived(!showArchived)}
+                        className={cn(
+                            "text-xs font-bold uppercase tracking-widest",
+                            showArchived ? "text-primary bg-primary/10" : "text-muted-foreground"
+                        )}
+                    >
+                        {showArchived ? "View Active" : "View Archived"}
+                    </Button>
+                </div>
             </div>
 
             {/* Requests List */}
@@ -460,6 +507,26 @@ export default function LeaveRequestsPage() {
                                             </svg>
                                         </Button>
                                     </div>
+                                )}
+                                {['APPROVED', 'DECLINED'].includes(request.status) && !request.isArchived && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleArchive(request.id)}
+                                        className="h-8 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground"
+                                    >
+                                        Archive
+                                    </Button>
+                                )}
+                                {request.isArchived && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleUnarchive(request.id)}
+                                        className="h-8 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80"
+                                    >
+                                        Unarchive
+                                    </Button>
                                 )}
                             </div>
                         </CardContent>

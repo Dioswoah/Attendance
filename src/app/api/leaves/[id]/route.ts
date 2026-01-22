@@ -30,6 +30,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 data: {
                     status: body.status,
                     declineReason: body.declineReason,
+                    // @ts-ignore
+                    isArchived: body.isArchived,
                     // Allow editing pending request details?
                     startDate: body.startDate ? new Date(body.startDate) : undefined,
                     endDate: body.endDate ? new Date(body.endDate) : undefined,
@@ -120,6 +122,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 data: {
                     status: body.status,
                     declineReason: body.declineReason,
+                    // @ts-ignore
+                    isArchived: body.isArchived,
                     startDate: body.startDate ? new Date(body.startDate) : undefined,
                     endDate: body.endDate ? new Date(body.endDate) : undefined,
                     reason: body.reason,
@@ -228,6 +232,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         action: 'UPDATED'
                     })
                 }
+            }
+        }
+
+        // NEW: Notify Admins if Manager is modifying history
+        const isAdmin = session.user.roles?.includes('ADMIN')
+        if (!isAdmin && session.user.id !== updatedLeave.userId) {
+            const admins = await prisma.user.findMany({ where: { roles: { has: 'ADMIN' } } })
+            for (const admin of admins) {
+                await prisma.notification.create({
+                    data: {
+                        userId: admin.id,
+                        title: "Manager Modified History",
+                        message: `${session.user.name} has modified an approved leave for ${updatedLeave.user.name}.`,
+                        type: "LEAVE_STATUS",
+                        link: "/admin/leaves"
+                    }
+                })
             }
         }
 
@@ -402,6 +423,24 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
                         action: 'CANCELLED'
                     })
                 }
+            }
+        }
+
+        // NEW: Notify Admins if Manager is deleting history
+        const isAdminSession = session.user.roles?.includes('ADMIN')
+        const targetLeave = leave || (leaveRequest as any)
+        if (!isAdminSession && session.user.id !== targetLeave.userId) {
+            const admins = await prisma.user.findMany({ where: { roles: { has: 'ADMIN' } } })
+            for (const admin of admins) {
+                await prisma.notification.create({
+                    data: {
+                        userId: admin.id,
+                        title: "Manager Deleted History",
+                        message: `${session.user.name} has deleted an approved/denied leave for ${targetLeave.user?.name || 'User'}.`,
+                        type: "LEAVE_CANCELLED",
+                        link: "/admin/leaves"
+                    }
+                })
             }
         }
 

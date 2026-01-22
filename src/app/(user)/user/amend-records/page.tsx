@@ -25,6 +25,7 @@ interface AttendanceRequest {
     status: RequestStatus
     createdAt: string
     declineReason?: string
+    isArchived?: boolean
 }
 
 export default function AmendRecordsPage() {
@@ -33,6 +34,13 @@ export default function AmendRecordsPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [editingId, setEditingId] = useState<string | null>(null)
+    const [showArchived, setShowArchived] = useState(false)
+
+    const filteredRequests = requests.filter(r => {
+        const matchesArchive = showArchived ? r.isArchived : !r.isArchived
+        return matchesArchive
+    })
 
     // Dynamic Date Options
     const [dateOptions, setDateOptions] = useState<{ label: string, value: string }[]>([])
@@ -153,18 +161,22 @@ export default function AmendRecordsPage() {
 
             // Construct DateTime for the "time"
             // We need to combine targetDate (YYYY-MM-DD) with time (HH:MM)
-            const dateTimeStr = `${dateStr}T${time}:00`
+            // LOCK to PHT (+08:00)
+            const dateTimeStr = `${dateStr}T${time}:00+08:00`
 
             const payload = {
                 userId: session.user.id,
-                date: targetDate.toISOString(),
+                date: new Date(dateStr + "T00:00:00+08:00").toISOString(),
                 type: recordType,
                 time: new Date(dateTimeStr).toISOString(),
                 reason
             }
 
-            const res = await fetch('/api/attendance-requests', {
-                method: 'POST',
+            const url = editingId ? `/api/attendance-requests/${editingId}` : '/api/attendance-requests'
+            const method = editingId ? 'PATCH' : 'POST'
+
+            const res = await fetch(url, {
+                method: method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             })
@@ -184,6 +196,45 @@ export default function AmendRecordsPage() {
         }
     }
 
+    const handleArchive = async (id: string) => {
+        try {
+            const res = await fetch(`/api/attendance-requests/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isArchived: true })
+            })
+            if (res.ok) {
+                setRequests(prev => prev.map(r => r.id === id ? { ...r, isArchived: true } : r))
+            }
+        } catch (e) {
+            console.error(e)
+        }
+    }
+
+    const handleUnarchive = async (id: string) => {
+        try {
+            const res = await fetch(`/api/attendance-requests/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isArchived: false })
+            })
+            if (res.ok) {
+                setRequests(prev => prev.map(r => r.id === id ? { ...r, isArchived: false } : r))
+            }
+        } catch (e) {
+            console.error(e)
+        }
+    }
+
+    const handleEdit = (req: AttendanceRequest) => {
+        setEditingId(req.id)
+        setSelectedDateOption(format(new Date(req.date), 'yyyy-MM-dd'))
+        setRecordType(req.type)
+        setTime(format(new Date(req.time), 'HH:mm'))
+        setReason(req.reason)
+        setDialogOpen(true)
+    }
+
     const handleDelete = async (id: string) => {
         if (!confirm("Cancel this request?")) return
         try {
@@ -193,6 +244,7 @@ export default function AmendRecordsPage() {
     }
 
     const resetForm = () => {
+        setEditingId(null)
         if (dateOptions.length > 0) setSelectedDateOption(dateOptions[0].value)
         setRecordType("CLOCK_IN")
         setTime("")
@@ -217,7 +269,10 @@ export default function AmendRecordsPage() {
                     <h1 className="text-2xl font-bold tracking-tight">Amend Records</h1>
                     <p className="text-muted-foreground mt-1">Request corrections for your attendance logs.</p>
                 </div>
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <Dialog open={dialogOpen} onOpenChange={(open) => {
+                    setDialogOpen(open)
+                    if (!open) resetForm()
+                }}>
                     <DialogTrigger asChild>
                         <Button className="bg-red-600 hover:bg-red-700 text-white gap-2">
                             <Plus className="w-4 h-4" /> New Request
@@ -225,8 +280,10 @@ export default function AmendRecordsPage() {
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Request Correction</DialogTitle>
-                            <DialogDescription>Submit a change for Clock In/Out or Break times.</DialogDescription>
+                            <DialogTitle>{editingId ? "Edit Correction Request" : "Request Correction"}</DialogTitle>
+                            <DialogDescription>
+                                {editingId ? "Update your correction details." : "Submit a change for Clock In/Out or Break times."}
+                            </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
                             <div className="grid grid-cols-2 gap-4">
@@ -284,9 +341,9 @@ export default function AmendRecordsPage() {
                             </div>
 
                             <div className="flex justify-end pt-2">
-                                <Button type="submit" disabled={isSubmitting} className="bg-red-600 hover:bg-red-700 text-white">
-                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Submit Request
+                                <Button type="submit" disabled={isSubmitting} className="bg-red-600 hover:bg-red-700 text-white min-w-[120px]">
+                                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    {editingId ? "Update Request" : "Submit Request"}
                                 </Button>
                             </div>
                         </form>
@@ -294,18 +351,36 @@ export default function AmendRecordsPage() {
                 </Dialog>
             </div>
 
+            <div className="flex items-center justify-between mt-8 mb-4">
+                <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-red-600" />
+                    <h2 className="text-lg font-bold">Request Log</h2>
+                </div>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowArchived(!showArchived)}
+                    className={cn(
+                        "text-[10px] font-black uppercase tracking-[0.2em]",
+                        showArchived ? "text-primary bg-primary/10" : "text-muted-foreground"
+                    )}
+                >
+                    {showArchived ? "View Active" : "View Archived"}
+                </Button>
+            </div>
+
             <div className="grid gap-4">
                 {isLoading ? (
                     <div className="flex justify-center p-8"><Loader2 className="animate-spin text-red-600" /></div>
-                ) : requests.length === 0 ? (
+                ) : filteredRequests.length === 0 ? (
                     <Card className="bg-muted/30 border-dashed shadow-none">
                         <CardContent className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
                             <FileText className="w-10 h-10 mb-2 opacity-20" />
-                            <p>No amendment requests found.</p>
+                            <p>No {showArchived ? 'archived' : 'active'} requests found.</p>
                         </CardContent>
                     </Card>
                 ) : (
-                    requests.map(req => (
+                    filteredRequests.map(req => (
                         <Card key={req.id} className="overflow-hidden">
                             <CardContent className="p-4 flex items-center justify-between gap-4">
                                 <div className="space-y-1">
@@ -327,8 +402,33 @@ export default function AmendRecordsPage() {
                                 <div className="flex flex-col items-end gap-2">
                                     {getStatusBadge(req.status)}
                                     {req.status === 'PENDING' && (
-                                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 h-8 text-xs" onClick={() => handleDelete(req.id)}>
-                                            Cancel
+                                        <div className="flex gap-2">
+                                            <Button variant="ghost" size="sm" className="text-blue-500 hover:text-blue-700 h-8 text-xs font-bold uppercase tracking-wider" onClick={() => handleEdit(req)}>
+                                                Edit
+                                            </Button>
+                                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 h-8 text-xs font-bold uppercase tracking-wider" onClick={() => handleDelete(req.id)}>
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                    )}
+                                    {['APPROVED', 'DECLINED'].includes(req.status) && !req.isArchived && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleArchive(req.id)}
+                                            className="h-8 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground"
+                                        >
+                                            Archive
+                                        </Button>
+                                    )}
+                                    {req.isArchived && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleUnarchive(req.id)}
+                                            className="h-8 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80"
+                                        >
+                                            Unarchive
                                         </Button>
                                     )}
                                 </div>

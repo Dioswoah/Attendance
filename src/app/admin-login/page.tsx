@@ -96,8 +96,8 @@ export default function AdminLoginPage() {
 
             <div className="w-full max-w-[400px] space-y-6 animate-in fade-in zoom-in duration-500">
                 <div className="flex flex-col items-center text-center space-y-2">
-                    <div className="h-12 w-12 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 mb-2">
-                        <ShieldCheck className="h-6 w-6 text-primary-foreground" />
+                    <div className="h-12 w-12 bg-white rounded-xl flex items-center justify-center shadow-lg border border-border/50 mb-2 overflow-hidden p-1">
+                        <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
                     </div>
                     <div className="space-y-1">
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">Admin Portal</h1>
