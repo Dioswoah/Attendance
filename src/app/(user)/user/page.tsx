@@ -868,16 +868,16 @@ export default function UserPortal() {
             let type = 'request-pending'
 
             if (req.type === 'CLOCK_IN') {
-                label = 'Clock In (Pending)'
+                label = 'Clock In'
                 type = 'clock-in-pending'
             } else if (req.type === 'CLOCK_OUT') {
-                label = 'Clock Out (Pending)'
+                label = 'Clock Out'
                 type = 'clock-out-pending'
             } else if (req.type === 'BREAK_START') {
-                label = 'Break Start (Pending)'
+                label = 'Break Started'
                 type = 'break-start-pending'
             } else if (req.type === 'BREAK_END') {
-                label = 'Break End (Pending)'
+                label = 'Break Ended'
                 type = 'break-end-pending'
             }
 
@@ -981,9 +981,6 @@ export default function UserPortal() {
                                             : currentAttendance?.clockIn ? formatTime(new Date(currentAttendance.clockIn)) : "--:--"
                                         }
                                     </p>
-                                    {pendingClockInForDisplay && (
-                                        <p className="text-[10px] font-bold text-[#006E3F]/70 uppercase tracking-widest mt-1">(Pending)</p>
-                                    )}
                                 </div>
                             )}
 
