@@ -175,20 +175,57 @@ export default function UserPortal() {
             if (pendingClockIn) {
                 const pendingTime = pendingClockIn.time || pendingClockIn.date
                 if (modifiedTodayRecords.length > 0) {
-                    // If we have records, we assume the pending request is correcting the start time of the session.
-                    // We override the start time of the first record.
-                    // Note: Ideally we match specific sessions, but simpler assumption covers 90% of cases.
                     const firstRecord = { ...modifiedTodayRecords[0] }
                     firstRecord.clockIn = pendingTime
+                    // We also need to clone breaks to avoid mutation
+                    firstRecord.breaks = firstRecord.breaks ? [...firstRecord.breaks] : []
                     modifiedTodayRecords[0] = firstRecord
                 } else {
-                    // No official records, create optimistic one (e.g. forgot to clock in)
                     modifiedTodayRecords = [{
                         clockIn: pendingTime,
                         clockOut: null,
                         breaks: []
                     }]
                 }
+            } else if (modifiedTodayRecords.length > 0) {
+                // Clone the first record's breaks anyway so we can inject pending breaks
+                const firstRecord = { ...modifiedTodayRecords[0] }
+                firstRecord.breaks = firstRecord.breaks ? [...firstRecord.breaks] : []
+                modifiedTodayRecords[0] = firstRecord
+            }
+
+            // --- INJECT PENDING BREAKS ---
+            if (modifiedTodayRecords.length > 0) {
+                const record = modifiedTodayRecords[0]
+
+                // 1. Pending Break Starts (Virtual Open Break)
+                const pendingBreakStarts = myAttendanceRequests.filter((req: any) =>
+                    req.type === 'BREAK_START' && req.status === 'PENDING' &&
+                    new Date(req.time || req.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
+                )
+
+                pendingBreakStarts.forEach(req => {
+                    record.breaks.push({
+                        startTime: req.time || req.date,
+                        endTime: null,
+                        isPending: true
+                    })
+                })
+
+                // 2. Pending Break Ends (Close virtual or real open breaks)
+                const pendingBreakEnds = myAttendanceRequests.filter((req: any) =>
+                    req.type === 'BREAK_END' && req.status === 'PENDING' &&
+                    new Date(req.time || req.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
+                ).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime())
+
+                pendingBreakEnds.forEach(req => {
+                    // Find the latest open break to close
+                    // We search in our potentially modified 'record.breaks'
+                    const openBreak = record.breaks.find((b: any) => !b.endTime)
+                    if (openBreak) {
+                        openBreak.endTime = req.time || req.date
+                    }
+                })
             }
 
             let totalWorkedMs = 0
@@ -957,22 +994,21 @@ export default function UserPortal() {
                                         Break Started
                                     </p>
                                     <p className="text-3xl lg:text-4xl font-bold text-[#765424] whitespace-nowrap tabular-nums">
-                                        {/* If we strictly have a pending break start, we should try to find it, otherwise show currentAttendance or Now */}
-                                        {currentAttendance?.breakStart
-                                            ? formatTime(new Date(currentAttendance.breakStart))
-                                            : formatTime(new Date()) // Optimistic showing of 'Now' if we just clicked start break
-                                        }
+                                        {(() => {
+                                            if (currentAttendance?.breakStart) return formatTime(new Date(currentAttendance.breakStart))
+                                            // Find pending break start for today
+                                            const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                                            const pending = myAttendanceRequests.find((r: any) => r.type === 'BREAK_START' && r.status === 'PENDING' && new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT)
+                                            return pending ? formatTime(new Date(pending.time || pending.date)) : formatTime(new Date())
+                                        })()}
                                     </p>
-                                    {!currentAttendance?.breakStart && (
-                                        <p className="text-[10px] font-bold text-[#9A7033]/70 uppercase tracking-widest mt-1">(Pending)</p>
-                                    )}
                                 </div>
                             )}
                         </div>
 
                         {/* Action Buttons */}
                         <div className="flex flex-wrap gap-4 items-center">
-                            {(!currentAttendance?.status || ['clocked-out', 'on-leave'].includes(currentAttendance.status)) && !pendingClockInForDisplay && (
+                            {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
                                 <div className="flex items-center shadow-lg shadow-green-900/10 rounded-xl transition-all active:scale-95 bg-[#009B5A] hover:bg-[#00874e] group">
                                     <Button
                                         onClick={handleClockInClick}
@@ -1028,7 +1064,7 @@ export default function UserPortal() {
                                     </Popover>
                                 </div>
                             )}
-                            {(currentAttendance?.status === 'clocked-in' || pendingClockInForDisplay) && (
+                            {optimisticStatus === 'clocked-in' && (
                                 <>
                                     <Button
                                         onClick={breakStart}
@@ -1051,27 +1087,17 @@ export default function UserPortal() {
                                     </Button>
                                 </>
                             )}
-                            {currentAttendance?.status === 'on-break' && (
-                                <>
-                                    <Button
-                                        onClick={breakEnd}
-                                        disabled={isProcessing}
-                                        size="lg"
-                                        className="gap-2 bg-[#009B5A] hover:bg-[#00874e] text-white h-12 px-8 text-base font-semibold rounded-lg shadow-sm"
-                                    >
-                                        {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Timer className="w-5 h-5" />}
-                                        End Break
-                                    </Button>
-                                    <Button
-                                        onClick={() => setShowClockOutConfirm(true)}
-                                        disabled={isProcessing}
-                                        size="lg"
-                                        className="gap-2 h-12 px-8 text-base font-semibold rounded-lg shadow-sm bg-[#8B2323] hover:bg-[#701c1c] text-white"
-                                    >
-                                        {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="w-5 h-5" />}
-                                        Clock Out
-                                    </Button>
-                                </>
+                            {optimisticStatus === 'on-break' && (
+                                <Button
+                                    onClick={breakEnd}
+                                    disabled={isProcessing}
+                                    size="lg"
+                                    variant="outline"
+                                    className="gap-2 border-[#D4A056] text-[#9A7033] bg-[#FEF9F0] hover:bg-[#FFFBF5] h-12 px-8 text-base font-semibold rounded-lg"
+                                >
+                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Timer className="w-5 h-5" />}
+                                    End Break
+                                </Button>
                             )}
                         </div>
                     </div>
