@@ -1140,7 +1140,16 @@ export default function UserPortal() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-foreground">{myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length + myAttendanceRequests.length}</div>
+                        <div className="text-2xl font-bold text-foreground">
+                            {(() => {
+                                const pendingLeaves = myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length
+                                // Group attendance requests by date (so 4 requests for today = 1 pending item)
+                                const uniqueRequestDates = new Set(myAttendanceRequests.map((r: any) =>
+                                    new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                                ))
+                                return pendingLeaves + uniqueRequestDates.size
+                            })()}
+                        </div>
                         <p className="text-xs text-muted-foreground mt-1">Requests pending</p>
                     </CardContent>
                 </Card>
