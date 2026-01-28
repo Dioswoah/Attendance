@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { sendLeaveRequestEmail } from "@/lib/email"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -81,8 +82,7 @@ export async function POST(req: Request) {
             }
         }
 
-        // @ts-ignore
-        if (global.io) global.io.emit('update-data')
+        broadcastUpdate('attendance', request)
         return NextResponse.json(request)
     } catch (error) {
         console.error("Failed to create attendance request:", error)

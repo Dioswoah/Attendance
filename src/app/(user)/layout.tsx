@@ -28,34 +28,59 @@ export default function UserLayout({
     const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
 
     // Fetch pending counts
-    useEffect(() => {
-        const fetchCounts = async () => {
-            if (!session?.user?.id) return
-            try {
-                // Fetch My Pending Leaves
-                const leaveRes = await fetch(`/api/leaves?userId=${session.user.id}&status=PENDING`)
-                if (leaveRes.ok) {
-                    const leaves = await leaveRes.json()
-                    // If the API returns all, filter. If it supports status, great.
-                    // Based on previous knowledge, the API usually returns all for user, so we filter safely.
-                    const pending = Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING') : []
-                    setPendingLeaveCount(pending.length)
-                }
-
-                // Fetch My Pending Attendance Requests
-                const attnRes = await fetch(`/api/attendance-requests?userId=${session.user.id}&status=PENDING`)
-                if (attnRes.ok) {
-                    const reqs = await attnRes.json()
-                    setPendingAmendCount(Array.isArray(reqs) ? reqs.length : 0)
-                }
-            } catch (error) {
-                console.error("Failed to fetch sidebar counts", error)
+    const fetchCounts = async () => {
+        if (!session?.user?.id) return
+        try {
+            // Fetch My Pending Leaves
+            const leaveRes = await fetch(`/api/leaves?userId=${session.user.id}&status=PENDING`)
+            if (leaveRes.ok) {
+                const leaves = await leaveRes.json()
+                const pending = Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING') : []
+                setPendingLeaveCount(pending.length)
             }
-        }
 
+            // Fetch My Pending Attendance Requests
+            const attnRes = await fetch(`/api/attendance-requests?userId=${session.user.id}&status=PENDING`)
+            if (attnRes.ok) {
+                const reqs = await attnRes.json()
+                if (Array.isArray(reqs)) {
+                    const uniqueDates = new Set(reqs.map((r: any) =>
+                        new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                    ))
+                    setPendingAmendCount(uniqueDates.size)
+                } else {
+                    setPendingAmendCount(0)
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch sidebar counts", error)
+        }
+    }
+
+    useEffect(() => {
         fetchCounts()
 
-        // Optional: Listen for global updates if we had a context, but for now fetch on mount/session is good.
+        // Initialize Realtime Server-Sent Events for Global Sidebar Updates
+        let eventSource: EventSource | null = null;
+        if (typeof EventSource !== 'undefined' && session?.user?.id) {
+            eventSource = new EventSource('/api/stream');
+            eventSource.onmessage = (event) => {
+                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
+                try {
+                    const payload = JSON.parse(event.data);
+                    // Refresh counts if attendance or leaves change anywhere
+                    if (payload.type === 'attendance' || payload.type === 'leaves') {
+                        fetchCounts();
+                    }
+                } catch (e) {
+                    // Silently fail parse
+                }
+            };
+        }
+
+        return () => {
+            if (eventSource) eventSource.close();
+        }
     }, [session?.user?.id])
 
     // Dynamic navigation items based on role

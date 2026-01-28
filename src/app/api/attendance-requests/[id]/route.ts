@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { sendLeaveStatusUpdateEmail } from "@/lib/email"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -113,8 +114,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             })
         }
 
-        // @ts-ignore
-        if (global.io) global.io.emit('update-data')
+        broadcastUpdate('attendance', updatedRequest)
         return NextResponse.json(updatedRequest)
 
     } catch (e) {
@@ -130,6 +130,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             where: { id },
             data: { deletedAt: new Date() }
         })
+        broadcastUpdate('attendance', { id, deleted: true })
         return NextResponse.json({ success: true })
     } catch (e) {
         return NextResponse.json({ error: "Failed to delete" }, { status: 500 })
