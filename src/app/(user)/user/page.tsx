@@ -1,14 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock } from "lucide-react"
+import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -54,6 +55,8 @@ export default function UserPortal() {
 
     // User's Own Leave Requests
     const [myLeaveRequests, setMyLeaveRequests] = useState<any[]>([])
+    // Pending Attendance Amendment Requests
+    const [myAttendanceRequests, setMyAttendanceRequests] = useState<any[]>([])
 
     // Time Tracking
     const [workedTime, setWorkedTime] = useState("00:00:00")
@@ -73,6 +76,10 @@ export default function UserPortal() {
     const [limitTriggered, setLimitTriggered] = useState(false)
     const [showBreakDialog, setShowBreakDialog] = useState(false)
     const [breakDialogType, setBreakDialogType] = useState<"WARNING" | "EXCEEDED">("WARNING")
+
+    // Custom Clock In State
+    const [customClockInTime, setCustomClockInTime] = useState("")
+    const [customReason, setCustomReason] = useState("")
 
     // 1. Initial Data Fetch & Realtime Subscription (SSE)
     useEffect(() => {
@@ -155,10 +162,39 @@ export default function UserPortal() {
                 return recordPHT === todayPHT
             })
 
+            // --- OPTIMISTIC / OVERRIDE CALCULATION ---
+            // Find if we have a pending CLOCK_IN for today
+            const pendingClockIn = myAttendanceRequests.find((req: any) => {
+                if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
+                const reqDate = new Date(req.time || req.date)
+                return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
+            })
+
+            let modifiedTodayRecords = [...todayRecords]
+
+            if (pendingClockIn) {
+                const pendingTime = pendingClockIn.time || pendingClockIn.date
+                if (modifiedTodayRecords.length > 0) {
+                    // If we have records, we assume the pending request is correcting the start time of the session.
+                    // We override the start time of the first record.
+                    // Note: Ideally we match specific sessions, but simpler assumption covers 90% of cases.
+                    const firstRecord = { ...modifiedTodayRecords[0] }
+                    firstRecord.clockIn = pendingTime
+                    modifiedTodayRecords[0] = firstRecord
+                } else {
+                    // No official records, create optimistic one (e.g. forgot to clock in)
+                    modifiedTodayRecords = [{
+                        clockIn: pendingTime,
+                        clockOut: null,
+                        breaks: []
+                    }]
+                }
+            }
+
             let totalWorkedMs = 0
             let totalBreakMs = 0
 
-            todayRecords.forEach((record: any) => {
+            modifiedTodayRecords.forEach((record: any) => {
                 const start = new Date(record.clockIn)
                 const end = record.clockOut ? new Date(record.clockOut) : now
 
@@ -188,7 +224,7 @@ export default function UserPortal() {
         const timeInterval = setInterval(calculateTimes, 1000)
 
         return () => clearInterval(timeInterval)
-    }, [userAttendanceList])
+    }, [userAttendanceList, myAttendanceRequests])
 
     // 3. Break Limit Monitoring Effect
     useEffect(() => {
@@ -301,10 +337,18 @@ export default function UserPortal() {
     const fetchMyLeaveRequests = async () => {
         if (!session?.user?.id) return
         try {
-            const res = await fetch(`/api/leaves?userId=${session.user.id}`)
-            if (res.ok) {
-                const data = await res.json()
+            // Fetch Leave Requests
+            const leaveRes = await fetch(`/api/leaves?userId=${session.user.id}`)
+            if (leaveRes.ok) {
+                const data = await leaveRes.json()
                 setMyLeaveRequests(data)
+            }
+
+            // Fetch Attendance Requests
+            const attnRes = await fetch(`/api/attendance-requests?userId=${session.user.id}&status=PENDING`)
+            if (attnRes.ok) {
+                const data = await attnRes.json()
+                setMyAttendanceRequests(data)
             }
         } catch (error) {
             // Error handled silently for production
@@ -337,6 +381,9 @@ export default function UserPortal() {
     }
 
     const handleClockInClick = () => {
+        // Clear custom time/reason for normal clock in
+        setCustomClockInTime("")
+        setCustomReason("")
         setShowLocationDialog(true)
     }
 
@@ -345,7 +392,47 @@ export default function UserPortal() {
         setIsProcessing(true)
 
         try {
-            // LOCK to PHT (+08:00)
+            // Start Amendment Logic
+            if (customClockInTime && customClockInTime.trim() !== "") {
+                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                const customDateStr = `${todayStr}T${customClockInTime}:00+08:00` // Assuming PHT input
+
+                // If we have a custom reason or time, it's an amendment request
+                // We trust the user wants an amendment if they used the dropdown flow (which sets customClockInTime)
+
+                if (!customReason.trim()) {
+                    alert("Please provide a reason for the time adjustment.")
+                    setIsProcessing(false)
+                    return
+                }
+
+                const res = await fetch('/api/attendance-requests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: session.user.id,
+                        date: customDateStr,
+                        time: customDateStr,
+                        type: 'CLOCK_IN',
+                        reason: `[${mode}] ${customReason}`
+                    })
+                })
+
+                if (res.ok) {
+                    setShowLocationDialog(false)
+                    alert("Clock-in amendment request submitted for manager approval.")
+                    fetchMyLeaveRequests() // Refresh pending requests
+                } else {
+                    const data = await res.json()
+                    alert(data.error || "Failed to submit request")
+                }
+
+                setIsProcessing(false)
+                return
+            }
+            // End Amendment Logic
+
+            // Normal Clock In
             const clockInTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })
             const clockInISO = new Date(clockInTime).toISOString()
 
@@ -368,19 +455,83 @@ export default function UserPortal() {
             setIsProcessing(false)
         }
     }
+    // --- OPTIMISTIC STATUS CALCULATION ---
+    const optimisticStatus = useMemo(() => {
+        let status = currentAttendance?.status || 'clocked-out';
+
+        // Filter requests for today
+        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        const todaysRequests = myAttendanceRequests.filter(req => {
+            const reqDate = new Date(req.time || req.date)
+            return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT && req.status === 'PENDING'
+        }).sort((a, b) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime())
+
+        todaysRequests.forEach(req => {
+            if (req.type === 'CLOCK_IN') status = 'clocked-in'
+            if (req.type === 'BREAK_START') status = 'on-break'
+            if (req.type === 'BREAK_END') status = 'clocked-in'
+            if (req.type === 'CLOCK_OUT') status = 'clocked-out'
+        })
+
+        return status
+    }, [currentAttendance, myAttendanceRequests])
 
     const handleAction = async (action: 'clock-out' | 'start-break' | 'end-break') => {
         if (!session?.user?.id) return
         setIsProcessing(true)
 
         try {
-            const res = await fetch('/api/attendance', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: session.user.id, action })
+            // Check if we are in a "Simulated" state (where our optimistic status differs from real server status)
+            // Or if we specifically have a pending Clock In (root of simulation)
+            const realStatus = currentAttendance?.status || 'clocked-out'
+            const isSimulated = optimisticStatus !== realStatus
+
+            // Special check: If we are trying to End Break, but real status is 'clocked-in' (meaning Break Start was pending),
+            // we must send a request.
+            // Simplified: If statuses don't match, we request.
+            // Also, if we have ANY pending clock-in, we force request mode to be safe.
+            const pendingClockIn = myAttendanceRequests.find((req: any) => {
+                if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
+                const reqDate = new Date(req.time || req.date)
+                const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
             })
-            if (res.ok) {
-                fetchAttendance()
+
+            if (isSimulated || pendingClockIn) {
+                // Submit as Amendment Request
+                let reqType = ''
+                if (action === 'start-break') reqType = 'BREAK_START'
+                if (action === 'end-break') reqType = 'BREAK_END'
+                if (action === 'clock-out') reqType = 'CLOCK_OUT'
+
+                const res = await fetch('/api/attendance-requests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: session.user.id,
+                        date: new Date().toISOString(),
+                        time: new Date().toISOString(),
+                        type: reqType,
+                        reason: "Action taken while pending previous requests"
+                    })
+                })
+
+                if (res.ok) {
+                    fetchMyLeaveRequests() // Refresh pending list
+                } else {
+                    const data = await res.json()
+                    alert(data.error || "Failed to submit request")
+                }
+            } else {
+                // Normal API Call
+                const res = await fetch('/api/attendance', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: session.user.id, action })
+                })
+                if (res.ok) {
+                    fetchAttendance()
+                }
             }
         } catch (error) {
             // Error handled silently
@@ -561,10 +712,10 @@ export default function UserPortal() {
     }
 
     const getActivityDotColor = (type: string) => {
-        if (type.includes('clock-in')) return "bg-green-500"
-        if (type.includes('clock-out')) return "bg-red-500"
-        if (type.includes('break-start')) return "bg-yellow-500"
-        if (type.includes('break-end')) return "bg-blue-500"
+        if (type.includes('clock-in')) return type.includes('pending') ? "bg-green-200" : "bg-green-500"
+        if (type.includes('clock-out')) return type.includes('pending') ? "bg-red-200" : "bg-red-500"
+        if (type.includes('break-start')) return type.includes('pending') ? "bg-yellow-200" : "bg-yellow-500"
+        if (type.includes('break-end')) return type.includes('pending') ? "bg-blue-200" : "bg-blue-500"
         return "bg-slate-300"
     }
 
@@ -622,56 +773,85 @@ export default function UserPortal() {
     // --- Derived State for UI ---
 
     // Flatten attendance records into a chronological activity feed
-    const activityFeed = userAttendanceList.flatMap((record: any) => {
-        const events = []
+    const activityFeed = [
+        ...userAttendanceList.flatMap((record: any) => {
+            const events = []
 
-        // 1. Clock In
-        if (record.clockIn) {
-            events.push({
-                type: 'clock-in',
-                timestamp: record.clockIn,
-                label: 'Clocked In'
-            })
-        }
+            // 1. Clock In
+            if (record.clockIn) {
+                events.push({
+                    type: 'clock-in',
+                    timestamp: record.clockIn,
+                    label: 'Clocked In'
+                })
+            }
 
-        // 2. Break Start
-        if (record.breakStart) {
-            events.push({
-                type: 'break-start',
-                timestamp: record.breakStart,
-                label: 'Started Break'
-            })
-        }
+            // 2. Break Start
+            if (record.breakStart) {
+                events.push({
+                    type: 'break-start',
+                    timestamp: record.breakStart,
+                    label: 'Started Break'
+                })
+            }
 
-        // 3. Break End
-        if (record.breakEnd) {
-            events.push({
-                type: 'break-end',
-                timestamp: record.breakEnd,
-                label: 'Ended Break'
-            })
-        }
+            // 3. Break End
+            if (record.breakEnd) {
+                events.push({
+                    type: 'break-end',
+                    timestamp: record.breakEnd,
+                    label: 'Ended Break'
+                })
+            }
 
-        // 4. Clock Out
-        if (record.clockOut) {
-            events.push({
-                type: 'clock-out',
-                timestamp: record.clockOut,
-                label: 'Clocked Out'
-            })
-        }
+            // 4. Clock Out
+            if (record.clockOut) {
+                events.push({
+                    type: 'clock-out',
+                    timestamp: record.clockOut,
+                    label: 'Clocked Out'
+                })
+            }
 
-        // Handle Leaves
-        if (record.mode === 'LEAVE') {
-            events.push({
-                type: 'leave-start',
-                timestamp: record.date ? `${record.date}T09:00:00` : new Date().toISOString(),
-                label: `On Leave (${record.type || 'Approved'})`
-            })
-        }
+            // Handle Leaves
+            if (record.mode === 'LEAVE') {
+                events.push({
+                    type: 'leave-start',
+                    timestamp: record.date ? `${record.date}T09:00:00` : new Date().toISOString(),
+                    label: `On Leave (${record.type || 'Approved'})`
+                })
+            }
 
-        return events
-    })
+            return events
+        }),
+        // Add Pending Attendance Requests to Feed
+        ...myAttendanceRequests.map((req: any) => {
+            // Map request types to labels
+            let label = 'Request Pending'
+            let type = 'request-pending'
+
+            if (req.type === 'CLOCK_IN') {
+                label = 'Clock In (Pending)'
+                type = 'clock-in-pending'
+            } else if (req.type === 'CLOCK_OUT') {
+                label = 'Clock Out (Pending)'
+                type = 'clock-out-pending'
+            } else if (req.type === 'BREAK_START') {
+                label = 'Break Start (Pending)'
+                type = 'break-start-pending'
+            } else if (req.type === 'BREAK_END') {
+                label = 'Break End (Pending)'
+                type = 'break-end-pending'
+            }
+
+            return {
+                type,
+                timestamp: req.time || req.date, // Use the requested time
+                label,
+                isPending: true
+            }
+        })
+    ]
         .filter(event => {
             // Ensure strictly TODAY'S records are shown (using PHT)
             if (!event.timestamp) return false
@@ -680,6 +860,9 @@ export default function UserPortal() {
             return eventPHT === todayPHT
         })
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    // De-duplicate: If we have a 'Clock In' and 'Clock In (Pending)' at similar times, user behavior suggests prefer the REAL one,
+    // but if the Pending one is strictly newer/different, showing both is fine to indicate status.
+    // For simplicity, we just show everything sorted.
 
 
     // Aliases for new UI Actions
@@ -688,6 +871,13 @@ export default function UserPortal() {
     const breakStart = () => handleAction('start-break')
     const breakEnd = () => handleAction('end-break')
     const handleLeaveSubmit = requestLeave
+
+    const pendingClockInForDisplay = myAttendanceRequests.find((req: any) => {
+        if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
+        const reqDate = new Date(req.time || req.date)
+        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
+    })
 
     return (
         <div className="p-6 lg:p-10 space-y-8 max-w-7xl mx-auto">
@@ -727,14 +917,14 @@ export default function UserPortal() {
                         {/* Status Cards Grid - Adapts based on content */}
                         <div className={cn(
                             "grid gap-4",
-                            currentAttendance?.status === 'on-break' ? "grid-cols-1 md:grid-cols-3" :
-                                currentAttendance?.status === 'clocked-in' ? "grid-cols-1 md:grid-cols-2" :
+                            optimisticStatus === 'on-break' ? "grid-cols-1 md:grid-cols-3" :
+                                optimisticStatus === 'clocked-in' ? "grid-cols-1 md:grid-cols-2" :
                                     "grid-cols-1 md:grid-cols-2 lg:grid-cols-3" // Default / Clocked Out state layout
                         )}>
                             {/* Current Time - Always Visible */}
                             <div className={cn(
                                 "text-center p-6 rounded-xl bg-[#FDFBF7] border border-[#F2EFE9]",
-                                !currentAttendance || currentAttendance.status === 'clocked-out' ? "md:col-span-2 lg:col-span-1" : ""
+                                optimisticStatus === 'clocked-out' || optimisticStatus === 'on-leave' ? "md:col-span-2 lg:col-span-1" : ""
                             )}>
                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Current Time</p>
                                 <p className="text-4xl lg:text-5xl font-mono font-medium text-foreground whitespace-nowrap tabular-nums tracking-tight">
@@ -742,45 +932,103 @@ export default function UserPortal() {
                                 </p>
                             </div>
 
-                            {/* Clocked In Status - Visible when working or on break */}
-                            {currentAttendance?.clockIn && currentAttendance?.status !== 'clocked-out' && (
+                            {/* Clocked In Status - Visible when working, on break */}
+                            {(optimisticStatus === 'clocked-in' || optimisticStatus === 'on-break') && (
                                 <div className="text-center p-6 rounded-xl bg-[#EFF6F2] border border-[#E0EBE3]">
                                     <p className="text-xs font-bold text-[#006E3F] uppercase tracking-widest mb-3">
-                                        Clocked In At
+                                        clocked in at
                                     </p>
                                     <p className="text-3xl lg:text-4xl font-bold text-[#00522F] whitespace-nowrap tabular-nums">
-                                        {formatTime(new Date(currentAttendance.clockIn))}
+                                        {pendingClockInForDisplay
+                                            ? formatTime(new Date(pendingClockInForDisplay.time || pendingClockInForDisplay.date))
+                                            : currentAttendance?.clockIn ? formatTime(new Date(currentAttendance.clockIn)) : "--:--"
+                                        }
                                     </p>
+                                    {pendingClockInForDisplay && (
+                                        <p className="text-[10px] font-bold text-[#006E3F]/70 uppercase tracking-widest mt-1">(Pending)</p>
+                                    )}
                                 </div>
                             )}
 
                             {/* Break Status - Only visible when on break */}
-                            {currentAttendance?.breakStart && currentAttendance.status === 'on-break' && (
+                            {optimisticStatus === 'on-break' && (
                                 <div className="text-center p-6 rounded-xl bg-[#FEF9F0] border border-[#F5EAD9]">
                                     <p className="text-xs font-bold text-[#9A7033] uppercase tracking-widest mb-3">
                                         Break Started
                                     </p>
                                     <p className="text-3xl lg:text-4xl font-bold text-[#765424] whitespace-nowrap tabular-nums">
-                                        {formatTime(new Date(currentAttendance.breakStart))}
+                                        {/* If we strictly have a pending break start, we should try to find it, otherwise show currentAttendance or Now */}
+                                        {currentAttendance?.breakStart
+                                            ? formatTime(new Date(currentAttendance.breakStart))
+                                            : formatTime(new Date()) // Optimistic showing of 'Now' if we just clicked start break
+                                        }
                                     </p>
+                                    {!currentAttendance?.breakStart && (
+                                        <p className="text-[10px] font-bold text-[#9A7033]/70 uppercase tracking-widest mt-1">(Pending)</p>
+                                    )}
                                 </div>
                             )}
                         </div>
 
                         {/* Action Buttons */}
                         <div className="flex flex-wrap gap-4 items-center">
-                            {(!currentAttendance?.status || ['clocked-out', 'on-leave'].includes(currentAttendance.status)) && (
-                                <Button
-                                    onClick={handleClockInClick}
-                                    disabled={isProcessing}
-                                    size="lg"
-                                    className="gap-2 bg-[#009B5A] hover:bg-[#00874e] text-white h-12 px-8 text-base font-semibold rounded-lg shadow-sm transition-all active:scale-95"
-                                >
-                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-                                    Clock In
-                                </Button>
+                            {(!currentAttendance?.status || ['clocked-out', 'on-leave'].includes(currentAttendance.status)) && !pendingClockInForDisplay && (
+                                <div className="flex items-center shadow-lg shadow-green-900/10 rounded-xl transition-all active:scale-95 bg-[#009B5A] hover:bg-[#00874e] group">
+                                    <Button
+                                        onClick={handleClockInClick}
+                                        disabled={isProcessing}
+                                        className="gap-2 bg-transparent hover:bg-transparent text-white h-14 px-8 text-base font-semibold border-r border-green-600/30 rounded-r-none focus:ring-0 focus:ring-offset-0"
+                                    >
+                                        {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+                                        Clock In
+                                    </Button>
+
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                disabled={isProcessing}
+                                                className="px-3 h-14 bg-transparent hover:bg-[#007041] text-white rounded-l-none focus:ring-0 focus:ring-offset-0 transition-colors"
+                                            >
+                                                <ChevronDown className="h-5 w-5" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-80 p-0 rounded-2xl shadow-xl border-border overflow-hidden" align="end">
+                                            <div className="bg-[#8B2323] p-4 text-center relative overflow-hidden">
+                                                <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                                                <p className="text-white font-black uppercase tracking-widest text-[10px] relative z-10">Request Amendment</p>
+                                                <p className="text-white/60 text-[9px] mt-1 relative z-10">Clock in at a different time</p>
+                                            </div>
+                                            <div className="p-4 space-y-4 bg-white">
+                                                <div className="space-y-1">
+                                                    <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Time of Entry</Label>
+                                                    <Input
+                                                        type="time"
+                                                        value={customClockInTime}
+                                                        onChange={(e) => setCustomClockInTime(e.target.value)}
+                                                        className="h-10 bg-white border-slate-200 rounded-lg font-mono font-bold text-base"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Reason</Label>
+                                                    <Input
+                                                        placeholder="Reason for adjustment..."
+                                                        value={customReason}
+                                                        onChange={(e) => setCustomReason(e.target.value)}
+                                                        className="h-10 bg-white border-slate-200 rounded-lg text-xs"
+                                                    />
+                                                </div>
+                                                <Button
+                                                    onClick={() => setShowLocationDialog(true)}
+                                                    className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-widest rounded-lg shadow-md transition-all active:scale-95"
+                                                >
+                                                    Continue
+                                                </Button>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                             )}
-                            {currentAttendance?.status === 'clocked-in' && (
+                            {(currentAttendance?.status === 'clocked-in' || pendingClockInForDisplay) && (
                                 <>
                                     <Button
                                         onClick={breakStart}
@@ -869,7 +1117,7 @@ export default function UserPortal() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-foreground">{myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length}</div>
+                        <div className="text-2xl font-bold text-foreground">{myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length + myAttendanceRequests.length}</div>
                         <p className="text-xs text-muted-foreground mt-1">Requests pending</p>
                     </CardContent>
                 </Card>
@@ -1099,6 +1347,29 @@ export default function UserPortal() {
                     </div>
 
                     <div className="p-8 space-y-4 bg-white">
+                        {customClockInTime && (
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4 space-y-3">
+                                <div className="space-y-1">
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Time of Entry</Label>
+                                    <Input
+                                        type="time"
+                                        value={customClockInTime}
+                                        onChange={(e) => setCustomClockInTime(e.target.value)}
+                                        className="h-12 bg-white border-slate-200 rounded-xl font-mono font-bold text-lg"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Amendment Reason (Optional)</Label>
+                                    <Input
+                                        placeholder="Required if adjusting time..."
+                                        value={customReason}
+                                        onChange={(e) => setCustomReason(e.target.value)}
+                                        className="bg-white border-slate-200 rounded-xl text-xs"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-4">
                             <Button
                                 onClick={() => confirmClockIn('OFFICE')}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
+import { RisaChatbot } from "@/components/RisaChatbot"
 
 export default function UserLayout({
     children,
@@ -17,6 +18,8 @@ export default function UserLayout({
 }) {
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [pendingLeaveCount, setPendingLeaveCount] = useState(0)
+    const [pendingAmendCount, setPendingAmendCount] = useState(0)
     const pathname = usePathname()
     const { data: session, status } = useSession()
 
@@ -24,11 +27,42 @@ export default function UserLayout({
     const userRoles = (session?.user as any)?.roles || []
     const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
 
+    // Fetch pending counts
+    useEffect(() => {
+        const fetchCounts = async () => {
+            if (!session?.user?.id) return
+            try {
+                // Fetch My Pending Leaves
+                const leaveRes = await fetch(`/api/leaves?userId=${session.user.id}&status=PENDING`)
+                if (leaveRes.ok) {
+                    const leaves = await leaveRes.json()
+                    // If the API returns all, filter. If it supports status, great.
+                    // Based on previous knowledge, the API usually returns all for user, so we filter safely.
+                    const pending = Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING') : []
+                    setPendingLeaveCount(pending.length)
+                }
+
+                // Fetch My Pending Attendance Requests
+                const attnRes = await fetch(`/api/attendance-requests?userId=${session.user.id}&status=PENDING`)
+                if (attnRes.ok) {
+                    const reqs = await attnRes.json()
+                    setPendingAmendCount(Array.isArray(reqs) ? reqs.length : 0)
+                }
+            } catch (error) {
+                console.error("Failed to fetch sidebar counts", error)
+            }
+        }
+
+        fetchCounts()
+
+        // Optional: Listen for global updates if we had a context, but for now fetch on mount/session is good.
+    }, [session?.user?.id])
+
     // Dynamic navigation items based on role
     const navItems = [
         { name: "Dashboard", href: "/user", icon: LayoutDashboard },
-        { name: "Leave Requests", href: "/user/leaves", icon: CalendarDays },
-        { name: "Amend Records", href: "/user/amend-records", icon: Edit },
+        { name: "Leave Requests", href: "/user/leaves", icon: CalendarDays, badge: pendingLeaveCount },
+        { name: "Amend Records", href: "/user/amend-records", icon: Edit, badge: pendingAmendCount },
         { name: "Activity Logs", href: "/user/activity", icon: FileText },
         ...(isManagerOrAdmin ? [{ name: "Manager Control", href: "/user/manager", icon: Users }] : []),
     ]
@@ -38,7 +72,7 @@ export default function UserLayout({
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center space-y-4">
-                    <div className="h-14 w-14 rounded-2xl bg-white flex items-center justify-center animate-bounce shadow-xl mx-auto p-2">
+                    <div className="h-20 w-20 bg-white rounded-3xl flex items-center justify-center animate-bounce shadow-xl mx-auto overflow-hidden">
                         <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
                     <p className="text-xs font-black uppercase tracking-widest text-sidebar-foreground/50">Loading...</p>
@@ -80,7 +114,7 @@ export default function UserLayout({
                 {/* Logo */}
                 <div className="p-6 border-sidebar-border relative">
                     <div className={cn("flex items-center gap-3", sidebarCollapsed && "justify-center")}>
-                        <div className="h-11 w-11 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-md p-1.5 transition-transform hover:scale-105">
+                        <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center shrink-0 shadow-md transition-transform hover:scale-105 overflow-hidden">
                             <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         {!sidebarCollapsed && (
@@ -112,7 +146,7 @@ export default function UserLayout({
                                 key={item.href}
                                 href={item.href}
                                 className={cn(
-                                    "flex items-center gap-3 px-3 h-10 rounded-lg font-medium text-sm transition-all duration-200",
+                                    "flex items-center gap-3 px-3 h-10 rounded-lg font-medium text-sm transition-all duration-200 relative",
                                     isActive
                                         ? "bg-[#D4A056] text-primary-foreground font-semibold shadow-sm"
                                         : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground",
@@ -120,7 +154,18 @@ export default function UserLayout({
                                 )}
                             >
                                 <Icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary-foreground" : "text-sidebar-foreground/70")} />
-                                {!sidebarCollapsed && <span>{item.name}</span>}
+                                {!sidebarCollapsed && (
+                                    <span className="flex-1">{item.name}</span>
+                                )}
+                                {item.badge ? (
+                                    sidebarCollapsed ? (
+                                        <div className="absolute top-0 right-0 h-3 w-3 rounded-full bg-white border-2 border-transparent" />
+                                    ) : (
+                                        <span className="bg-white text-red-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                            {item.badge}
+                                        </span>
+                                    )
+                                ) : null}
                             </Link>
                         )
                     })}
@@ -185,7 +230,7 @@ export default function UserLayout({
                         {/* Mobile Logo */}
                         <div className="p-6 border-sidebar-border flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="h-12 w-12 bg-white rounded-xl flex items-center justify-center shadow-lg border border-red-50 p-2">
+                                <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-red-50 overflow-hidden">
                                     <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                                 </div>
                                 <div className="flex flex-col">
@@ -214,14 +259,19 @@ export default function UserLayout({
                                         href={item.href}
                                         onClick={() => setSidebarOpen(false)}
                                         className={cn(
-                                            "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300",
+                                            "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
                                             isActive
                                                 ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-lg shadow-sidebar-accent/20"
                                                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
                                         )}
                                     >
                                         <Icon className="h-6 w-6" />
-                                        <span className="text-xs font-black tracking-widest">{item.name}</span>
+                                        <span className="text-xs font-black tracking-widest flex-1">{item.name}</span>
+                                        {item.badge ? (
+                                            <span className="bg-red-100/80 text-red-900 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                                {item.badge}
+                                            </span>
+                                        ) : null}
                                     </Link>
                                 )
                             })}
@@ -270,7 +320,7 @@ export default function UserLayout({
                         <Menu className="h-5 w-5" />
                     </Button>
                     <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 bg-white rounded-lg flex items-center justify-center shadow-md p-1.5">
+                        <div className="h-12 w-12 bg-white rounded-xl flex items-center justify-center shadow-md overflow-hidden">
                             <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         <span className="text-xs font-black italic uppercase tracking-tighter text-slate-900">Redadair</span>
@@ -312,6 +362,7 @@ export default function UserLayout({
                     {children}
                 </main>
             </div>
+            <RisaChatbot />
         </div>
     )
 }

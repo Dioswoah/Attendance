@@ -65,8 +65,8 @@ function LoginContent() {
 
             <div className="w-full max-w-[400px] space-y-6 animate-in fade-in zoom-in duration-500">
                 <div className="flex flex-col items-center text-center space-y-4">
-                    <div className="h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-lg mb-2 overflow-hidden border border-border/50">
-                        <img src="/logo.png" alt="RSA Logo" className="w-full h-full object-cover p-1" />
+                    <div className="h-28 w-28 bg-white rounded-3xl flex items-center justify-center shadow-lg mb-2 overflow-hidden border border-border/50">
+                        <img src="/logo.png" alt="RSA Logo" className="w-full h-full object-cover" />
                     </div>
                     <div className="space-y-2">
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Redadair</h1>

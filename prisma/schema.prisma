@@ -35,6 +35,7 @@ model User {
   manager            User?          @relation("UserManager", fields: [managerId], references: [id])
   managedUsers       User[]         @relation("UserManager")
   team               Team?          @relation(fields: [teamId], references: [id])
+  chatSessions       ChatSession[]
 }
 
 model Account {
@@ -228,4 +229,23 @@ model AttendanceRequest {
   deletedAt     DateTime?
 
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String?       @default("New Chat")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  role      String // "user" or "model"
+  content   String      
+  createdAt DateTime    @default(now())
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
