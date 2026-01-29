@@ -30,11 +30,10 @@ export default function AdminDashboard() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const todayStr = new Date().toISOString().split('T')[0]
                 const [empRes, deptRes, attRes] = await Promise.all([
                     fetch('/api/employees'),
                     fetch('/api/departments'),
-                    fetch(`/api/attendance?date=${todayStr}`)
+                    fetch('/api/attendance')
                 ])
 
                 if (empRes.ok && deptRes.ok && attRes.ok) {

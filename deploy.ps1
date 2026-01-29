@@ -28,7 +28,7 @@ Write-Host "Loading configuration from .env..." -ForegroundColor cyan
 Get-EnvVar
 
 # Check for required variables
-$RequiredVars = @("PROJECT_ID", "REGION", "SERVICE_NAME", "CLOUD_SQL_INSTANCE", "CLOUD_SQL_REGION", "DATABASE_NAME", "DATABASE_USER", "DATABASE_PASS_ENCODED", "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET", "ADMIN_PASSWORD", "NEXTAUTH_SECRET", "SERVICE_URL")
+$RequiredVars = @("PROJECT_ID", "REGION", "SERVICE_NAME", "CLOUD_SQL_INSTANCE", "CLOUD_SQL_REGION", "DATABASE_NAME", "DATABASE_USER", "DATABASE_PASS_ENCODED", "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET", "ADMIN_PASSWORD", "NEXTAUTH_SECRET", "SERVICE_URL", "GOOGLE_GENERATIVE_AI_API_KEY")
 foreach ($var in $RequiredVars) {
     if (-not (Get-Variable -Name $var -ErrorAction SilentlyContinue)) {
         Write-Error "Missing required environment variable: $var"
@@ -95,6 +95,7 @@ gcloud run deploy $SERVICE_NAME `
   --set-env-vars "AUTH_GOOGLE_ID=$AUTH_GOOGLE_ID" `
   --set-env-vars "AUTH_GOOGLE_SECRET=$AUTH_GOOGLE_SECRET" `
   --set-env-vars "ADMIN_PASSWORD=$ADMIN_PASSWORD" `
+  --set-env-vars "GOOGLE_GENERATIVE_AI_API_KEY=$GOOGLE_GENERATIVE_AI_API_KEY" `
   --memory 512Mi `
   --cpu 1 `
   --min-instances 0 `

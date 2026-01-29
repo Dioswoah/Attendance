@@ -49,9 +49,12 @@ gcloud run deploy ${SERVICE_NAME} \
   --set-env-vars NEXTAUTH_SECRET="${NEXTAUTH_SECRET}" \
   --set-env-vars NEXTAUTH_URL="${SERVICE_URL}" \
   --set-env-vars DATABASE_URL="${CLOUD_RUN_DATABASE_URL}" \
+  --set-env-vars AUTH_TRUST_HOST=true \
   --set-env-vars AUTH_GOOGLE_ID="${AUTH_GOOGLE_ID}" \
   --set-env-vars AUTH_GOOGLE_SECRET="${AUTH_GOOGLE_SECRET}" \
   --set-env-vars ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+  --set-env-vars GOOGLE_GENERATIVE_AI_API_KEY="${GOOGLE_GENERATIVE_AI_API_KEY}" \
+  --set-env-vars PROJECT_ID="${PROJECT_ID}" \
   --memory 512Mi \
   --cpu 1 \
   --min-instances 0 \

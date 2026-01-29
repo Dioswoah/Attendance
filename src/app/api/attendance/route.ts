@@ -59,8 +59,56 @@ function getPHTToday() {
 }
 
 
+/**
+ * Helper to automatically "seal" open sessions from previous days.
+ * If someone forgot to clock out or end a break, we close them at 11:59:59 PM of that day.
+ */
+async function cleanupOldSessions() {
+    const today = getPHTToday()
+
+    // Find sessions from previous days where clockOut is null
+    const unclosed = await prisma.attendance.findMany({
+        where: {
+            date: { lt: today },
+            clockOut: null
+        }
+    })
+
+    if (unclosed.length === 0) return
+
+    for (const session of unclosed) {
+        // We set the clockOut to the end of that day (23:59:59 UTC relative to that day's start)
+        const endDay = new Date(session.date)
+        endDay.setUTCHours(23, 59, 59, 999)
+
+        await prisma.attendance.update({
+            where: { id: session.id },
+            data: {
+                clockOut: endDay,
+                status: 'PRESENT'
+            }
+        })
+
+        // Also close any open breaks for this session
+        await prisma.break.updateMany({
+            where: {
+                attendanceId: session.id,
+                endTime: null
+            },
+            data: {
+                endTime: endDay
+            }
+        })
+    }
+}
 
 export async function GET(req: Request) {
+    try {
+        await cleanupOldSessions()
+    } catch (e) {
+        console.error("Cleanup failed:", e)
+    }
+
     const { searchParams } = new URL(req.url)
     const userId = searchParams.get('userId')
 
@@ -97,7 +145,18 @@ export async function GET(req: Request) {
 
     if (userId) whereClause.userId = userId
     if (departmentId && departmentId !== 'all') {
-        whereClause.user = { departmentId }
+        const dept = await prisma.department.findUnique({ where: { id: departmentId } })
+        if (dept) {
+            whereClause.user = {
+                OR: [
+                    { departmentId: departmentId },
+                    { department: { name: { equals: dept.name, mode: 'insensitive' } } },
+                    { department: { name: dept.name } }
+                ]
+            }
+        } else {
+            whereClause.user = { departmentId }
+        }
     }
     if (managerId) {
         whereClause.user = { ...whereClause.user, managerId }
@@ -107,7 +166,20 @@ export async function GET(req: Request) {
         // Prepare Leave Query
         let leaveWhere: any = { status: 'APPROVED', deletedAt: null }
         if (userId) leaveWhere.userId = userId
-        if (departmentId && departmentId !== 'all') leaveWhere.user = { departmentId }
+        if (departmentId && departmentId !== 'all') {
+            const dept = await prisma.department.findUnique({ where: { id: departmentId } })
+            if (dept) {
+                leaveWhere.user = {
+                    OR: [
+                        { departmentId: departmentId },
+                        { department: { name: { equals: dept.name, mode: 'insensitive' } } },
+                        { department: { name: dept.name } }
+                    ]
+                }
+            } else {
+                leaveWhere.user = { departmentId }
+            }
+        }
         if (managerId) leaveWhere.user = { ...leaveWhere.user, managerId }
 
         // Date logic for Leaves
@@ -317,8 +389,8 @@ export async function POST(req: Request) {
         if (session && session.user.id !== userId) {
             const targetUser = await prisma.user.findUnique({ where: { id: userId } })
             if (targetUser && targetUser.email && session.accessToken) {
-                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}` +
-                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '') +
+                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : 'N/A'}` +
+                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}` : '') +
                     ` (${attendance.mode})`
 
                 await sendAdminActionEmail({

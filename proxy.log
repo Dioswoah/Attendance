@@ -1,0 +1,7 @@
+2026/01/30 06:17:45 Authorizing with Application Default Credentials
+2026/01/30 06:17:45 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Listening on [::]:5434
+2026/01/30 06:17:45 The proxy has started successfully and is ready for new connections!
+2026/01/30 06:20:14 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:58576
+2026/01/30 06:20:15 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] failed to connect to instance: failed to get instance: refresh error: failed to get instance metadata (connection name = "buoyant-purpose-475203-t9:australia-southeast1:bapteamproject"): Get "https://sqladmin.googleapis.com/sql/v1beta4/projects/buoyant-purpose-475203-t9/instances/bapteamproject/connectSettings?alt=json&prettyPrint=false": auth: "invalid_grant" "reauth related error (invalid_rapt)" "https://support.google.com/a/answer/9368756"
+2026/01/30 06:20:29 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:58580
+2026/01/30 06:20:29 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] failed to connect to instance: failed to get instance: refresh error: failed to get instance metadata (connection name = "buoyant-purpose-475203-t9:australia-southeast1:bapteamproject"): Get "https://sqladmin.googleapis.com/sql/v1beta4/projects/buoyant-purpose-475203-t9/instances/bapteamproject/connectSettings?alt=json&prettyPrint=false": auth: "invalid_grant" "reauth related error (invalid_rapt)" "https://support.google.com/a/answer/9368756"

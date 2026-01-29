@@ -470,8 +470,7 @@ export default function UserPortal() {
             // End Amendment Logic
 
             // Normal Clock In
-            const clockInTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })
-            const clockInISO = new Date(clockInTime).toISOString()
+            const clockInISO = new Date().toISOString()
 
             const res = await fetch('/api/attendance', {
                 method: 'POST',

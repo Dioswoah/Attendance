@@ -127,6 +127,25 @@ export default function ManualEntryPage() {
         }
     }
 
+    // Unified PHT Formatting Helpers
+    const formatPHT = (dateStr: string | null | undefined, options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false }) => {
+        if (!dateStr) return '---'
+        try {
+            return new Date(dateStr).toLocaleTimeString('en-US', { ...options, timeZone: 'Asia/Manila' })
+        } catch (e) { return '---' }
+    }
+
+    const formatDatePHT = (dateStr: string | null | undefined) => {
+        if (!dateStr) return '---'
+        try {
+            // Check if string is just a date like YYYY-MM-DD
+            if (dateStr.length === 10 && dateStr.includes('-')) {
+                return new Date(dateStr + "T00:00:00+08:00").toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' })
+            }
+            return new Date(dateStr).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' })
+        } catch (e) { return '---' }
+    }
+
     const handleAttendanceSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
@@ -652,17 +671,15 @@ export default function ManualEntryPage() {
                                                 <span className="font-medium text-foreground text-sm">{rec.userName}</span>
                                             </TableCell>
                                             <TableCell className="py-4 px-6 text-sm text-muted-foreground">{rec.department}</TableCell>
-                                            <TableCell className="py-4 px-6 text-sm text-muted-foreground">
+                                            <TableCell className="py-4 px-6 text-sm text-muted-foreground whitespace-nowrap">
                                                 {activeTab === 'leaves'
-                                                    ? `${rec.startDate ? format(parseISO(rec.startDate), "dd MMM") : '---'} - ${rec.endDate ? format(parseISO(rec.endDate), "dd MMM") : '---'}`
-                                                    : (rec.clockIn || rec.date || rec.startTime)
-                                                        ? format(parseISO(rec.clockIn || rec.date || rec.startTime), "dd MMM yyyy")
-                                                        : '---'}
+                                                    ? `${formatDatePHT(rec.startDate)} - ${formatDatePHT(rec.endDate)}`
+                                                    : formatDatePHT(rec.clockIn || rec.date || rec.startTime)}
                                             </TableCell>
                                             {activeTab === 'attendance' ? (
                                                 <>
-                                                    <TableCell className="py-4 px-6 text-sm text-primary font-medium">{rec.clockIn ? format(parseISO(rec.clockIn), "HH:mm") : '---'}</TableCell>
-                                                    <TableCell className="py-4 px-6 text-sm text-muted-foreground">{rec.clockOut ? format(parseISO(rec.clockOut), "HH:mm") : '---'}</TableCell>
+                                                    <TableCell className="py-4 px-6 text-sm text-primary font-medium">{formatPHT(rec.clockIn)}</TableCell>
+                                                    <TableCell className="py-4 px-6 text-sm text-muted-foreground">{formatPHT(rec.clockOut)}</TableCell>
                                                     <TableCell className="py-4 px-6 text-sm font-semibold">
                                                         {rec.clockIn && rec.clockOut ?
                                                             ((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60 * 60)).toFixed(2) + ' hrs'
@@ -690,9 +707,9 @@ export default function ManualEntryPage() {
                                                     )}
                                                     {activeTab === 'breaks' && (
                                                         <div className="flex gap-2 items-center text-sm font-medium text-yellow-600">
-                                                            <span>{rec.startTime ? format(parseISO(rec.startTime), "HH:mm") : '---'}</span>
+                                                            <span>{formatPHT(rec.startTime)}</span>
                                                             <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
-                                                            <span>{rec.endTime ? format(parseISO(rec.endTime), "HH:mm") : '---'}</span>
+                                                            <span>{formatPHT(rec.endTime)}</span>
                                                         </div>
                                                     )}
                                                 </TableCell>
@@ -757,7 +774,7 @@ export default function ManualEntryPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Clock In</Label>
-                                        <Input type="time" value={editForm.clockIn ? format(parseISO(editForm.clockIn), "HH:mm") : ""}
+                                        <Input type="time" value={editForm.clockIn ? formatPHT(editForm.clockIn) : ""}
                                             onChange={e => {
                                                 const localDate = new Date(`${editForm.date}T${e.target.value}:00+08:00`);
                                                 setEditForm({ ...editForm, clockIn: localDate.toISOString() });
@@ -765,7 +782,7 @@ export default function ManualEntryPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Clock Out</Label>
-                                        <Input type="time" value={editForm.clockOut ? format(parseISO(editForm.clockOut), "HH:mm") : ""}
+                                        <Input type="time" value={editForm.clockOut ? formatPHT(editForm.clockOut) : ""}
                                             onChange={e => {
                                                 const localDate = new Date(`${editForm.date}T${e.target.value}:00+08:00`);
                                                 setEditForm({ ...editForm, clockOut: localDate.toISOString() });

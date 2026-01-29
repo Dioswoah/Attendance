@@ -1,0 +1,41 @@
+2026/01/30 06:39:48 Authorizing with Application Default Credentials
+2026/01/30 06:39:48 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Listening on [::]:5434
+2026/01/30 06:39:48 The proxy has started successfully and is ready for new connections!
+2026/01/30 07:03:20 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:58785
+2026/01/30 07:03:22 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64287
+2026/01/30 07:03:22 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64289
+2026/01/30 07:03:22 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64291
+2026/01/30 07:09:08 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:63941
+2026/01/30 07:09:08 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] client closed the connection
+2026/01/30 07:09:08 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:63943
+2026/01/30 07:09:08 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] client closed the connection
+2026/01/30 07:09:08 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:49672
+2026/01/30 07:10:56 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:52409
+2026/01/30 07:10:56 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] client closed the connection
+2026/01/30 07:13:33 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:59889
+2026/01/30 07:13:33 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] client closed the connection
+2026/01/30 07:15:55 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:63941: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:15:55 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:49672: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:15:55 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:59889: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:15:55 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:52409: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:15:55 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:63943: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:18:30 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:61431
+2026/01/30 07:18:31 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] instance closed the connection
+2026/01/30 07:18:35 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:55722
+2026/01/30 07:18:35 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] instance closed the connection
+2026/01/30 07:22:13 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:63060
+2026/01/30 07:22:15 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64130
+2026/01/30 07:22:15 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64132
+2026/01/30 07:23:00 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:64130: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:23:00 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:64132: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:23:00 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] connection aborted - error reading from client: read tcp 127.0.0.1:5434->127.0.0.1:63060: wsarecv: An existing connection was forcibly closed by the remote host.
+2026/01/30 07:25:50 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:51140
+2026/01/30 07:27:04 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64734
+2026/01/30 07:27:04 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64671
+2026/01/30 07:27:04 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64673
+2026/01/30 07:27:04 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:64675
+2026/01/30 07:27:06 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:60555
+2026/01/30 07:27:06 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:60557
+2026/01/30 07:27:27 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:57200
+2026/01/30 07:28:44 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:49672
+2026/01/30 07:28:44 [buoyant-purpose-475203-t9:australia-southeast1:bapteamproject] Accepted connection from 127.0.0.1:49673

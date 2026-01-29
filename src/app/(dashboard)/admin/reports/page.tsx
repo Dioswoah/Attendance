@@ -64,7 +64,16 @@ export default function ExportPage() {
     const filteredStaffForDropdown = allStaff
         .filter(s => (includeArchived ? true : !s.isArchived))
         .filter(s => {
-            const matchesDept = selectedDept === 'all' || s.departmentId === selectedDept
+            const selectedDeptData = departments.find(d => d.id === selectedDept)
+            const normalizedSelectedName = selectedDeptData?.name?.toLowerCase().trim()
+
+            const matchesDept = selectedDept === 'all' ||
+                s.departmentId === selectedDept ||
+                (normalizedSelectedName && (
+                    s.department?.name?.toLowerCase().trim() === normalizedSelectedName ||
+                    s.departmentName?.toLowerCase().trim() === normalizedSelectedName
+                ))
+
             const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
             return matchesDept && matchesQuery
         })
@@ -233,7 +242,7 @@ export default function ExportPage() {
                     <CardDescription className="text-sm text-muted-foreground">Configure chronological and structural parameters</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
                             <Label>Start Date</Label>
                             <Input
@@ -255,6 +264,28 @@ export default function ExportPage() {
                                     setEndDate(e.target.value)
                                 }}
                             />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Department</Label>
+                            <Select value={selectedDept} onValueChange={(val) => {
+                                setSelectedDept(val)
+                                setSelectedStaffIds([])
+                            }}>
+                                <SelectTrigger className="h-10">
+                                    <div className="flex items-center gap-2">
+                                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                                        <SelectValue placeholder="All Departments" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Departments</SelectItem>
+                                    {departments.map((dept: any) => (
+                                        <SelectItem key={dept.id} value={dept.id}>
+                                            {dept.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                     <div className="space-y-2">

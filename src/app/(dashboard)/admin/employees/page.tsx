@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
@@ -43,6 +44,10 @@ export default function EmployeesPage() {
     const [sortBy, setSortBy] = useState("name")
     const [showDeptWarning, setShowDeptWarning] = useState(false)
     const [isManagerSelectOpen, setIsManagerSelectOpen] = useState(false)
+
+    // Bulk Actions
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false)
 
     useEffect(() => {
         fetchData()
@@ -167,6 +172,60 @@ export default function EmployeesPage() {
             // Error handled
         } finally {
             setProcessingId(null)
+        }
+    }
+
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedIds(new Set(filteredEmployees.map(e => e.id)))
+        } else {
+            setSelectedIds(new Set())
+        }
+    }
+
+    const handleSelectOne = (id: string, checked: boolean) => {
+        const newSelected = new Set(selectedIds)
+        if (checked) newSelected.add(id)
+        else newSelected.delete(id)
+        setSelectedIds(newSelected)
+    }
+
+    const handleBulkArchive = async (archive: boolean) => {
+        const action = archive ? "archive" : "unarchive"
+        if (!confirm(`Are you sure you want to ${action} ${selectedIds.size} staff members?`)) return
+
+        setIsBulkProcessing(true)
+        try {
+            await Promise.all(Array.from(selectedIds).map(id =>
+                fetch(`/api/employees/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isArchived: archive })
+                })
+            ))
+            setSelectedIds(new Set())
+            fetchData()
+        } catch (error) {
+            console.error("Bulk action failed", error)
+        } finally {
+            setIsBulkProcessing(false)
+        }
+    }
+
+    const handleBulkDelete = async () => {
+        if (!confirm(`Are you sure you want to PERMANENTLY delete ${selectedIds.size} staff members?`)) return
+
+        setIsBulkProcessing(true)
+        try {
+            await Promise.all(Array.from(selectedIds).map(id =>
+                fetch(`/api/employees/${id}`, { method: 'DELETE' })
+            ))
+            setSelectedIds(new Set())
+            fetchData()
+        } catch (error) {
+            console.error("Bulk delete failed", error)
+        } finally {
+            setIsBulkProcessing(false)
         }
     }
 
@@ -374,10 +433,49 @@ export default function EmployeesPage() {
                         </div>
                     </div>
                 </CardHeader>
+                {selectedIds.size > 0 && (
+                    <div className="bg-primary/5 border-b border-primary/10 p-4 flex items-center justify-between animate-in slide-in-from-top-2">
+                        <div className="flex items-center gap-4">
+                            <span className="text-sm font-bold text-primary">{selectedIds.size} selected</span>
+                            <div className="h-4 w-px bg-primary/20" />
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="text-muted-foreground h-8">
+                                Clear Selection
+                            </Button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleBulkArchive(!showArchived)}
+                                disabled={isBulkProcessing}
+                                className="h-8 gap-2 bg-white"
+                            >
+                                {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+                                {showArchived ? "Unarchive Selected" : "Archive Selected"}
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={handleBulkDelete}
+                                disabled={isBulkProcessing}
+                                className="h-8 gap-2"
+                            >
+                                {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                Delete Selected
+                            </Button>
+                        </div>
+                    </div>
+                )}
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader className="bg-muted/50">
                             <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="w-[50px] pl-6">
+                                    <Checkbox
+                                        checked={filteredEmployees.length > 0 && selectedIds.size === filteredEmployees.length}
+                                        onCheckedChange={(checked) => handleSelectAll(!!checked)}
+                                    />
+                                </TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Staff Identity</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Email</TableHead>
@@ -388,7 +486,13 @@ export default function EmployeesPage() {
                         </TableHeader>
                         <TableBody>
                             {filteredEmployees.map((emp) => (
-                                <TableRow key={emp.id} className="border-border hover:bg-muted/30 transition-colors group">
+                                <TableRow key={emp.id} className={selectedIds.has(emp.id) ? "bg-primary/5 border-primary/20 hover:bg-primary/10" : "border-border hover:bg-muted/30 transition-colors group"}>
+                                    <TableCell className="pl-6">
+                                        <Checkbox
+                                            checked={selectedIds.has(emp.id)}
+                                            onCheckedChange={(checked) => handleSelectOne(emp.id, !!checked)}
+                                        />
+                                    </TableCell>
                                     <TableCell className="py-4 px-6">
                                         <div className="flex items-center gap-3">
                                             <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
