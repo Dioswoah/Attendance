@@ -10,6 +10,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { RisaChatbot } from "@/components/RisaChatbot"
+import { UserOnboardingTour } from "@/components/UserOnboardingTour"
 
 export default function UserLayout({
     children,
@@ -362,6 +363,7 @@ export default function UserLayout({
                                 </Button>
                             </Link>
                         )}
+                        <UserOnboardingTour />
                         <NotificationBell />
                     </div>
                 </header>
@@ -379,6 +381,7 @@ export default function UserLayout({
                             </Button>
                         </Link>
                     )}
+                    <UserOnboardingTour />
                     <NotificationBell />
                 </header>
 

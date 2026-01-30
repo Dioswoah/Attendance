@@ -266,7 +266,7 @@ export default function LeaveRequestsPage() {
     return (
         <div className="space-y-8 w-full max-w-[1800px] mx-auto">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div id="tour-leaves-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-foreground">Leave Requests</h1>
                     <p className="text-base text-muted-foreground mt-1">Submit and track your leave requests</p>
@@ -279,7 +279,7 @@ export default function LeaveRequestsPage() {
                     }}
                 >
                     <DialogTrigger asChild>
-                        <Button className="h-10 px-6 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm transition-all active:scale-95 flex items-center gap-2">
+                        <Button id="tour-leaves-request-btn" className="h-10 px-6 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm transition-all active:scale-95 flex items-center gap-2">
                             <Plus className="w-4 h-4" />
                             <span>Request Leave</span>
                         </Button>
@@ -406,7 +406,7 @@ export default function LeaveRequestsPage() {
             </div>
 
             {/* Filter */}
-            <div className="flex items-center gap-4">
+            <div id="tour-leaves-filter" className="flex items-center gap-4">
                 <span className="text-sm font-medium text-muted-foreground">Filter:</span>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
                     <SelectTrigger className="w-40 h-10 bg-white border-border rounded-lg">
@@ -435,7 +435,7 @@ export default function LeaveRequestsPage() {
             </div>
 
             {/* Requests List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+            <div id="tour-leaves-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
                 {filteredRequests.map((request) => (
                     <Card key={request.id} className="border border-border shadow-sm rounded-xl overflow-hidden bg-white hover:bg-muted/30 transition-all hover:shadow-md flex flex-col group">
                         <CardContent className="p-6 flex-1 flex flex-col gap-4">

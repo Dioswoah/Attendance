@@ -180,13 +180,13 @@ export default function ActivityLogsPage() {
     return (
         <div className="space-y-8 w-full max-w-[1800px] mx-auto">
             {/* Header */}
-            <div>
+            <div id="tour-activity-header">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground">Activity Logs</h1>
                 <p className="text-base text-muted-foreground mt-1">View your attendance and leave request history</p>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div id="tour-activity-filters" className="flex flex-col sm:flex-row gap-4">
                 <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -220,7 +220,7 @@ export default function ActivityLogsPage() {
             </div>
 
             {/* Logs Timeline */}
-            <div className="space-y-8">
+            <div id="tour-activity-list" className="space-y-8">
                 {Object.entries(groupedLogs).map(([date, logs]) => (
                     <div key={date} className="space-y-4">
                         <div className="flex items-center gap-2">

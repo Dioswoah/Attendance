@@ -265,7 +265,7 @@ export default function AmendRecordsPage() {
     return (
         <div className="space-y-8 w-full max-w-[1200px] mx-auto">
             <div className="flex items-center justify-between">
-                <div>
+                <div id="tour-amend-header">
                     <h1 className="text-2xl font-bold tracking-tight">Amend Records</h1>
                     <p className="text-muted-foreground mt-1">Request corrections for your attendance logs.</p>
                 </div>
@@ -274,7 +274,7 @@ export default function AmendRecordsPage() {
                     if (!open) resetForm()
                 }}>
                     <DialogTrigger asChild>
-                        <Button className="bg-red-600 hover:bg-red-700 text-white gap-2">
+                        <Button id="tour-amend-new-btn" className="bg-red-600 hover:bg-red-700 text-white gap-2">
                             <Plus className="w-4 h-4" /> New Request
                         </Button>
                     </DialogTrigger>
@@ -352,7 +352,7 @@ export default function AmendRecordsPage() {
             </div>
 
             <div className="flex items-center justify-between mt-8 mb-4">
-                <div className="flex items-center gap-2">
+                <div id="tour-amend-log" className="flex items-center gap-2">
                     <FileText className="w-5 h-5 text-red-600" />
                     <h2 className="text-lg font-bold">Request Log</h2>
                 </div>
@@ -369,7 +369,7 @@ export default function AmendRecordsPage() {
                 </Button>
             </div>
 
-            <div className="grid gap-4">
+            <div id="tour-amend-grid" className="grid gap-4">
                 {isLoading ? (
                     <div className="flex justify-center p-8"><Loader2 className="animate-spin text-red-600" /></div>
                 ) : filteredRequests.length === 0 ? (

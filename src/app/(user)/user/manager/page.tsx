@@ -368,13 +368,13 @@ export default function ManagerControlPage() {
             {/* Page Header is handled inside Tabs mainly, but we can put a global title */}
 
             <Tabs defaultValue="requests" className="w-full space-y-8">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div id="tour-manager-header" className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Manager Control</h1>
                         <p className="text-muted-foreground mt-1">Review requests and monitor team availability</p>
                     </div>
                     <TabsList className="h-12 bg-white border border-border p-1 w-full md:w-auto shadow-sm gap-1 rounded-xl">
-                        <TabsTrigger value="requests" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                        <TabsTrigger id="tour-manager-tab-requests" value="requests" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
                             Pending Requests
                             {pendingRequests.length > 0 && (
                                 <span className="ml-2 bg-white/20 text-current px-1.5 py-0.5 rounded-full text-[10px] font-bold">
@@ -382,10 +382,10 @@ export default function ManagerControlPage() {
                                 </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="history" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                        <TabsTrigger id="tour-manager-tab-history" value="history" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
                             Request History
                         </TabsTrigger>
-                        <TabsTrigger value="calendar" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                        <TabsTrigger id="tour-manager-tab-calendar" value="calendar" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
                             Team Calendar
                         </TabsTrigger>
                     </TabsList>
@@ -393,7 +393,7 @@ export default function ManagerControlPage() {
 
                 {/* --- REQUESTS TAB --- */}
                 <TabsContent value="requests" className="space-y-6 animate-in slide-in-from-left-4 duration-300">
-                    <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
+                    <div id="tour-manager-pending" className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
                         <div className="flex items-center gap-2">
                             <AlertCircle className="w-5 h-5 text-yellow-600" />
                             <h2 className="font-semibold text-foreground">Pending Approvals</h2>
