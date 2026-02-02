@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
+import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,8 +11,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Clock, FileText, Loader2, Calendar } from "lucide-react"
-import { format, subDays } from "date-fns"
+import { Plus, Clock, FileText, Loader2, Calendar, UserMinus, Pencil, Trash2, Archive, ArchiveRestore } from "lucide-react"
+import { format, subDays, isSameDay } from "date-fns"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 
 type RequestStatus = "PENDING" | "APPROVED" | "DECLINED"
@@ -36,10 +38,50 @@ export default function AmendRecordsPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [showArchived, setShowArchived] = useState(false)
+    const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const res = await fetch('/api/user/me')
+                if (res.ok) {
+                    const data = await res.json()
+                    if (data.location === 'Philippines') setUserTimeZone('Asia/Manila')
+                    else if (data.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                }
+            } catch { }
+        }
+        fetchProfile()
+    }, [])
+
+    const [dateFilter, setDateFilter] = useState({
+        start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+        end: format(new Date(), 'yyyy-MM-dd')
+    })
 
     const filteredRequests = requests.filter(r => {
         const matchesArchive = showArchived ? r.isArchived : !r.isArchived
-        return matchesArchive
+        if (!matchesArchive) return false
+
+        // Date Range Filter
+        const reqDate = new Date(r.date).setHours(0, 0, 0, 0)
+        const start = new Date(dateFilter.start).setHours(0, 0, 0, 0)
+        const end = new Date(dateFilter.end).setHours(23, 59, 59, 999)
+
+        if (reqDate < start || reqDate > end) return false
+
+        // Hide cascaded requests (Break/ClockOut) if the Root Clock In is still pending
+        if (r.status === 'PENDING' && ['BREAK_START', 'BREAK_END', 'CLOCK_OUT'].includes(r.type)) {
+            const reqDateStr = new Date(r.date).toLocaleDateString()
+            const hasPendingClockIn = requests.some(pr =>
+                pr.type === 'CLOCK_IN' &&
+                pr.status === 'PENDING' &&
+                new Date(pr.date).toLocaleDateString() === reqDateStr
+            )
+            if (hasPendingClockIn) return false
+        }
+
+        return true
     })
 
     // Dynamic Date Options
@@ -109,24 +151,24 @@ export default function AmendRecordsPage() {
 
         switch (recordType) {
             case "CLOCK_IN":
-                if (record.clockIn) timeStr = new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
+                if (record.clockIn) timeStr = new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
                 break
             case "CLOCK_OUT":
-                if (record.clockOut) timeStr = new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
+                if (record.clockOut) timeStr = new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
                 break
             case "BREAK_START":
                 // Check breaks array for latest or just show main if simplified
                 if (record.breaks && record.breaks.length > 0) {
-                    timeStr = record.breaks.map((b: any) => new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })).join(', ')
+                    timeStr = record.breaks.map((b: any) => new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })).join(', ')
                 } else if (record.breakStart) {
-                    timeStr = new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
+                    timeStr = new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
                 }
                 break
             case "BREAK_END":
                 if (record.breaks && record.breaks.length > 0) {
-                    timeStr = record.breaks.map((b: any) => b.endTime ? new Date(b.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' }) : 'Active').join(', ')
+                    timeStr = record.breaks.map((b: any) => b.endTime ? new Date(b.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : 'Active').join(', ')
                 } else if (record.breakEnd) {
-                    timeStr = new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
+                    timeStr = new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
                 }
                 break
         }
@@ -185,12 +227,13 @@ export default function AmendRecordsPage() {
                 setDialogOpen(false)
                 resetForm()
                 fetchRequests()
+                toast.success(editingId ? "Request updated successfully" : "Request submitted successfully")
             } else {
-                alert("Failed to submit request")
+                toast.error("Failed to submit request")
             }
         } catch (error) {
             console.error(error)
-            alert("Error submitting request")
+            toast.error("Error submitting request")
         } finally {
             setIsSubmitting(false)
         }
@@ -227,7 +270,15 @@ export default function AmendRecordsPage() {
     }
 
     const handleEdit = (req: AttendanceRequest) => {
-        setEditingId(req.id)
+        // If the request is already finalized (Approved/Declined), 
+        // editing it should create a NEW request (preserve history), 
+        // effectively treating it as a new submission with pre-filled data.
+        if (req.status === 'APPROVED' || req.status === 'DECLINED') {
+            setEditingId(null)
+        } else {
+            setEditingId(req.id)
+        }
+
         setSelectedDateOption(format(new Date(req.date), 'yyyy-MM-dd'))
         setRecordType(req.type)
         setTime(format(new Date(req.time), 'HH:mm'))
@@ -235,12 +286,31 @@ export default function AmendRecordsPage() {
         setDialogOpen(true)
     }
 
-    const handleDelete = async (id: string) => {
-        if (!confirm("Cancel this request?")) return
-        try {
-            const res = await fetch(`/api/attendance-requests/${id}`, { method: 'DELETE' })
-            if (res.ok) fetchRequests()
-        } catch (e) { /* Error handled */ }
+    const handleDelete = (id: string) => {
+        toast("Cancel this request?", {
+            description: "This action cannot be undone.",
+            action: {
+                label: "Confirm",
+                onClick: async () => {
+                    const deleteToast = toast.loading("Cancelling request...")
+                    try {
+                        const res = await fetch(`/api/attendance-requests/${id}`, { method: 'DELETE' })
+                        if (res.ok) {
+                            fetchRequests()
+                            toast.success("Request cancelled", { id: deleteToast })
+                        } else {
+                            toast.error("Failed to cancel request", { id: deleteToast })
+                        }
+                    } catch (e) {
+                        toast.error("Error cancelling request", { id: deleteToast })
+                    }
+                }
+            },
+            cancel: {
+                label: "Cancel",
+                onClick: () => { }
+            },
+        })
     }
 
     const resetForm = () => {
@@ -261,6 +331,19 @@ export default function AmendRecordsPage() {
                 return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100 border-yellow-200">Pending</Badge>
         }
     }
+
+    // Helper to group requests by date
+    const groupedRequests = filteredRequests.reduce((groups, req) => {
+        const dateStr = format(new Date(req.date), 'yyyy-MM-dd')
+        if (!groups[dateStr]) {
+            groups[dateStr] = []
+        }
+        groups[dateStr].push(req)
+        return groups
+    }, {} as Record<string, AttendanceRequest[]>)
+
+    // Sort dates descending
+    const sortedDates = Object.keys(groupedRequests).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
 
     return (
         <div className="space-y-8 w-full max-w-[1200px] mx-auto">
@@ -286,37 +369,54 @@ export default function AmendRecordsPage() {
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Date</Label>
-                                    <Select value={selectedDateOption} onValueChange={setSelectedDateOption}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {dateOptions.map(opt => (
-                                                <SelectItem key={opt.value} value={opt.value}>
-                                                    {opt.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                            {!editingId && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Date</Label>
+                                        <Select value={selectedDateOption} onValueChange={setSelectedDateOption}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {dateOptions.map(opt => (
+                                                    <SelectItem key={opt.value} value={opt.value}>
+                                                        {opt.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Action Type</Label>
+                                        <Select value={recordType} onValueChange={setRecordType}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="CLOCK_IN">Clock In</SelectItem>
+                                                <SelectItem value="CLOCK_OUT">Clock Out</SelectItem>
+                                                <SelectItem value="BREAK_START">Start Break</SelectItem>
+                                                <SelectItem value="BREAK_END">End Break</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Action Type</Label>
-                                    <Select value={recordType} onValueChange={setRecordType}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="CLOCK_IN">Clock In</SelectItem>
-                                            <SelectItem value="CLOCK_OUT">Clock Out</SelectItem>
-                                            <SelectItem value="BREAK_START">Start Break</SelectItem>
-                                            <SelectItem value="BREAK_END">End Break</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                            )}
+
+                            {editingId && (
+                                <div className="p-3 bg-muted/40 rounded-lg text-sm mb-4 border border-border/50">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Date</Label>
+                                            <p className="font-medium">{format(new Date(selectedDateOption), 'MMM dd, yyyy')}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Action Type</Label>
+                                            <p className="font-medium capitalize">{recordType.toLowerCase().replace('_', ' ')}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             <div className="space-y-2">
                                 <div className="flex justify-between">
@@ -351,91 +451,161 @@ export default function AmendRecordsPage() {
                 </Dialog>
             </div>
 
-            <div className="flex items-center justify-between mt-8 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-8 mb-4 gap-4">
                 <div id="tour-amend-log" className="flex items-center gap-2">
                     <FileText className="w-5 h-5 text-red-600" />
                     <h2 className="text-lg font-bold">Request Log</h2>
                 </div>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowArchived(!showArchived)}
-                    className={cn(
-                        "text-[10px] font-black uppercase tracking-[0.2em]",
-                        showArchived ? "text-primary bg-primary/10" : "text-muted-foreground"
-                    )}
-                >
-                    {showArchived ? "View Active" : "View Archived"}
-                </Button>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="flex items-center gap-2 bg-white p-1 border border-border rounded-lg shadow-sm">
+                        <div className="flex items-center gap-2 px-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">From</span>
+                            <Input
+                                type="date"
+                                value={dateFilter.start}
+                                onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
+                                className="h-8 w-auto min-w-[130px] border-none bg-transparent focus-visible:ring-0 text-xs font-medium"
+                            />
+                        </div>
+                        <div className="w-px h-6 bg-border" />
+                        <div className="flex items-center gap-2 px-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To</span>
+                            <Input
+                                type="date"
+                                value={dateFilter.end}
+                                onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
+                                className="h-8 w-auto min-w-[130px] border-none bg-transparent focus-visible:ring-0 text-xs font-medium"
+                            />
+                        </div>
+                    </div>
+
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowArchived(!showArchived)}
+                        className={cn(
+                            "text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap",
+                            showArchived ? "text-primary bg-primary/10" : "text-muted-foreground"
+                        )}
+                    >
+                        {showArchived ? "View Active" : "View Archived"}
+                    </Button>
+                </div>
             </div>
 
-            <div id="tour-amend-grid" className="grid gap-4">
-                {isLoading ? (
-                    <div className="flex justify-center p-8"><Loader2 className="animate-spin text-red-600" /></div>
-                ) : filteredRequests.length === 0 ? (
-                    <Card className="bg-muted/30 border-dashed shadow-none">
-                        <CardContent className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-                            <FileText className="w-10 h-10 mb-2 opacity-20" />
-                            <p>No {showArchived ? 'archived' : 'active'} requests found.</p>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    filteredRequests.map(req => (
-                        <Card key={req.id} className="overflow-hidden">
-                            <CardContent className="p-4 flex items-center justify-between gap-4">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="font-bold text-base capitalize">{req.type.toLowerCase().replace('_', ' ')}</h3>
-                                        <span className="text-xs text-muted-foreground">
-                                            on {format(new Date(req.date), 'MMM dd, yyyy')}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-foreground/80">
-                                        <Clock className="w-4 h-4 text-red-600" />
-                                        <span className="font-mono font-medium">
-                                            {new Date(req.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' })}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground italic">"{req.reason}"</p>
-                                    {req.declineReason && <p className="text-xs text-red-600 font-semibold mt-1">Declined: {req.declineReason}</p>}
-                                </div>
-                                <div className="flex flex-col items-end gap-2">
-                                    {getStatusBadge(req.status)}
-                                    {(!req.isArchived) && (
-                                        <div className="flex gap-2">
-                                            <Button variant="ghost" size="sm" className="text-blue-500 hover:text-blue-700 h-8 text-xs font-bold uppercase tracking-wider" onClick={() => handleEdit(req)}>
-                                                Edit
-                                            </Button>
-                                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 h-8 text-xs font-bold uppercase tracking-wider" onClick={() => handleDelete(req.id)}>
-                                                Cancel
-                                            </Button>
-                                        </div>
-                                    )}
-                                    {['APPROVED', 'DECLINED'].includes(req.status) && !req.isArchived && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleArchive(req.id)}
-                                            className="h-8 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground"
-                                        >
-                                            Archive
-                                        </Button>
-                                    )}
-                                    {req.isArchived && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleUnarchive(req.id)}
-                                            className="h-8 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80"
-                                        >
-                                            Unarchive
-                                        </Button>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))
-                )}
+            <div id="tour-amend-grid" className="rounded-md border border-border bg-white overflow-hidden shadow-sm">
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableHead className="w-[200px] font-bold text-foreground">Date</TableHead>
+                            <TableHead className="font-bold text-foreground">Request Details</TableHead>
+                            <TableHead className="w-[150px] font-bold text-foreground">Status</TableHead>
+                            <TableHead className="text-right font-bold text-foreground w-[180px]">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {isLoading ? (
+                            <TableRow>
+                                <TableCell colSpan={4} className="h-24 text-center">
+                                    <div className="flex justify-center"><Loader2 className="animate-spin text-red-600" /></div>
+                                </TableCell>
+                            </TableRow>
+                        ) : filteredRequests.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
+                                    No {showArchived ? 'archived' : 'active'} requests found.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            sortedDates.map(date => {
+                                const dayRequests = groupedRequests[date]
+                                return dayRequests.map((req, index) => (
+                                    <TableRow key={req.id} className="hover:bg-muted/50">
+                                        {index === 0 && (
+                                            <TableCell rowSpan={dayRequests.length} className="align-top font-medium border-r border-border/50 bg-muted/5">
+                                                <div className="flex flex-col gap-1 sticky top-4">
+                                                    <span className="text-base font-semibold">{format(new Date(req.date), 'MMM dd, yyyy')}</span>
+                                                    <span className="text-xs text-muted-foreground font-normal">
+                                                        {(() => {
+                                                            const d = new Date(req.date)
+                                                            if (isSameDay(d, new Date())) return "Today"
+                                                            if (isSameDay(d, subDays(new Date(), 1))) return "Yesterday"
+                                                            if (isSameDay(d, subDays(new Date(), 2))) return "Day Before"
+                                                            return format(d, 'EEEE')
+                                                        })()}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                        )}
+                                        <TableCell className="align-top py-4">
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="outline" className="font-bold capitalize shadow-none">
+                                                        {req.type.toLowerCase().replace('_', ' ')}
+                                                    </Badge>
+                                                    <div className="flex items-center text-sm font-mono text-muted-foreground">
+                                                        <Clock className="w-3.5 h-3.5 mr-1.5" />
+                                                        {new Date(req.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })}
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-foreground/80 pl-1 border-l-2 border-muted mt-1 italic">
+                                                    "{req.reason}"
+                                                </p>
+                                                {req.declineReason && (
+                                                    <p className="text-xs text-red-600 font-semibold mt-1">Declined: {req.declineReason}</p>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="align-top py-4">
+                                            {getStatusBadge(req.status)}
+                                        </TableCell>
+                                        <TableCell className="align-top text-right py-4">
+                                            <div className="flex flex-col items-end gap-2">
+                                                {(!req.isArchived) && (
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(req)} title="Edit Request">
+                                                            <Pencil className="h-4 w-4" />
+                                                            <span className="sr-only">Edit</span>
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(req.id)} title="Cancel Request">
+                                                            <Trash2 className="h-4 w-4" />
+                                                            <span className="sr-only">Cancel</span>
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                                {['APPROVED', 'DECLINED'].includes(req.status) && !req.isArchived && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleArchive(req.id)}
+                                                        className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                                        title="Archive Request"
+                                                    >
+                                                        <Archive className="h-4 w-4" />
+                                                        <span className="sr-only">Archive</span>
+                                                    </Button>
+                                                )}
+                                                {req.isArchived && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleUnarchive(req.id)}
+                                                        className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
+                                                        title="Unarchive Request"
+                                                    >
+                                                        <ArchiveRestore className="h-4 w-4" />
+                                                        <span className="sr-only">Unarchive</span>
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            })
+                        )}
+                    </TableBody>
+                </Table>
             </div>
         </div>
     )

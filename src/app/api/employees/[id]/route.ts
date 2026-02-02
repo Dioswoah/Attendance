@@ -8,7 +8,7 @@ export async function PATCH(
     try {
         const { id } = await params
         const body = await req.json()
-        const { name, email, departmentId, roles, managerId, isArchived } = body
+        const { name, email, departmentId, roles, managerId, isArchived, location } = body
         const updateData: any = {}
         if (name !== undefined) updateData.name = name
         if (email !== undefined) updateData.email = email
@@ -16,6 +16,7 @@ export async function PATCH(
         if (roles !== undefined) updateData.roles = roles
         if (managerId !== undefined) updateData.managerId = managerId === "unassigned" ? null : managerId
         if (isArchived !== undefined) updateData.isArchived = isArchived
+        if (location !== undefined) updateData.location = location
 
         const updated = await prisma.user.update({
             where: { id },

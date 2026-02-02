@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown } from "lucide-react"
+import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,9 +16,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
-import { format } from "date-fns"
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
+import { statusConfig } from "@/components/UserStatusDropdown"
 
 export default function UserPortal() {
     const { data: session, status } = useSession()
@@ -32,12 +33,28 @@ export default function UserPortal() {
     const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
 
+    // User Profile & Location State
+    const [userProfile, setUserProfile] = useState<any>(null)
+    const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
+    const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
+    const [managerList, setManagerList] = useState<any[]>([])
+    const [onboardingLocation, setOnboardingLocation] = useState("")
+    const [onboardingManager, setOnboardingManager] = useState("")
+
     // Role & Leave Management State
     const [userRoles, setUserRoles] = useState<string[]>([])
     const [userId, setUserId] = useState<string>("")
     const [userDepartment, setUserDepartment] = useState<string>("")
+    const [userDepartmentId, setUserDepartmentId] = useState<string>("")
+    const [userManagerId, setUserManagerId] = useState<string | null>(null)
     const [pendingLeaves, setPendingLeaves] = useState<any[]>([])
     const [isLeaveOpen, setIsLeaveOpen] = useState(false)
+
+    // Calendar & Team View State
+    const [currentMonth, setCurrentMonth] = useState(new Date())
+    const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([])
+    const [teamApprovedLeaves, setTeamApprovedLeaves] = useState<any[]>([])
+    const [selectedDayDetail, setSelectedDayDetail] = useState<Date | null>(null)
 
     // Leave Form State
     const [leaveType, setLeaveType] = useState('SICK')
@@ -47,6 +64,57 @@ export default function UserPortal() {
     const [leaveStartDate, setLeaveStartDate] = useState("")
     const [leaveEndDate, setLeaveEndDate] = useState("")
     const [leaveReason, setLeaveReason] = useState("")
+
+    // User Profile Fetch
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (status === 'authenticated') {
+                try {
+                    const res = await fetch('/api/user/me')
+                    if (res.ok) {
+                        const data = await res.json()
+                        setUserProfile(data)
+                        if (data.location === 'Philippines') setUserTimeZone('Asia/Manila')
+                        else if (data.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                        else {
+                            if (!sessionStorage.getItem('onboardingSkipped')) {
+                                setIsOnboardingOpen(true)
+                                const mRes = await fetch('/api/managers')
+                                if (mRes.ok) setManagerList(await mRes.json())
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Profile fetch error", e)
+                }
+            }
+        }
+        fetchProfile()
+    }, [status])
+
+    const handleOnboardingSubmit = async () => {
+        if (!onboardingLocation) return
+
+        try {
+            const res = await fetch('/api/user/me', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    location: onboardingLocation,
+                    managerId: onboardingManager || 'unassigned'
+                })
+            })
+            if (res.ok) {
+                const updated = await res.json()
+                setUserProfile(updated)
+                if (updated.location === 'Philippines') setUserTimeZone('Asia/Manila')
+                else if (updated.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                setIsOnboardingOpen(false)
+            }
+        } catch (error) {
+            console.error("Onboarding failed", error)
+        }
+    }
 
     // Decline Dialog State
     const [isDeclineOpen, setIsDeclineOpen] = useState(false)
@@ -153,12 +221,12 @@ export default function UserPortal() {
             setCurrentTime(now)
 
             // Calculate total for TODAY across all records (PH TIME)
-            const todayPHT = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+            const todayPHT = now.toLocaleDateString("en-CA", { timeZone: userTimeZone })
 
             const todayRecords = userAttendanceList.filter((record: any) => {
                 if (!record.clockIn) return false
                 const recordDate = new Date(record.clockIn)
-                const recordPHT = recordDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                const recordPHT = recordDate.toLocaleDateString("en-CA", { timeZone: userTimeZone })
                 return recordPHT === todayPHT
             })
 
@@ -167,13 +235,17 @@ export default function UserPortal() {
             const pendingClockIn = myAttendanceRequests.find((req: any) => {
                 if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
                 const reqDate = new Date(req.time || req.date)
-                return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
+                return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
             })
 
             let modifiedTodayRecords = [...todayRecords]
 
             if (pendingClockIn) {
                 const pendingTime = pendingClockIn.time || pendingClockIn.date
+                const pendingTs = new Date(pendingTime).getTime()
+                const latestRealTs = modifiedTodayRecords.length > 0 ? new Date(modifiedTodayRecords[0].clockIn).getTime() : 0
+
+                // Always inject pending clock-in regardless of time diff to support amendments (e.g. 12pm -> 5am adjustment)
                 if (modifiedTodayRecords.length > 0) {
                     const firstRecord = { ...modifiedTodayRecords[0] }
                     firstRecord.clockIn = pendingTime
@@ -195,14 +267,24 @@ export default function UserPortal() {
             }
 
             // --- INJECT PENDING BREAKS ---
+            // --- INJECT PENDING BREAKS ---
+            // Only inject breaks if they are relevant to the CURRENT session (i.e., not older than the real session start)
             if (modifiedTodayRecords.length > 0) {
                 const record = modifiedTodayRecords[0]
+                const realSessionStartTs = new Date(record.clockIn).getTime()
 
                 // 1. Pending Break Starts (Virtual Open Break)
-                const pendingBreakStarts = myAttendanceRequests.filter((req: any) =>
-                    req.type === 'BREAK_START' && req.status === 'PENDING' &&
-                    new Date(req.time || req.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
-                )
+                const pendingBreakStarts = myAttendanceRequests.filter((req: any) => {
+                    if (req.type !== 'BREAK_START' || req.status !== 'PENDING') return false
+                    const reqDate = new Date(req.time || req.date)
+                    if (reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) !== todayPHT) return false
+
+                    // CRITICAL FIX: Ignore pending breaks that are older than the current real session
+                    // This prevents a morning pending break from appearing in an afternoon real session
+                    if (reqDate.getTime() < realSessionStartTs) return false
+
+                    return true
+                })
 
                 pendingBreakStarts.forEach(req => {
                     record.breaks.push({
@@ -213,10 +295,16 @@ export default function UserPortal() {
                 })
 
                 // 2. Pending Break Ends (Close virtual or real open breaks)
-                const pendingBreakEnds = myAttendanceRequests.filter((req: any) =>
-                    req.type === 'BREAK_END' && req.status === 'PENDING' &&
-                    new Date(req.time || req.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
-                ).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime())
+                const pendingBreakEnds = myAttendanceRequests.filter((req: any) => {
+                    if (req.type !== 'BREAK_END' || req.status !== 'PENDING') return false
+                    const reqDate = new Date(req.time || req.date)
+                    if (reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) !== todayPHT) return false
+
+                    // CRITICAL FIX: Ignore pending break ends that are older than the current real session
+                    if (reqDate.getTime() < realSessionStartTs) return false
+
+                    return true
+                }).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime())
 
                 pendingBreakEnds.forEach(req => {
                     // Find the latest open break to close
@@ -272,7 +360,7 @@ export default function UserPortal() {
             // 60 minutes = 3600000 ms
             const WARNING_MS = 45 * 60 * 1000
             const LIMIT_MS = 60 * 60 * 1000
-            const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+            const today = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
 
             if (breakTotalMs >= WARNING_MS && breakTotalMs < LIMIT_MS && !warningTriggered) {
                 const alreadyAck = localStorage.getItem(`break_warning_ack_${userId}_${today}`)
@@ -314,7 +402,7 @@ export default function UserPortal() {
             return
         }
 
-        const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        const today = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
         const key = breakDialogType === "WARNING"
             ? `break_warning_ack_${userId}_${today}`
             : `break_limit_ack_${userId}_${today}`
@@ -332,7 +420,7 @@ export default function UserPortal() {
     }
 
     const formatTime = (date: Date) => {
-        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })
+        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })
     }
 
     const fetchUserDetails = async () => {
@@ -347,6 +435,9 @@ export default function UserPortal() {
                     const roles = me.roles || [me.role]
                     setUserRoles(roles)
                     setUserDepartment(me.department?.name || "Unassigned")
+                    setUserDepartmentId(me.departmentId || me.department?.id || "")
+                    setUserManagerId(me.managerId || null)
+
                     // If Manager or Admin, fetch pending leaves assigned to them
                     if (roles.includes('MANAGER') || roles.includes('ADMIN')) {
                         fetchPendingLeaves(me.id)
@@ -431,14 +522,20 @@ export default function UserPortal() {
         try {
             // Start Amendment Logic
             if (customClockInTime && customClockInTime.trim() !== "") {
-                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-                const customDateStr = `${todayStr}T${customClockInTime}:00+08:00` // Assuming PHT input
+                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+                const offset = (() => {
+                    try {
+                        const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
+                        return part?.value.replace('GMT', '') || '+00:00'
+                    } catch { return '+00:00' }
+                })()
+                const customDateStr = `${todayStr}T${customClockInTime}:00${offset}`
 
                 // If we have a custom reason or time, it's an amendment request
                 // We trust the user wants an amendment if they used the dropdown flow (which sets customClockInTime)
 
                 if (!customReason.trim()) {
-                    alert("Please provide a reason for the time adjustment.")
+                    alert("Could you please kindly provide a reason for this time adjustment?")
                     setIsProcessing(false)
                     return
                 }
@@ -457,11 +554,11 @@ export default function UserPortal() {
 
                 if (res.ok) {
                     setShowLocationDialog(false)
-                    alert("Clock-in amendment request submitted for manager approval.")
+                    alert("Thank you! Your amendment request has been sent to your manager for review.")
                     fetchMyLeaveRequests() // Refresh pending requests
                 } else {
                     const data = await res.json()
-                    alert(data.error || "Failed to submit request")
+                    alert(data.error || "We encountered a small issue submitting your request. Please try again.")
                 }
 
                 setIsProcessing(false)
@@ -482,11 +579,11 @@ export default function UserPortal() {
                 fetchAttendance()
             } else {
                 const data = await res.json()
-                alert(data.error || "Clock in failed")
+                alert(data.error || "We couldn't clock you in just yet. Please try again.")
                 fetchAttendance()
             }
         } catch (error) {
-            alert("An error occurred while clocking in")
+            alert("We encountered a small issue. Please try again.")
         } finally {
             setIsProcessing(false)
         }
@@ -495,14 +592,39 @@ export default function UserPortal() {
     const optimisticStatus = useMemo(() => {
         let status = currentAttendance?.status || 'clocked-out';
 
-        // Filter requests for today
-        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-        const todaysRequests = myAttendanceRequests.filter(req => {
+        // 1. Determine the timestamp of the LATEST confirmed activity from the server
+        let latestRealTime = 0
+        if (currentAttendance) {
+            if (currentAttendance.clockIn) latestRealTime = Math.max(latestRealTime, new Date(currentAttendance.clockIn).getTime())
+            if (currentAttendance.clockOut) latestRealTime = Math.max(latestRealTime, new Date(currentAttendance.clockOut).getTime())
+            if (currentAttendance.breaks) {
+                currentAttendance.breaks.forEach((b: any) => {
+                    if (b.startTime) latestRealTime = Math.max(latestRealTime, new Date(b.startTime).getTime())
+                    if (b.endTime) latestRealTime = Math.max(latestRealTime, new Date(b.endTime).getTime())
+                })
+            }
+            // Also check breakStart/breakEnd logic if flat fields are used
+            if (currentAttendance.breakStart) latestRealTime = Math.max(latestRealTime, new Date(currentAttendance.breakStart).getTime())
+            if (currentAttendance.breakEnd) latestRealTime = Math.max(latestRealTime, new Date(currentAttendance.breakEnd).getTime())
+        }
+
+        // 2. Filter requests for today AND ensure they are NEWER than the latest real activity
+        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+
+        const validRequests = myAttendanceRequests.filter(req => {
             const reqDate = new Date(req.time || req.date)
-            return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT && req.status === 'PENDING'
+            // Must be pending
+            if (req.status !== 'PENDING') return false
+            // Must be for today
+            if (reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) !== todayPHT) return false
+            // CRITICAL: Must be newer than the latest real event to affect current status
+            // If we have no real record (latestRealTime===0), then any pending request counts.
+            // If we have a real record, only requests physically dated AFTER that record should override it.
+            return reqDate.getTime() > latestRealTime
         }).sort((a, b) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime())
 
-        todaysRequests.forEach(req => {
+        // 3. Replay valid requests on top of current status
+        validRequests.forEach(req => {
             if (req.type === 'CLOCK_IN') status = 'clocked-in'
             if (req.type === 'BREAK_START') status = 'on-break'
             if (req.type === 'BREAK_END') status = 'clocked-in'
@@ -529,11 +651,11 @@ export default function UserPortal() {
             const pendingClockIn = myAttendanceRequests.find((req: any) => {
                 if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
                 const reqDate = new Date(req.time || req.date)
-                const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-                return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
+                const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+                return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
             })
 
-            if (isSimulated || pendingClockIn) {
+            if (isSimulated) {
                 // Submit as Amendment Request
                 let reqType = ''
                 if (action === 'start-break') reqType = 'BREAK_START'
@@ -556,7 +678,7 @@ export default function UserPortal() {
                     fetchMyLeaveRequests() // Refresh pending list
                 } else {
                     const data = await res.json()
-                    alert(data.error || "Failed to submit request")
+                    alert(data.error || "We encountered a small issue submitting your request. Please try again.")
                 }
             } else {
                 // Normal API Call
@@ -613,14 +735,14 @@ export default function UserPortal() {
                 setLeaveStartTime("09:00")
                 setLeaveEndTime("13:00")
                 fetchMyLeaveRequests() // Refresh the list
-                alert("Leave request submitted for approval.")
+                alert("Thank you! Your leave request has been submitted for approval.")
             } else {
                 const data = await res.json()
                 console.error('[Leave Request] Error response:', data);
-                alert(data.error || "Failed to submit leave request")
+                alert(data.error || "We encountered a small issue submitting your leave request. Please try again.")
             }
         } catch (error) {
-            alert("An error occurred while submitting the request")
+            alert("We encountered a small issue. Please try again.")
         }
     }
 
@@ -704,10 +826,10 @@ export default function UserPortal() {
         )
     }
 
-    const hour = currentTime ? parseInt(currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Manila' })) : 0
+    const hour = currentTime ? parseInt(currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', hour12: false, timeZone: userTimeZone })) : 0
     const greeting = !mounted ? "Loading..." : hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening"
-    const formattedDate = currentTime ? currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' }) : "..."
-    const formattedTime = currentTime ? currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Manila' }) : "--:--:--"
+    const formattedDate = currentTime ? currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: userTimeZone }) : "..."
+    const formattedTime = currentTime ? currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: userTimeZone }) : "--:--:--"
 
     const displayName = (() => {
         if (!session?.user?.email) return "User"
@@ -806,6 +928,160 @@ export default function UserPortal() {
             .filter((d): d is string => typeof d === 'string' && d.length > 0)
     )).sort()
 
+    // --- Team Calendar Logic ---
+    useEffect(() => {
+        if (userDepartmentId) {
+            fetchMonthlyData()
+        }
+    }, [userDepartmentId, currentMonth, userManagerId]) // Re-fetch when context changes
+
+    const fetchMonthlyData = async () => {
+        // Fetch Attendance and Leaves for the Department (+ Manager) for the current month
+        try {
+            const start = startOfMonth(currentMonth)
+            const end = endOfMonth(currentMonth)
+
+            // 1. Fetch Department Data
+            const deptQuery = new URLSearchParams({
+                departmentId: userDepartmentId,
+                startDate: start.toISOString(),
+                endDate: end.toISOString()
+            })
+
+            const [deptAttRes, deptLeaveRes] = await Promise.all([
+                fetch(`/api/attendance?${deptQuery.toString()}`),
+                fetch(`/api/leaves?${deptQuery.toString()}&status=APPROVED`)
+            ])
+
+            let newMonthlyAttendance: any[] = []
+            let newTeamLeaves: any[] = []
+
+            if (deptAttRes.ok) newMonthlyAttendance = await deptAttRes.json()
+            if (deptLeaveRes.ok) newTeamLeaves = await deptLeaveRes.json()
+
+            // 2. Fetch Manager Data (if not in department)
+            // Note: Optimally we'd do this in one API call, but separate is easier for now
+            if (userManagerId) {
+                // Check if manager is already in the fetched data (by ID) to avoid duplicates
+                // But simpler to just fetch specific userId and merge, filtering duplicates later
+                const mgrQuery = new URLSearchParams({
+                    userId: userManagerId,
+                    startDate: start.toISOString(),
+                    endDate: end.toISOString()
+                })
+                const [mgrAttRes, mgrLeaveRes] = await Promise.all([
+                    fetch(`/api/attendance?${mgrQuery.toString()}`),
+                    fetch(`/api/leaves?${mgrQuery.toString()}&status=APPROVED`)
+                ])
+
+                if (mgrAttRes.ok) newMonthlyAttendance = [...newMonthlyAttendance, ...(await mgrAttRes.json())]
+                if (mgrLeaveRes.ok) newTeamLeaves = [...newTeamLeaves, ...(await mgrLeaveRes.json())]
+            }
+
+            // Deduplicate by ID
+            const uniqueAttMap = new Map()
+            newMonthlyAttendance.forEach(a => uniqueAttMap.set(a.id, a))
+            setMonthlyAttendance(Array.from(uniqueAttMap.values()))
+
+            const uniqueLeaveMap = new Map()
+            newTeamLeaves.forEach(l => uniqueLeaveMap.set(l.id, l))
+            setTeamApprovedLeaves(Array.from(uniqueLeaveMap.values()))
+
+        } catch (error) {
+            console.error("Failed to fetch team calendar data", error)
+        }
+    }
+
+    const NSW_HOLIDAYS_2026: any = {
+        '2026-01-01': "New Year's Day",
+        '2026-01-26': "Australia Day",
+        '2026-04-03': "Good Friday",
+        '2026-04-04': "Easter Saturday",
+        '2026-04-05': "Easter Sunday",
+        '2026-04-06': "Easter Monday",
+        '2026-04-25': "Anzac Day",
+        '2026-06-08': "King's Birthday",
+        '2026-10-05': "Labour Day",
+        '2026-12-25': "Christmas Day",
+        '2026-12-26': "Boxing Day",
+        '2026-12-28': "Boxing Day Holiday"
+    }
+
+    const calendarDays = useMemo(() => {
+        const start = startOfWeek(startOfMonth(currentMonth))
+        const end = endOfWeek(endOfMonth(currentMonth))
+        return eachDayOfInterval({ start, end })
+    }, [currentMonth])
+
+    const getEventsForDay = (date: Date) => {
+        const dateStr = format(date, 'yyyy-MM-dd')
+
+        // Leaves
+        const leaves = teamApprovedLeaves.filter((leave: any) =>
+            isWithinInterval(date, {
+                start: parseISO(leave.startDate),
+                end: parseISO(leave.endDate)
+            })
+        ).map((l: any) => ({ type: 'leave', data: l }))
+
+        // Attendance (Present)
+        const attendance = monthlyAttendance.filter((a: any) => {
+            const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
+            return attDate === dateStr
+        }).map((a: any) => ({ type: 'present', data: a }))
+
+        const events: any[] = [...leaves, ...attendance]
+
+        // Holidays
+        if (NSW_HOLIDAYS_2026[dateStr]) {
+            events.unshift({ type: 'holiday', name: NSW_HOLIDAYS_2026[dateStr], data: null })
+        }
+
+        return events
+    }
+
+    // Team Status Helper: My Team + Manager
+    const myTeamList = useMemo(() => {
+        const team = employees.filter((e: any) =>
+            (userDepartmentId && e.departmentId === userDepartmentId) ||
+            (userManagerId && e.id === userManagerId)
+        )
+        // Deduplicate in case manager is in team
+        const unique = new Map()
+        team.forEach((m: any) => unique.set(m.id, m))
+        // Ensure *I* am in the list too (usually part of dept, but good to ensure)
+        if (session?.user?.email) {
+            const me = employees.find((e: any) => e.email === session.user?.email)
+            if (me) unique.set(me.id, me)
+        }
+        return Array.from(unique.values())
+    }, [employees, userDepartmentId, userManagerId, session])
+
+    const sortedTeamStatus = useMemo(() => {
+        return myTeamList.map((member: any) => {
+            // Find attendance record (today) from allAttendance (already fetched)
+            const record = allAttendance.find((a: any) => a.userId === member.id)
+
+            // Check if they are on APPROVED leave today
+            const onLeaveToday = teamApprovedLeaves.find((l: any) =>
+                l.userId === member.id &&
+                isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
+            )
+
+            let status = 'absent'
+            if (record?.status === 'clocked-in') status = 'present'
+            else if (record?.status === 'on-break') status = 'break'
+            else if (onLeaveToday) status = 'leave'
+            else if (record?.clockOut) status = 'offline'
+
+            return { ...member, status, record }
+        }).sort((a: any, b: any) => {
+            const order: any = { present: 0, break: 1, leave: 2, offline: 3, absent: 4 }
+            return order[a.status] - order[b.status]
+        })
+    }, [myTeamList, allAttendance, teamApprovedLeaves])
+
+
     // --- Derived State for UI ---
 
     // Flatten attendance records into a chronological activity feed
@@ -891,8 +1167,8 @@ export default function UserPortal() {
         .filter(event => {
             // Ensure strictly TODAY'S records are shown (using PHT)
             if (!event.timestamp) return false
-            const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-            const eventPHT = new Date(event.timestamp).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+            const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+            const eventPHT = new Date(event.timestamp).toLocaleDateString("en-CA", { timeZone: userTimeZone })
             return eventPHT === todayPHT
         })
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -911,14 +1187,14 @@ export default function UserPortal() {
     const pendingClockInForDisplay = myAttendanceRequests.find((req: any) => {
         if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
         const reqDate = new Date(req.time || req.date)
-        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-        return reqDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT
+        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+        return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
     })
 
     return (
         <div className="p-6 lg:p-10 space-y-8 max-w-7xl mx-auto">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div id="tour-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-4xl md:text-5xl font-black tracking-tight text-foreground">
                         {greeting}, {displayName}
@@ -929,18 +1205,18 @@ export default function UserPortal() {
                             year: "numeric",
                             month: "long",
                             day: "numeric",
-                            timeZone: "Asia/Manila"
+                            timeZone: userTimeZone
                         }) : "Loading..."}
                     </p>
                 </div>
-                <Badge variant="outline" className={`${getStatusColor()} px-4 py-1.5 text-sm font-medium border`}>
+                <Badge id="tour-status-badge" variant="outline" className={`${getStatusColor()} px-4 py-1.5 text-sm font-medium border`}>
                     {getStatusText()}
                 </Badge>
             </div>
 
 
             {/* Clock Actions */}
-            <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
+            <Card id="tour-time-tracker" className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
                 <CardHeader className="pb-4 border-b border-border">
                     <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
                         <Clock className="w-5 h-5 text-primary" />
@@ -964,7 +1240,7 @@ export default function UserPortal() {
                             )}>
                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Current Time</p>
                                 <p className="text-4xl lg:text-5xl font-mono font-medium text-foreground whitespace-nowrap tabular-nums tracking-tight">
-                                    {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Manila" }) : "--:--:--"}
+                                    {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: userTimeZone }) : "--:--:--"}
                                 </p>
                             </div>
 
@@ -993,8 +1269,8 @@ export default function UserPortal() {
                                         {(() => {
                                             if (currentAttendance?.breakStart) return formatTime(new Date(currentAttendance.breakStart))
                                             // Find pending break start for today
-                                            const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-                                            const pending = myAttendanceRequests.find((r: any) => r.type === 'BREAK_START' && r.status === 'PENDING' && new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === todayPHT)
+                                            const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+                                            const pending = myAttendanceRequests.find((r: any) => r.type === 'BREAK_START' && r.status === 'PENDING' && new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT)
                                             return pending ? formatTime(new Date(pending.time || pending.date)) : formatTime(new Date())
                                         })()}
                                     </p>
@@ -1003,7 +1279,7 @@ export default function UserPortal() {
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex flex-wrap gap-4 items-center">
+                        <div id="tour-action-buttons" className="flex flex-wrap gap-4 items-center">
                             {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
                                 <div className="flex items-center shadow-lg shadow-green-900/10 rounded-xl transition-all active:scale-95 bg-[#009B5A] hover:bg-[#00874e] group">
                                     <Button
@@ -1101,7 +1377,7 @@ export default function UserPortal() {
             </Card>
 
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                <Card className="border border-border shadow-sm rounded-xl bg-[#EFF6F2]">
+                <Card id="tour-stats-worked" className="border border-border shadow-sm rounded-xl bg-[#EFF6F2]">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-semibold text-foreground">Hours Worked</CardTitle>
                         <div className="p-2 rounded-xl bg-green-100 text-green-600">
@@ -1116,7 +1392,7 @@ export default function UserPortal() {
                     </CardContent>
                 </Card>
 
-                <Card className="border border-border shadow-sm rounded-xl bg-[#FEF9F0]">
+                <Card id="tour-stats-break" className="border border-border shadow-sm rounded-xl bg-[#FEF9F0]">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-semibold text-foreground">Break Time</CardTitle>
                         <div className="p-2 rounded-xl bg-yellow-100 text-yellow-600">
@@ -1131,7 +1407,7 @@ export default function UserPortal() {
                     </CardContent>
                 </Card>
 
-                <Card className="border border-border shadow-sm rounded-xl bg-white">
+                <Card id="tour-stats-pending" className="border border-border shadow-sm rounded-xl bg-white">
                     <CardHeader className="pb-2">
                         <div className="flex flex-col gap-1">
                             <CardTitle className="text-sm font-semibold text-foreground">Pending Requests</CardTitle>
@@ -1144,7 +1420,7 @@ export default function UserPortal() {
                                 const pendingLeaves = myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length
                                 // Group attendance requests by date (so 4 requests for today = 1 pending item)
                                 const uniqueRequestDates = new Set(myAttendanceRequests.map((r: any) =>
-                                    new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+                                    new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: userTimeZone })
                                 ))
                                 return pendingLeaves + uniqueRequestDates.size
                             })()}
@@ -1156,7 +1432,7 @@ export default function UserPortal() {
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 <div className="xl:col-span-2 space-y-6">
-                    <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white h-full">
+                    <Card id="tour-staff-status" className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white h-full">
                         <CardHeader className="bg-muted/40/50 border-b border-border p-6">
                             <div className="flex flex-col gap-6">
                                 <div>
@@ -1231,13 +1507,45 @@ export default function UserPortal() {
                                             className="flex items-center justify-between p-4 rounded-2xl bg-muted/40 border border-border hover:bg-white hover:shadow-md transition-all duration-300"
                                         >
                                             <div className="flex items-center gap-4">
-                                                <Avatar className="h-10 w-10 border border-border shadow-sm">
-                                                    <AvatarFallback className="bg-muted text-muted-foreground text-sm font-medium">
-                                                        {staff.name.charAt(0)}
-                                                    </AvatarFallback>
-                                                </Avatar>
+                                                <div className="relative">
+                                                    <Avatar className="h-10 w-10 border border-border shadow-sm">
+                                                        <AvatarFallback className="bg-muted text-muted-foreground text-sm font-medium">
+                                                            {staff.name.charAt(0)}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    {(() => {
+                                                        const isOnline = staff.status === 'present' || staff.status === 'break' || staff.status === 'clocked-in' || staff.status === 'on-break'
+                                                        const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                                        const statusItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+
+                                                        if (!statusItem) return null
+
+                                                        const StatusIcon = statusItem.icon
+                                                        const statusColor = statusItem.color
+                                                        return (
+                                                            <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10" title={statusItem.label}>
+                                                                <StatusIcon className={`h-3.5 w-3.5 ${statusColor}`} />
+                                                            </div>
+                                                        )
+                                                    })()}
+                                                </div>
                                                 <div>
-                                                    <p className="text-sm font-semibold text-foreground">{staff.name}</p>
+                                                    <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                                        {staff.name}
+                                                        {(() => {
+                                                            const isOnline = staff.status === 'present' || staff.status === 'break' || staff.status === 'clocked-in' || staff.status === 'on-break'
+                                                            const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                                            const statusLabel = statusConfig[effectiveStatus as keyof typeof statusConfig]?.label
+
+                                                            if (!statusLabel) return null
+
+                                                            return (
+                                                                <span className="text-[10px] text-muted-foreground/60 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full hidden sm:inline-block">
+                                                                    {statusLabel}
+                                                                </span>
+                                                            )
+                                                        })()}
+                                                    </p>
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                                         <span>{(typeof staff.department === 'object' ? staff.department?.name : staff.department) || 'Unassigned'}</span>
                                                     </div>
@@ -1264,7 +1572,7 @@ export default function UserPortal() {
                                                     {getStaffStatusBadge(staff.status)}
                                                     {staff.status === 'on-leave' && staff.returnDate && (
                                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
-                                                            Ret: {new Date(staff.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Asia/Manila' })}
+                                                            Ret: {new Date(staff.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: userTimeZone })}
                                                         </span>
                                                     )}
                                                 </div>
@@ -1279,7 +1587,7 @@ export default function UserPortal() {
 
                 {/* Today's Activity (1/3 width) */}
                 <div className="xl:col-span-1">
-                    <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white h-full">
+                    <Card id="tour-activity-feed" className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white h-full">
                         <CardHeader className="bg-muted/40/50 border-b border-border p-6">
                             <CardTitle className="text-lg font-semibold text-foreground">Today's Activity</CardTitle>
                             <CardDescription className="text-sm text-muted-foreground">Your attendance log</CardDescription>
@@ -1296,7 +1604,7 @@ export default function UserPortal() {
                                     {activityFeed.map((event: any, index: number) => {
                                         const timeString = (() => {
                                             try {
-                                                return event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' }) : '--:--'
+                                                return event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '--:--'
                                             } catch (e) {
                                                 return '--:--'
                                             }
@@ -1525,17 +1833,17 @@ export default function UserPortal() {
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className={cn(
                         "p-8 text-center relative overflow-hidden transition-colors duration-500",
-                        breakDialogType === "WARNING" ? "bg-amber-500" : "bg-red-600"
+                        breakDialogType === "WARNING" ? "bg-amber-400" : "bg-amber-500"
                     )}>
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/20 to-transparent" />
                         <Coffee className="h-12 w-12 text-white/30 mx-auto mb-4" />
                         <DialogTitle className="text-2xl font-black italic text-white uppercase tracking-tight relative z-10">
-                            {breakDialogType === "WARNING" ? "Take Note" : "Limit Exceeded"}
+                            {breakDialogType === "WARNING" ? "Break Schedule Update" : "Break Time Check-in"}
                         </DialogTitle>
                         <DialogDescription className="text-white/80 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
                             {breakDialogType === "WARNING"
-                                ? "You are approaching your daily break limit"
-                                : "You have gone over the daily break time limit"}
+                                ? "Just a gentle reminder regarding your break time"
+                                : "It seems your break has extended a bit"}
                         </DialogDescription>
                     </div>
                     <div className="p-8 space-y-6 bg-white text-center">
@@ -1543,28 +1851,315 @@ export default function UserPortal() {
                             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground italic">Current Break Usage</span>
                             <span className={cn(
                                 "text-5xl font-black italic tracking-tighter",
-                                breakDialogType === "WARNING" ? "text-amber-600" : "text-red-700"
+                                breakDialogType === "WARNING" ? "text-amber-600" : "text-amber-600"
                             )}>{breakTime}</span>
                         </div>
 
                         <p className="text-sm text-slate-500 font-medium">
                             {breakDialogType === "WARNING"
-                                ? "You have approximately 15 minutes left. Please plan to return to work shortly."
-                                : "The 1-hour daily break limit has been reached. An automated notification has been sent."}
+                                ? "You have about 15 minutes remaining. We just wanted to let you know so you can enjoy the rest of your break!"
+                                : "We just wanted to check if you forgot to clock back in? If you need a bit more time, that is perfectly fine, just let your manager know."}
                         </p>
 
                         <Button
                             onClick={handleBreakAcknowledge}
                             className={cn(
                                 "w-full h-14 text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all active:scale-95",
-                                breakDialogType === "WARNING" ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-900 hover:bg-slate-800"
+                                breakDialogType === "WARNING" ? "bg-amber-600 hover:bg-amber-700" : "bg-amber-600 hover:bg-amber-700"
                             )}
                         >
-                            Understood
+                            Thank you for the reminder
                         </Button>
                     </div>
                 </DialogContent>
             </Dialog>
+
+
+            {/* --- TEAM CALENDAR SECTION --- */}
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 animate-in slide-in-from-bottom-8 duration-700">
+                {/* Main Calendar View */}
+                <Card className="xl:col-span-3 border border-border shadow-sm bg-white overflow-hidden rounded-[2rem]">
+                    <CardHeader className="border-b border-border bg-muted/10 p-6 flex flex-row items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-xl font-black text-foreground tracking-tight">
+                                {format(currentMonth, 'MMMM yyyy')}
+                            </h2>
+                            <div className="flex items-center gap-1 bg-white border border-border rounded-lg p-1 shadow-sm">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                                    className="h-8 w-8 hover:bg-slate-100"
+                                >
+                                    <ArrowUpDown className="w-4 h-4 rotate-90" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                                    className="h-8 w-8 hover:bg-slate-100"
+                                >
+                                    <ArrowUpDown className="w-4 h-4 -rotate-90" />
+                                </Button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full bg-blue-500"></div> Leave
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full bg-red-500"></div> Holiday
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="grid grid-cols-7 border-b border-border bg-slate-50">
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                <div key={day} className="py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                    {day}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="grid grid-cols-7 auto-rows-fr">
+                            {calendarDays.map((day, i) => {
+                                const events = getEventsForDay(day)
+                                const isCurrentMonth = isSameMonth(day, currentMonth)
+
+                                return (
+                                    <div
+                                        key={day.toISOString()}
+                                        onClick={() => setSelectedDayDetail(day)}
+                                        className={cn(
+                                            "min-h-[120px] p-2 border-b border-r border-border transition-all hover:bg-muted/50 cursor-pointer active:scale-[0.98] relative",
+                                            !isSameMonth(day, currentMonth) && "opacity-40 bg-muted/5",
+                                            isToday(day) && "bg-blue-50/10"
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className={cn(
+                                                "text-xs font-bold h-7 w-7 flex items-center justify-center rounded-full transition-colors",
+                                                isToday(day) ? "bg-slate-900 text-white shadow-md" : "text-muted-foreground group-hover:text-foreground"
+                                            )}>
+                                                {format(day, 'd')}
+                                            </span>
+                                            {isToday(day) && (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-1.5 overflow-hidden">
+                                            {/* Prioritize Holiday */}
+                                            {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')] && (
+                                                <div className="text-[9px] bg-red-50 text-red-600 px-1.5 py-1 rounded border border-red-100 truncate font-black uppercase tracking-tight flex items-center gap-1">
+                                                    <div className="w-1 h-1 rounded-full bg-red-600" />
+                                                    {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')]}
+                                                </div>
+                                            )}
+
+                                            {/* Show up to 2 personnel events */}
+                                            {events.filter(e => e.type !== 'holiday').slice(0, 2).map((event: any, idx: number) => (
+                                                <div
+                                                    key={idx}
+                                                    className={cn(
+                                                        "text-[9px] px-1.5 py-1 rounded border truncate font-bold uppercase tracking-tight flex items-center gap-1.5",
+                                                        event.type === 'leave' ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                    )}
+                                                >
+                                                    <div className={cn("w-1.5 h-1.5 rounded-full", event.type === 'leave' ? "bg-blue-600" : "bg-emerald-600")} />
+                                                    {event.data.userName.split(' ')[0]}
+                                                </div>
+                                            ))}
+
+                                            {/* +N More logic */}
+                                            {events.filter(e => e.type !== 'holiday').length > 2 && (
+                                                <div className="text-[9px] font-bold text-slate-400 flex items-center justify-center py-0.5 bg-slate-50 rounded mt-1">
+                                                    +{events.filter(e => e.type !== 'holiday').length - 2} More
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Team Status Sidebar */}
+                <div className="space-y-6">
+                    <Card className="border border-border shadow-sm bg-white overflow-hidden h-full rounded-[2rem] flex flex-col">
+                        <CardHeader className="border-b border-border bg-muted/10 p-6">
+                            <div className="flex flex-col gap-1">
+                                <CardTitle className="text-lg font-black tracking-tight">Team Status</CardTitle>
+                                <CardDescription className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                                    {format(new Date(), 'EEEE, MMMM do')}
+                                </CardDescription>
+                            </div>
+
+                            {/* Stats */}
+                            <div className="flex items-center gap-2 mt-4">
+                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    {sortedTeamStatus.filter((m: any) => m.status === 'present').length} Present
+                                </Badge>
+                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                    {sortedTeamStatus.filter((m: any) => m.status === 'leave').length} Leave
+                                </Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-0 flex-1 overflow-y-auto max-h-[600px]">
+                            <div className="divide-y divide-border/50">
+                                {sortedTeamStatus.length === 0 ? (
+                                    <div className="p-8 text-center text-muted-foreground text-xs font-bold uppercase tracking-widest">
+                                        No team members found.
+                                    </div>
+                                ) : (
+                                    sortedTeamStatus.map((member: any) => (
+                                        <div key={member.id} className="p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors group">
+                                            <div className="relative">
+                                                <Avatar className="h-10 w-10 border-2 border-white shadow-sm group-hover:shadow-md transition-all">
+                                                    <AvatarFallback className="bg-slate-100 text-slate-500 text-xs font-black">
+                                                        {member.name.charAt(0)}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className={cn(
+                                                    "absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white",
+                                                    member.status === 'present' ? "bg-green-500" :
+                                                        member.status === 'break' ? "bg-amber-400" :
+                                                            member.status === 'leave' ? "bg-blue-500" :
+                                                                "bg-slate-300"
+                                                )} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-bold text-foreground truncate">{member.name}</p>
+                                                <p className="text-[10px] font-semibold text-muted-foreground truncate uppercase tracking-wider">
+                                                    {member.id === userManagerId ? 'Team Manager' : member.department?.name || 'Teammate'}
+                                                </p>
+                                            </div>
+                                            {member.status === 'present' && (
+                                                <Badge className="bg-green-100 text-green-700 hover:bg-green-200 h-6 border-0 text-[9px] font-black uppercase tracking-widest">
+                                                    Online
+                                                </Badge>
+                                            )}
+                                            {member.status === 'leave' && (
+                                                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200 h-6 border-0 text-[9px] font-black uppercase tracking-widest">
+                                                    Away
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+
+            {/* Onboarding Dialog */}
+            <Dialog open={isOnboardingOpen} onOpenChange={undefined}>
+                <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl [&>button]:hidden" onInteractOutside={(e) => e.preventDefault()}>
+                    <div className="bg-[#8B2323] p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                        <Shield className="h-12 w-12 text-white/20 mx-auto mb-4" />
+                        <DialogTitle className="text-2xl font-bold text-white uppercase tracking-tight relative z-10">Setup User Profile</DialogTitle>
+                        <DialogDescription className="text-white/60 font-medium text-[10px] uppercase tracking-widest mt-2 relative z-10">
+                            Please update your details
+                        </DialogDescription>
+                    </div>
+
+                    <div className="p-8 space-y-6 bg-white">
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Select Your Base Location</Label>
+                                <Select value={onboardingLocation} onValueChange={setOnboardingLocation}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Where are you based?" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Philippines">Philippines</SelectItem>
+                                        <SelectItem value="Australia">Australia</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Assign Your Manager</Label>
+                                <Select value={onboardingManager} onValueChange={setOnboardingManager}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Who do you report to?" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unassigned">No specific manager</SelectItem>
+                                        {managerList.map(m => (
+                                            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                            <Button
+                                onClick={handleOnboardingSubmit}
+                                disabled={!onboardingLocation}
+                                className="w-full h-12 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold uppercase tracking-widest text-xs rounded-xl shadow-lg"
+                            >
+                                Complete Setup
+                            </Button>
+
+                            <Button
+                                variant="ghost"
+                                onClick={() => {
+                                    sessionStorage.setItem('onboardingSkipped', 'true')
+                                    setIsOnboardingOpen(false)
+                                }}
+                                className="w-full text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-slate-900"
+                            >
+                                Skip for Now
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Day Detail Dialog (for calendar clicks) */}
+            <Dialog open={!!selectedDayDetail} onOpenChange={() => setSelectedDayDetail(null)}>
+                <DialogContent className="sm:max-w-md rounded-[2rem]">
+                    <DialogHeader className="pb-4 border-b">
+                        <DialogTitle className="font-black text-xl tracking-tight">
+                            {selectedDayDetail ? format(selectedDayDetail, 'EEEE, MMMM do') : ''}
+                        </DialogTitle>
+                        <DialogDescription className="font-bold uppercase tracking-widest text-[10px]">
+                            Daily Activity & Events
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        {selectedDayDetail && (() => {
+                            const events = getEventsForDay(selectedDayDetail)
+                            if (events.length === 0) return <p className="text-sm text-center text-muted-foreground italic">No events scheduled for this day.</p>
+                            return (
+                                <div className="space-y-3">
+                                    {events.map((e: any, i: number) => (
+                                        <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                            <div className={cn("w-2 h-2 rounded-full",
+                                                e.type === 'leave' ? "bg-blue-500" :
+                                                    e.type === 'holiday' ? "bg-red-500" :
+                                                        "bg-green-500"
+                                            )} />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-bold text-slate-800">
+                                                    {e.type === 'holiday' ? e.name : e.data.userName}
+                                                </p>
+                                                {e.type === 'leave' && <p className="text-xs text-slate-500 font-medium">On Leave ({e.data.type})</p>}
+                                                {e.type === 'present' && <p className="text-xs text-slate-500 font-medium">Present</p>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )
+                        })()}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
         </div>
     )
 }

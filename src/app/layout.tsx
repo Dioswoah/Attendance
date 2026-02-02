@@ -17,12 +17,12 @@ export const metadata: Metadata = {
   description: "Redadair Staff Attendance",
   icons: {
     icon: [
-      { url: '/logo.png', type: 'image/png' },
-      { url: '/logo.png', sizes: '32x32', type: 'image/png' },
-      { url: '/logo.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon.png', type: 'image/png' },
+      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon.png', sizes: '16x16', type: 'image/png' },
     ],
-    shortcut: '/logo.png',
-    apple: '/logo.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
   }
 };
 

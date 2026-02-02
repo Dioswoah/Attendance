@@ -45,6 +45,35 @@ export async function POST(req: Request) {
             }
         })
 
+        // PROVISIONAL ATTENDANCE:
+        // If this is a CLOCK_IN request, we create a provisional Attendance record (if none exists).
+        // This allows the user to continue working (Start Break, etc.) without a "domino effect" of cascading requests.
+        // If this request is later DECLINED, the provisional record should be removed (handled in approval logic).
+        if (type === 'CLOCK_IN') {
+            const targetDate = new Date(date)
+            targetDate.setUTCHours(0, 0, 0, 0)
+
+            const existing = await prisma.attendance.findFirst({
+                where: {
+                    userId,
+                    date: targetDate
+                }
+            })
+
+            if (!existing) {
+                await prisma.attendance.create({
+                    data: {
+                        userId,
+                        date: targetDate,
+                        clockIn: new Date(time),
+                        status: 'PRESENT',
+                        mode: 'OFFICE', // Default, or infer?
+                        notes: `PROVISIONAL_REQUEST:${request.id}`
+                    }
+                })
+            }
+        }
+
         // Notify Manager
         const user = await prisma.user.findUnique({
             where: { id: userId },

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
+import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,8 +11,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Calendar, Clock, FileText, X, Loader2 } from "lucide-react"
-import { format } from "date-fns"
+import { Plus, Calendar, Clock, FileText, X, Loader2, Pencil, Trash2, Archive, ArchiveRestore } from "lucide-react"
+import { format, isSameDay, subDays } from "date-fns"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 
 type LeaveStatus = "PENDING" | "APPROVED" | "DECLINED"
@@ -50,6 +52,10 @@ export default function LeaveRequestsPage() {
     const [endTime, setEndTime] = useState<string>("13:00")
     const [reason, setReason] = useState<string>("")
     const [editingId, setEditingId] = useState<string | null>(null)
+    const [dateFilter, setDateFilter] = useState({
+        start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+        end: format(new Date(), 'yyyy-MM-dd')
+    })
 
     useEffect(() => {
         if (session?.user?.id) {
@@ -96,7 +102,14 @@ export default function LeaveRequestsPage() {
     const filteredRequests = requests.filter((r) => {
         const matchesStatus = filterStatus === "all" || r.status === filterStatus
         const matchesArchive = showArchived ? r.isArchived : !r.isArchived
-        return matchesStatus && matchesArchive
+
+        // Date Range Filter (based on Date Submitted)
+        const reqDate = new Date(r.createdAt).setHours(0, 0, 0, 0)
+        const start = new Date(dateFilter.start).setHours(0, 0, 0, 0)
+        const end = new Date(dateFilter.end).setHours(23, 59, 59, 999)
+        const matchesDate = reqDate >= start && reqDate <= end
+
+        return matchesStatus && matchesArchive && matchesDate
     })
 
     const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,7 +124,7 @@ export default function LeaveRequestsPage() {
         const newEnd = e.target.value
         if (startDate && newEnd < startDate) {
             // Don't allow setting end date before start date
-            alert("End date cannot be before start date")
+            toast.error("End date cannot be before start date")
             return
         }
         setEndDate(newEnd)
@@ -153,21 +166,26 @@ export default function LeaveRequestsPage() {
                 setDialogOpen(false)
                 resetForm()
                 fetchLeaveRequests()
-                alert(editingId ? "Leave request updated successfully!" : "Leave request submitted successfully!")
+                toast.success(editingId ? "Leave request updated successfully!" : "Leave request submitted successfully!")
             } else {
                 const data = await res.json()
-                alert(data.error || "Failed to submit leave request")
+                toast.error(data.error || "Failed to submit leave request")
             }
         } catch (error) {
             console.error("Failed to submit leave request:", error)
-            alert("An error occurred while submitting the request")
+            toast.error("An error occurred while submitting the request")
         } finally {
             setIsSubmitting(false)
         }
     }
 
     const handleEdit = (request: LeaveRequest) => {
-        setEditingId(request.id)
+        // If Approved/Declined, treat as new request
+        if (['APPROVED', 'DECLINED'].includes(request.status)) {
+            setEditingId(null)
+        } else {
+            setEditingId(request.id)
+        }
         setLeaveType(request.type)
         // Parse duration back to type? Simplification: if it contains "Days" it's Full Day, else it is what it matches
         if (request.duration === 'Half Day') setDuration('Half Day')
@@ -184,21 +202,31 @@ export default function LeaveRequestsPage() {
         setDialogOpen(true)
     }
 
-    const handleDelete = async (id: string) => {
-        if (!confirm("Are you sure you want to cancel this leave request?")) return
-
-        try {
-            const res = await fetch(`/api/leaves/${id}`, { method: 'DELETE' })
-            if (res.ok) {
-                fetchLeaveRequests()
-                alert("Leave request cancelled.")
-            } else {
-                alert("Failed to cancel request.")
-            }
-        } catch (e) {
-            console.error(e)
-            alert("Error cancelling request.")
-        }
+    const handleDelete = (id: string) => {
+        toast("Are you sure you want to cancel this leave request?", {
+            description: "This action cannot be undone.",
+            action: {
+                label: "Confirm",
+                onClick: async () => {
+                    const deleteToast = toast.loading("Cancelling request...")
+                    try {
+                        const res = await fetch(`/api/leaves/${id}`, { method: 'DELETE' })
+                        if (res.ok) {
+                            fetchLeaveRequests()
+                            toast.success("Leave request cancelled", { id: deleteToast })
+                        } else {
+                            toast.error("Failed to cancel request", { id: deleteToast })
+                        }
+                    } catch (e) {
+                        toast.error("Error cancelling request", { id: deleteToast })
+                    }
+                }
+            },
+            cancel: {
+                label: "Cancel",
+                onClick: () => { }
+            },
+        })
     }
 
     const handleArchive = async (id: string) => {
@@ -314,7 +342,7 @@ export default function LeaveRequestsPage() {
                             <div className="space-y-2">
                                 <Label>Duration</Label>
                                 <div className="flex gap-2">
-                                    {(['Full Day', 'Half Day', 'Part Day'] as DurationType[]).map((type) => (
+                                    {(['Full Day', 'Part Day'] as DurationType[]).map((type) => (
                                         <Button
                                             key={type}
                                             type="button"
@@ -406,26 +434,51 @@ export default function LeaveRequestsPage() {
             </div>
 
             {/* Filter */}
-            <div id="tour-leaves-filter" className="flex items-center gap-4">
-                <span className="text-sm font-medium text-muted-foreground">Filter:</span>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-40 h-10 bg-white border-border rounded-lg">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All</SelectItem>
-                        <SelectItem value="PENDING">Pending</SelectItem>
-                        <SelectItem value="APPROVED">Approved</SelectItem>
-                        <SelectItem value="DECLINED">Denied</SelectItem>
-                    </SelectContent>
-                </Select>
-                <div className="flex items-center gap-2 ml-auto">
+            <div id="tour-leaves-filter" className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-muted-foreground">Status:</span>
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="w-[140px] h-9 bg-white border-border rounded-lg text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            <SelectItem value="PENDING">Pending</SelectItem>
+                            <SelectItem value="APPROVED">Approved</SelectItem>
+                            <SelectItem value="DECLINED">Denied</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div className="flex items-center gap-2 bg-white p-1 border border-border rounded-lg shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2 px-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">From</span>
+                        <Input
+                            type="date"
+                            value={dateFilter.start}
+                            onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
+                            className="h-7 w-auto min-w-[110px] border-none bg-transparent focus-visible:ring-0 text-xs font-medium p-0"
+                        />
+                    </div>
+                    <div className="w-px h-5 bg-border" />
+                    <div className="flex items-center gap-2 px-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To</span>
+                        <Input
+                            type="date"
+                            value={dateFilter.end}
+                            onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
+                            className="h-7 w-auto min-w-[110px] border-none bg-transparent focus-visible:ring-0 text-xs font-medium p-0"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 sm:ml-auto">
                     <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setShowArchived(!showArchived)}
                         className={cn(
-                            "text-xs font-bold uppercase tracking-widest",
+                            "text-xs font-bold uppercase tracking-widest h-9",
                             showArchived ? "text-primary bg-primary/10" : "text-muted-foreground"
                         )}
                     >
@@ -435,117 +488,160 @@ export default function LeaveRequestsPage() {
             </div>
 
             {/* Requests List */}
-            <div id="tour-leaves-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-                {filteredRequests.map((request) => (
-                    <Card key={request.id} className="border border-border shadow-sm rounded-xl overflow-hidden bg-white hover:bg-muted/30 transition-all hover:shadow-md flex flex-col group">
-                        <CardContent className="p-6 flex-1 flex flex-col gap-4">
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="space-y-1">
-                                    <h3 className="text-lg font-bold text-foreground capitalize flex items-center gap-2">
-                                        {request.type.toLowerCase().replace('_', ' ')}
-                                    </h3>
-                                    <Badge variant="outline" className="font-medium text-xs bg-muted/50 border-border text-muted-foreground w-fit">
-                                        {request.duration}
-                                    </Badge>
-                                </div>
-                                {getStatusBadge(request.status)}
-                            </div>
-
-                            <div className="space-y-3 pt-2">
-                                <div className="flex items-center gap-2 text-sm">
-                                    <Calendar className="w-4 h-4 text-primary shrink-0" />
-                                    <span className="font-medium text-foreground">
-                                        {request.startDate ? format(new Date(request.startDate), 'MMM dd') : 'N/A'}
-                                        {' - '}
-                                        {request.endDate ? format(new Date(request.endDate), 'MMM dd') : 'N/A'}
-                                    </span>
-                                </div>
-
-                                {request.startTime && request.endTime && (
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <Clock className="w-4 h-4 text-primary shrink-0" />
-                                        <span className="font-medium text-foreground">
-                                            {(() => {
-                                                try {
-                                                    const start = request.startTime ? formatTimeDisplay(new Date(request.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })) : 'N/A'
-                                                    const end = request.endTime ? formatTimeDisplay(new Date(request.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })) : 'N/A'
-                                                    return `${start} - ${end}`
-                                                } catch (e) {
-                                                    return 'Invalid Time'
-                                                }
-                                            })()}
-                                        </span>
+            <div id="tour-leaves-grid" className="rounded-md border border-border bg-white overflow-hidden shadow-sm">
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableHead className="w-[200px] font-bold text-foreground">Date Submitted</TableHead>
+                            <TableHead className="font-bold text-foreground">Request Details</TableHead>
+                            <TableHead className="w-[150px] font-bold text-foreground">Duration</TableHead>
+                            <TableHead className="w-[150px] font-bold text-foreground">Status</TableHead>
+                            <TableHead className="text-right font-bold text-foreground w-[180px]">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {isLoading ? (
+                            <TableRow>
+                                <TableCell colSpan={5} className="h-24 text-center">
+                                    <div className="flex justify-center"><Loader2 className="animate-spin text-red-600" /></div>
+                                </TableCell>
+                            </TableRow>
+                        ) : filteredRequests.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                                    <div className="flex flex-col items-center justify-center gap-2">
+                                        <Calendar className="w-8 h-8 opacity-20" />
+                                        <p>No {showArchived ? 'archived' : filterStatus.toLowerCase() !== 'all' ? filterStatus.toLowerCase() : 'active'} requests found.</p>
                                     </div>
-                                )}
-                            </div>
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            Object.entries(
+                                filteredRequests.reduce((groups, req) => {
+                                    const dateStr = format(new Date(req.createdAt), 'yyyy-MM-dd')
+                                    if (!groups[dateStr]) groups[dateStr] = []
+                                    groups[dateStr].push(req)
+                                    return groups
+                                }, {} as Record<string, LeaveRequest[]>)
+                            ).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
+                                .map(([date, requests]) => (
+                                    requests.map((request, index) => (
+                                        <TableRow key={request.id} className="hover:bg-muted/50">
+                                            {index === 0 && (
+                                                <TableCell rowSpan={requests.length} className="align-top font-medium border-r border-border/50 bg-muted/5">
+                                                    <div className="flex flex-col gap-1 sticky top-4">
+                                                        <span className="text-base font-semibold">{format(new Date(date), 'MMM dd, yyyy')}</span>
+                                                        <span className="text-xs text-muted-foreground font-normal">
+                                                            {(() => {
+                                                                const d = new Date(date)
+                                                                if (isSameDay(d, new Date())) return "Today"
+                                                                if (isSameDay(d, subDays(new Date(), 1))) return "Yesterday"
+                                                                return format(d, 'EEEE')
+                                                            })()}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                            )}
+                                            <TableCell className="align-top py-4">
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="font-bold text-base text-foreground capitalize">
+                                                            {request.type.toLowerCase().replace('_', ' ')}
+                                                        </h3>
+                                                    </div>
 
-                            <div className="bg-muted/30 p-3 rounded-lg border border-border/50 text-sm italic text-foreground/80 mt-auto">
-                                "{request.reason}"
-                            </div>
+                                                    <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                                                        <div className="flex items-center gap-2">
+                                                            <Calendar className="w-3.5 h-3.5" />
+                                                            <span className="font-medium text-foreground/80">
+                                                                {request.startDate ? format(new Date(request.startDate), 'MMM dd, yyyy') : 'N/A'}
+                                                                {request.startDate !== request.endDate && ` - ${request.endDate ? format(new Date(request.endDate), 'MMM dd, yyyy') : 'N/A'}`}
+                                                            </span>
+                                                        </div>
+                                                        {request.startTime && request.endTime && (
+                                                            <div className="flex items-center gap-2">
+                                                                <Clock className="w-3.5 h-3.5" />
+                                                                <span>
+                                                                    {(() => {
+                                                                        try {
+                                                                            const start = request.startTime ? formatTimeDisplay(new Date(request.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })) : 'N/A'
+                                                                            const end = request.endTime ? formatTimeDisplay(new Date(request.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })) : 'N/A'
+                                                                            return `${start} - ${end}`
+                                                                        } catch (e) {
+                                                                            return 'Time error'
+                                                                        }
+                                                                    })()}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
 
-                            {request.status === "DECLINED" && request.declineReason && (
-                                <div className="bg-red-50 p-3 rounded-lg border border-red-100 mt-2">
-                                    <p className="text-xs font-bold text-red-600 mb-1 uppercase tracking-wider">Decline Reason</p>
-                                    <p className="text-sm text-red-700 leading-tight">"{request.declineReason}"</p>
-                                </div>
-                            )}
+                                                    <p className="text-sm text-foreground/80 pl-2 border-l-2 border-muted mt-1 italic">
+                                                        "{request.reason}"
+                                                    </p>
 
-                            <div className="pt-2 border-t border-border mt-2 flex items-center justify-between">
-                                <p className="text-xs text-muted-foreground font-mono">
-                                    Submitted: {request.createdAt ? format(new Date(request.createdAt), 'MMM dd, yyyy') : 'Unknown Date'}
-                                </p>
-                                {(!request.isArchived) && (
-                                    <div className="flex gap-2">
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-100" onClick={() => handleEdit(request)}>
-                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                            </svg>
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100" onClick={() => handleDelete(request.id)}>
-                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                        </Button>
-                                    </div>
-                                )}
-                                {['APPROVED', 'DECLINED'].includes(request.status) && !request.isArchived && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleArchive(request.id)}
-                                        className="h-8 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground"
-                                    >
-                                        Archive
-                                    </Button>
-                                )}
-                                {request.isArchived && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleUnarchive(request.id)}
-                                        className="h-8 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary/80"
-                                    >
-                                        Unarchive
-                                    </Button>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
-
-                {filteredRequests.length === 0 && (
-                    <Card className="border border-border shadow-sm rounded-xl bg-white col-span-full">
-                        <CardContent className="p-12 text-center">
-                            <Calendar className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                            <h3 className="text-lg font-semibold text-foreground">No requests found</h3>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                {filterStatus === "all"
-                                    ? "You haven't submitted any leave requests yet."
-                                    : `No ${filterStatus.toLowerCase()} requests found.`}
-                            </p>
-                        </CardContent>
-                    </Card>
-                )}
+                                                    {request.status === "DECLINED" && request.declineReason && (
+                                                        <div className="bg-red-50 p-2 rounded border border-red-100 mt-1">
+                                                            <p className="text-xs font-bold text-red-600 uppercase tracking-wider">Decline Reason</p>
+                                                            <p className="text-xs text-red-700">"{request.declineReason}"</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="align-top py-4">
+                                                <Badge variant="outline" className="font-medium text-xs bg-muted/50 border-border text-muted-foreground whitespace-nowrap">
+                                                    {request.duration}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="align-top py-4">
+                                                {getStatusBadge(request.status)}
+                                            </TableCell>
+                                            <TableCell className="align-top text-right py-4">
+                                                <div className="flex flex-col items-end gap-2">
+                                                    {(!request.isArchived) && (
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(request)} title="Edit Request">
+                                                                <Pencil className="h-4 w-4" />
+                                                                <span className="sr-only">Edit</span>
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(request.id)} title="Cancel Request">
+                                                                <Trash2 className="h-4 w-4" />
+                                                                <span className="sr-only">Cancel</span>
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                    {['APPROVED', 'DECLINED'].includes(request.status) && !request.isArchived && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleArchive(request.id)}
+                                                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                                            title="Archive Request"
+                                                        >
+                                                            <Archive className="h-4 w-4" />
+                                                            <span className="sr-only">Archive</span>
+                                                        </Button>
+                                                    )}
+                                                    {request.isArchived && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleUnarchive(request.id)}
+                                                            className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
+                                                            title="Unarchive Request"
+                                                        >
+                                                            <ArchiveRestore className="h-4 w-4" />
+                                                            <span className="sr-only">Unarchive</span>
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                ))
+                        )}
+                    </TableBody>
+                </Table>
             </div>
         </div>
     )

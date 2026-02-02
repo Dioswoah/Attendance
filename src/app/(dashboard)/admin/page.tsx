@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap, Home } from "lucide-react"
 import { io } from "socket.io-client"
+import { statusConfig } from "@/components/UserStatusDropdown"
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState({
@@ -320,14 +321,44 @@ export default function AdminDashboard() {
                                     <TableRow key={emp.id} className="hover:bg-muted/50 transition-all duration-200">
                                         <TableCell className="py-4 px-6">
                                             <div className="flex items-center gap-3">
-                                                <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
-                                                    {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : (emp.name?.charAt(0) || "U")}
-                                                    <div className={`absolute bottom-0 right-0 h-2.5 w-2.5 border-2 border-white rounded-full ${status === 'clocked-in' ? 'bg-green-500' :
-                                                        status === 'on-break' ? 'bg-yellow-500' : 'bg-slate-300'
-                                                        }`} />
+                                                <div className="relative">
+                                                    <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
+                                                        {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : (emp.name?.charAt(0) || "U")}
+                                                    </div>
+                                                    {/* Status Indicator */}
+                                                    {(() => {
+                                                        const isOnline = status === 'clocked-in' || status === 'on-break'
+                                                        const effectiveStatus = isOnline ? (emp.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                                        const statusItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+
+                                                        if (!statusItem) return null
+
+                                                        const StatusIcon = statusItem.icon
+                                                        const statusColor = statusItem.color
+                                                        return (
+                                                            <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10" title={statusItem.label}>
+                                                                <StatusIcon className={`h-3 w-3 ${statusColor}`} />
+                                                            </div>
+                                                        )
+                                                    })()}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="font-medium text-foreground text-sm leading-tight">{emp.name || "Unknown Identity"}</span>
+                                                    <span className="font-medium text-foreground text-sm leading-tight flex items-center gap-2">
+                                                        {emp.name || "Unknown Identity"}
+                                                        {(() => {
+                                                            const isOnline = status === 'clocked-in' || status === 'on-break'
+                                                            const effectiveStatus = isOnline ? (emp.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                                            const statusLabel = statusConfig[effectiveStatus as keyof typeof statusConfig]?.label
+
+                                                            if (!statusLabel) return null
+
+                                                            return (
+                                                                <span className="text-[10px] text-muted-foreground/60 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
+                                                                    {statusLabel}
+                                                                </span>
+                                                            )
+                                                        })()}
+                                                    </span>
                                                     <span className="text-xs text-muted-foreground">{emp.email}</span>
                                                 </div>
                                             </div>

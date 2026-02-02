@@ -16,6 +16,7 @@ model User {
   departmentId       String?
   teamId             String?
   managerId          String?
+  location           String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   deletedAt          DateTime?
@@ -36,6 +37,7 @@ model User {
   managedUsers       User[]         @relation("UserManager")
   team               Team?          @relation(fields: [teamId], references: [id])
   chatSessions       ChatSession[]
+  availabilityStatus UserStatus    @default(AVAILABLE)
 }
 
 model Account {
@@ -239,6 +241,15 @@ model ChatSession {
   updatedAt DateTime      @updatedAt
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages  ChatMessage[]
+}
+
+enum UserStatus {
+  AVAILABLE
+  BUSY
+  DO_NOT_DISTURB
+  BE_RIGHT_BACK
+  APPEAR_AWAY
+  APPEAR_OFFLINE
 }
 
 model ChatMessage {

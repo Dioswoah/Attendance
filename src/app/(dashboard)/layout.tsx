@@ -21,6 +21,8 @@ import {
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 
+import { useSession } from "next-auth/react"
+
 export default function AdminLayout({
     children,
 }: {
@@ -28,32 +30,34 @@ export default function AdminLayout({
 }) {
     const router = useRouter()
     const pathname = usePathname()
+    const { data: session, status } = useSession()
 
     const [isChecking, setIsChecking] = useState(true)
 
     useEffect(() => {
-        const isAuthenticated = sessionStorage.getItem("adminAuthenticated")
-        if (!isAuthenticated) {
-            router.push("/admin-login")
+        if (status === "loading") return
+
+        const roles = (session?.user as any)?.roles || []
+        if (!roles.includes("ADMIN")) {
+            router.push("/")
         } else {
             setIsChecking(false)
         }
-    }, [router])
+    }, [status, session, router])
 
     if (isChecking) {
         return (
             <div className="min-h-screen w-full flex flex-col items-center justify-center bg-muted/20 gap-4">
                 <Loader2 className="h-10 w-10 animate-spin text-red-600" />
                 <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground animate-pulse">
-                    Verifying Admin Session...
+                    Verifying Admin Access...
                 </p>
             </div>
         )
     }
 
-    const handleLogout = () => {
-        sessionStorage.removeItem("adminAuthenticated")
-        router.push("/admin-login")
+    const handleExit = () => {
+        router.push("/user")
     }
 
     const navItems = [
@@ -109,11 +113,11 @@ export default function AdminLayout({
                 <div className="mt-auto p-4 border-t border-border">
                     <Button
                         variant="ghost"
-                        className="w-full justify-start h-10 rounded-lg gap-3 px-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all font-medium text-sm"
-                        onClick={handleLogout}
+                        className="w-full justify-start h-10 rounded-lg gap-3 px-3 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all font-medium text-sm"
+                        onClick={handleExit}
                     >
                         <LogOut className="h-4 w-4" />
-                        Logout Session
+                        Exit Admin Portal
                     </Button>
                 </div>
             </aside>

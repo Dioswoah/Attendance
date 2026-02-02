@@ -33,7 +33,8 @@ export async function POST(req: Request) {
                 email: body.email,
                 departmentId: body.departmentId,
                 roles: body.roles || ['USER'],
-                managerId: body.managerId || null
+                managerId: body.managerId || null,
+                location: body.location || null
             }
         })
         return NextResponse.json(employee)

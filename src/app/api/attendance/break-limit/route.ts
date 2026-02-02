@@ -18,10 +18,10 @@ export async function POST(req: Request) {
         const notification = await prisma.notification.create({
             data: {
                 userId,
-                title: type === 'WARNING' ? "Break Time Warning" : "Break Limit Exceeded",
+                title: type === 'WARNING' ? "Break Schedule Update" : "Break Time Check-in",
                 message: type === 'WARNING'
-                    ? `You have ${limit === '1 hour' ? '15 minutes' : 'minimal'} left on your daily break.`
-                    : `You have exceeded your daily break limit of ${limit}.`,
+                    ? `Just a gentle reminder that you have about 15 minutes remaining for your break.`
+                    : `It appears your break time has extended slightly beyond the daily allocation. Please check in when you can.`,
                 type: "BREAK_LIMIT",
                 link: "/user"
             }

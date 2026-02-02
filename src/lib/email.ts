@@ -135,30 +135,32 @@ export async function sendLeaveStatusUpdateEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const color = status === 'APPROVED' ? '#2e7d32' : '#c62828';
-    const statusText = status === 'APPROVED' ? 'Approved' : 'Declined';
+    const statusText = status === 'APPROVED' ? 'Approved' : 'Unable to Approve';
+    const displayStatus = status === 'APPROVED' ? 'Approved' : 'Not Approved';
+    // Use a softer color for declined/not approved (e.g., slate/grey or muted red) instead of harsh red
+    const color = status === 'APPROVED' ? '#2e7d32' : '#718096';
 
     const emailContent = `From: "${managerName}" <${managerEmail}>
 To: ${userEmail}
-Subject: Leave Request Updated: ${statusText}
+Subject: Update regarding your Leave Request
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+<div style="font-family: 'Segoe UI', Arial, sans-serif; color: #4a5568; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
   <div style="background-color: ${color}; padding: 20px; text-align: center;">
-    <h2 style="margin: 0; color: #ffffff;">Leave Request ${statusText}</h2>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 600;">Leave Request Update</h2>
   </div>
-  <div style="padding: 20px;">
-    <p>Hi <strong>${userName}</strong>,</p>
-    <p>Your leave request has been reviewed by <strong>${managerName}</strong>.</p>
+  <div style="padding: 32px 24px;">
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Your leave request has been reviewed by <strong>${managerName}</strong>.</p>
     
-    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid ${color};">
-      <p style="margin: 5px 0;"><strong>Status:</strong> <span style="color: ${color}; font-weight: bold;">${status}</span></p>
-      <p style="margin: 5px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
-      <p style="margin: 5px 0;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
-      ${status === 'DECLINED' && declineReason ? `<p style="margin: 5px 0; color: #d32f2f;"><strong>Reason for Decline:</strong> ${declineReason}</p>` : ''}
+    <div style="background-color: #f8fafc; padding: 20px; border-radius: 12px; margin: 24px 0; border-left: 4px solid ${color}; border: 1px solid #e2e8f0;">
+      <p style="margin: 8px 0;"><strong>Status:</strong> <span style="color: ${color}; font-weight: bold;">${displayStatus}</span></p>
+      <p style="margin: 8px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
+      <p style="margin: 8px 0;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
+      ${status === 'DECLINED' && declineReason ? `<p style="margin: 8px 0; color: #4a5568;"><strong>Note from Manager:</strong> ${declineReason}</p>` : ''}
     </div>
 
-    <p>Please check the <a href="${process.env.NEXTAUTH_URL}" style="color: ${color}; text-decoration: none; font-weight: bold;">User Portal</a> for full details.</p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Please check the <a href="${process.env.NEXTAUTH_URL}" style="color: ${color}; text-decoration: none; font-weight: bold;">User Portal</a> for full details.</p>
   </div>
 </div>`;
 
@@ -368,24 +370,38 @@ export async function sendBreakLimitEmail({
 
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
-Subject: Break Time Limit Exceeded
+Subject: Friendly Reminder: Break Time Check-in
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-  <div style="background-color: #d32f2f; padding: 20px; text-align: center;">
-    <h2 style="margin: 0; color: #ffffff;">Break Limit Alert</h2>
+<div style="font-family: 'Segoe UI', Arial, sans-serif; color: #4a5568; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+  <div style="background-color: #F59E0B; padding: 24px; text-align: center;">
+    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 20px;">Break Time Check-in</h2>
   </div>
-  <div style="padding: 20px;">
-    <p>Hi <strong>${userName}</strong>,</p>
-    <p>This is an automated notification that you have exceeded the daily break time limit.</p>
+  <div style="padding: 32px 24px;">
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
     
-    <div style="background-color: #fef2f2; padding: 15px; border-radius: 6px; margin: 20px 0; border: 1px solid #fee2e2;">
-      <p style="margin: 5px 0;"><strong>Daily Limit:</strong> ${limit}</p>
-      <p style="margin: 5px 0;"><strong>Total Used Today:</strong> ${totalBreakTime}</p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+      I would like to check in with you. It seems like you might have forgotten to end your break, as the recorded time has gone slightly over the daily allocation.
+    </p>
+    
+    <div style="background-color: #FFFBEB; padding: 20px; border-radius: 12px; margin: 24px 0; border: 1px solid #FCD34D;">
+      <p style="margin: 8px 0; color: #92400E;"><strong>Daily Allocation:</strong> ${limit}</p>
+      <p style="margin: 8px 0; color: #92400E;"><strong>Recorded Today:</strong> ${totalBreakTime}</p>
     </div>
 
-    <p>Please ensure you are following the company's break policy. If you believe this is an error, please contact your manager or update your records via the portal.</p>
-    <p><a href="${process.env.NEXTAUTH_URL}" style="color: #d32f2f; text-decoration: none; font-weight: bold;">User Portal</a></p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 8px;">
+      If you are already back at work, please remember to clock back in via the portal.
+    </p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+      If you need a bit more time or if this is an error, please feel free to let your manager know.
+    </p>
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: #F59E0B; color: #ffffff; text-decoration: none; font-weight: 600; padding: 12px 24px; border-radius: 8px; font-size: 16px;">Go to User Portal</a>
+    </div>
+  </div>
+  <div style="background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0;">This is an automated message sent with care.</p>
   </div>
 </div>`;
 

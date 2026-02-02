@@ -11,6 +11,7 @@ import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { RisaChatbot } from "@/components/RisaChatbot"
 import { UserOnboardingTour } from "@/components/UserOnboardingTour"
+import { UserStatusDropdown } from "@/components/UserStatusDropdown"
 
 export default function UserLayout({
     children,
@@ -45,10 +46,25 @@ export default function UserLayout({
             if (attnRes.ok) {
                 const reqs = await attnRes.json()
                 if (Array.isArray(reqs)) {
-                    const uniqueDates = new Set(reqs.map((r: any) =>
-                        new Date(r.time || r.date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-                    ))
-                    setPendingAmendCount(uniqueDates.size)
+                    // Count total pending requests instead of unique dates
+                    // Count total pending requests instead of unique dates
+                    // Also filter out cascaded requests to match the Amend Records view
+                    const filteredReqs = reqs.filter((r: any) => {
+                        if (r.status !== 'PENDING') return false
+
+                        // Hide cascaded requests if Root Clock In is pending
+                        if (['BREAK_START', 'BREAK_END', 'CLOCK_OUT'].includes(r.type)) {
+                            const reqDateStr = new Date(r.date).toLocaleDateString()
+                            const hasPendingClockIn = reqs.some((pr: any) =>
+                                pr.type === 'CLOCK_IN' &&
+                                pr.status === 'PENDING' &&
+                                new Date(pr.date).toLocaleDateString() === reqDateStr
+                            )
+                            if (hasPendingClockIn) return false
+                        }
+                        return true
+                    })
+                    setPendingAmendCount(filteredReqs.length)
                 } else {
                     setPendingAmendCount(0)
                 }
@@ -201,14 +217,14 @@ export default function UserLayout({
                 <div className="p-4 border-sidebar-border">
                     <div className={cn("flex flex-col gap-3", sidebarCollapsed && "items-center")}>
                         <div className={cn(
-                            "flex items-center gap-4 p-3 rounded-xl bg-slate-100/50",
+                            "flex items-center gap-4 p-3 rounded-xl bg-white/5",
                             sidebarCollapsed && "justify-center p-2"
                         )}>
                             <Avatar className="w-12 h-12 shrink-0">
                                 {session?.user?.image ? (
                                     <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
                                 ) : (
-                                    <AvatarFallback className="bg-slate-900 text-white text-base font-black italic">
+                                    <AvatarFallback className="bg-white text-[#8B2323] text-base font-bold">
                                         {getInitials(session?.user?.name)}
                                     </AvatarFallback>
                                 )}
@@ -217,6 +233,9 @@ export default function UserLayout({
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-semibold text-sidebar-foreground truncate">{displayName}</p>
                                     <p className="text-xs text-sidebar-foreground/60">{userRole}</p>
+                                    <div className="mt-1">
+                                        <UserStatusDropdown />
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -238,7 +257,7 @@ export default function UserLayout({
                 {/* Footer */}
                 {!sidebarCollapsed && (
                     <div className="p-4 border-sidebar-border">
-                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-center italic">
+                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-center">
                             © 2024 Redadair
                         </p>
                     </div>
@@ -305,18 +324,18 @@ export default function UserLayout({
 
                         {/* Mobile User Profile */}
                         <div className="p-4 border-sidebar-border">
-                            <div className="flex items-center gap-4 p-3 rounded-xl bg-slate-100/50 mb-3">
+                            <div className="flex items-center gap-4 p-3 rounded-xl bg-red-50 mb-3">
                                 <Avatar className="w-12 h-12">
                                     {session?.user?.image ? (
                                         <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
                                     ) : (
-                                        <AvatarFallback className="bg-slate-900 text-white text-base font-black italic">
+                                        <AvatarFallback className="bg-[#8B2323] text-white text-base font-bold">
                                             {getInitials(session?.user?.name)}
                                         </AvatarFallback>
                                     )}
                                 </Avatar>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-black italic uppercase text-slate-900 truncate">{displayName}</p>
+                                    <p className="text-sm font-black uppercase text-slate-900 truncate">{displayName}</p>
                                     <p className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-widest">{userRole}</p>
                                 </div>
                             </div>
@@ -364,6 +383,7 @@ export default function UserLayout({
                             </Link>
                         )}
                         <UserOnboardingTour />
+                        <UserStatusDropdown compact />
                         <NotificationBell />
                     </div>
                 </header>

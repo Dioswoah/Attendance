@@ -23,14 +23,15 @@ export default function ActivityLogsPage() {
     const [logs, setLogs] = useState<ActivityLog[]>([])
     const [searchQuery, setSearchQuery] = useState("")
     const [filterType, setFilterType] = useState<string>("all")
-    const [dateRange, setDateRange] = useState<string>("week")
+    const [startDate, setStartDate] = useState<string>(format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'))
+    const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
     const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
         if (session?.user?.id) {
             fetchActivityLogs()
         }
-    }, [session, dateRange]) // Added dateRange as dependency
+    }, [session, startDate, endDate])
 
     const fetchActivityLogs = async () => {
         if (!session?.user?.id) return
@@ -38,20 +39,8 @@ export default function ActivityLogsPage() {
         try {
             let url = `/api/attendance?userId=${session.user.id}`
 
-            // Calculate start and end dates based on range
-            if (dateRange !== 'all') {
-                const now = new Date()
-                let start = new Date()
-
-                if (dateRange === 'today') {
-                    start.setHours(0, 0, 0, 0)
-                } else if (dateRange === 'week') {
-                    start.setDate(now.getDate() - 7)
-                } else if (dateRange === 'month') {
-                    start.setMonth(now.getMonth() - 1)
-                }
-
-                url += `&startDate=${start.toISOString()}&endDate=${now.toISOString()}`
+            if (startDate && endDate) {
+                url += `&startDate=${startDate}&endDate=${endDate}`
             }
 
             const res = await fetch(url)
@@ -186,7 +175,7 @@ export default function ActivityLogsPage() {
             </div>
 
             {/* Filters */}
-            <div id="tour-activity-filters" className="flex flex-col sm:flex-row gap-4">
+            <div id="tour-activity-filters" className="flex flex-col xl:flex-row gap-4">
                 <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -196,27 +185,41 @@ export default function ActivityLogsPage() {
                         className="pl-9 h-10 bg-white border-border rounded-lg text-sm"
                     />
                 </div>
-                <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger className="w-48 h-10 bg-white border-border rounded-lg">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Activities</SelectItem>
-                        <SelectItem value="attendance">Attendance</SelectItem>
-                        <SelectItem value="leave">Leave</SelectItem>
-                    </SelectContent>
-                </Select>
-                <Select value={dateRange} onValueChange={setDateRange}>
-                    <SelectTrigger className="w-44 h-10 bg-white border-border rounded-lg">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="today">Today</SelectItem>
-                        <SelectItem value="week">This Week</SelectItem>
-                        <SelectItem value="month">This Month</SelectItem>
-                        <SelectItem value="all">All Time</SelectItem>
-                    </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                    <Select value={filterType} onValueChange={setFilterType}>
+                        <SelectTrigger className="w-40 h-10 bg-white border-border rounded-lg">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Activities</SelectItem>
+                            <SelectItem value="attendance">Attendance</SelectItem>
+                            <SelectItem value="leave">Leave</SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    {/* Date Range Inputs */}
+                    <div className="flex items-center gap-2 bg-white p-1 border border-border rounded-lg shadow-sm">
+                        <div className="flex items-center gap-2 px-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">From</span>
+                            <Input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="h-8 w-32 border-none bg-transparent focus-visible:ring-0 text-xs font-medium"
+                            />
+                        </div>
+                        <div className="w-px h-6 bg-border mx-1" />
+                        <div className="flex items-center gap-2 px-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To</span>
+                            <Input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="h-8 w-32 border-none bg-transparent focus-visible:ring-0 text-xs font-medium"
+                            />
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Logs Timeline */}

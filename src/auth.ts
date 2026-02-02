@@ -13,12 +13,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (!user.email) return false;
 
             // 1. Domain Restriction Guardrail
-            const allowedDomains = ['@redadair.com.au'];
-            const isAllowed = allowedDomains.some(domain => user.email?.endsWith(domain));
+            // DYNAMIC CHECK: Workspace Verification (Primary Domain + Aliases)
+            // We check the 'hd' (Hosted Domain) claim. 
+            // If a user logs in with an alias (e.g. user@alias.com), Google returns the PRIMARY Workspace domain in 'hd' (e.g. redadair.com.au).
+            // This means we only need to configure the Primary Domain, and all aliases work automatically without listing them!
+
+            const envAllowed = process.env.ALLOWED_WORKSPACE_DOMAINS || 'redadair.com.au';
+            const allowedDomains = envAllowed.split(',').map(d => d.trim()).filter(Boolean);
+
+            let isAllowed = false;
+            let debugInfo = { hd: undefined as string | undefined, email: user.email };
+
+            if (account?.provider === 'google') {
+                const hostedDomain = (profile as any)?.hd;
+                debugInfo.hd = hostedDomain;
+
+                // Check if the user's Workspace (hd) is in our allowed list.
+                // This covers: 
+                // 1. Primary domain users (user@redadair.com.au -> hd: redadair.com.au)
+                // 2. Alias domain users (user@secondary.com -> hd: redadair.com.au)
+                if (hostedDomain && allowedDomains.includes(hostedDomain)) {
+                    isAllowed = true;
+                    console.log(`[Auth] User ${user.email} verified. Workspace (hd): ${hostedDomain} matches allowed list.`);
+                } else if (hostedDomain) {
+                    console.warn(`[Auth] REJECTED: User from unauthorized Workspace. HD: ${hostedDomain}, Expected: ${envAllowed}`);
+                } else {
+                    console.warn(`[Auth] REJECTED: User has no Workspace (hd) claim. Likely personal Gmail.`);
+                }
+            } else {
+                // Fallback for non-google providers (if any)
+                isAllowed = true;
+            }
 
             if (!isAllowed) {
-                console.log(`[Auth] Access denied for email: ${user.email}. Domain not allowed.`);
-                // Return URL to redirect user to unauthorized page
+                console.error(`[Auth] Access denied for user: ${user.email}. Domain/Workspace validation failed.`);
                 return '/unauthorized';
             }
 
@@ -148,6 +176,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         (session.user as any).department = dbUser.department?.name || "Unassigned";
                         (session.user as any).roles = dbUser.roles || [dbUser.role] || ["USER"];
                         (session.user as any).managerId = dbUser.managerId;
+                        (session.user as any).availabilityStatus = dbUser.availabilityStatus;
                         console.log('[Auth] Updated session roles to:', (session.user as any).roles)
                     }
                 }

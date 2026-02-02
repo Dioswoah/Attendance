@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore } from "lucide-react"
+import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin } from "lucide-react"
+import { statusConfig } from "@/components/UserStatusDropdown"
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<any[]>([])
@@ -24,6 +25,7 @@ export default function EmployeesPage() {
     const [newDeptId, setNewDeptId] = useState("")
     const [newRoles, setNewRoles] = useState<string[]>(["USER"])
     const [newManagerId, setNewManagerId] = useState("")
+    const [newLocation, setNewLocation] = useState("")
     const [isAddOpen, setIsAddOpen] = useState(false)
 
     // Edit state
@@ -33,6 +35,7 @@ export default function EmployeesPage() {
     const [editDeptId, setEditDeptId] = useState("")
     const [editRoles, setEditRoles] = useState<string[]>([])
     const [editManagerId, setEditManagerId] = useState("")
+    const [editLocation, setEditLocation] = useState("")
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -81,7 +84,8 @@ export default function EmployeesPage() {
                     email: newEmail,
                     departmentId: newDeptId,
                     roles: newRoles,
-                    managerId: newManagerId || null
+                    managerId: newManagerId || null,
+                    location: newLocation
                 })
             })
             if (res.ok) {
@@ -91,6 +95,7 @@ export default function EmployeesPage() {
                 setNewDeptId("")
                 setNewRoles(["USER"])
                 setNewManagerId("")
+                setNewLocation("")
                 fetchData()
             }
         } catch (error) {
@@ -106,6 +111,7 @@ export default function EmployeesPage() {
         // Handle migration from single role to roles array if needed
         setEditRoles(emp.roles || (emp.role ? [emp.role] : ["USER"]))
         setEditManagerId(emp.managerId || "")
+        setEditLocation(emp.location || "")
         setIsEditOpen(true)
     }
 
@@ -122,7 +128,8 @@ export default function EmployeesPage() {
                     email: editEmail,
                     departmentId: editDeptId === "unassigned" ? null : editDeptId,
                     roles: editRoles,
-                    managerId: editManagerId && editManagerId !== "unassigned" ? editManagerId : null
+                    managerId: editManagerId && editManagerId !== "unassigned" ? editManagerId : null,
+                    location: editLocation
                 })
             })
             if (res.ok) {
@@ -309,6 +316,18 @@ export default function EmployeesPage() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
+                                <Label>Location</Label>
+                                <Select value={newLocation} onValueChange={setNewLocation} required>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Location" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Philippines">Philippines</SelectItem>
+                                        <SelectItem value="Australia">Australia</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
                                 <Label>Roles</Label>
                                 <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-lg border border-border">
                                     {['USER', 'MANAGER', 'ADMIN'].map((role) => (
@@ -478,6 +497,7 @@ export default function EmployeesPage() {
                                 </TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Staff Identity</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Location</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Email</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Roles</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Assigned Manager</TableHead>
@@ -495,11 +515,30 @@ export default function EmployeesPage() {
                                     </TableCell>
                                     <TableCell className="py-4 px-6">
                                         <div className="flex items-center gap-3">
-                                            <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
-                                                {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : emp.name?.charAt(0) || "U"}
+                                            <div className="relative">
+                                                <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
+                                                    {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : emp.name?.charAt(0) || "U"}
+                                                </div>
+                                                {/* Status Indicator */}
+                                                {emp.availabilityStatus && statusConfig[emp.availabilityStatus as keyof typeof statusConfig] && (() => {
+                                                    const StatusIcon = statusConfig[emp.availabilityStatus as keyof typeof statusConfig].icon
+                                                    const statusColor = statusConfig[emp.availabilityStatus as keyof typeof statusConfig].color
+                                                    return (
+                                                        <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10" title={statusConfig[emp.availabilityStatus as keyof typeof statusConfig].label}>
+                                                            <StatusIcon className={`h-3 w-3 ${statusColor}`} />
+                                                        </div>
+                                                    )
+                                                })()}
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="font-medium text-foreground text-sm">{emp.name || "Unknown Identity"}</span>
+                                                <span className="font-medium text-foreground text-sm flex items-center gap-2">
+                                                    {emp.name || "Unknown Identity"}
+                                                    {emp.availabilityStatus && (
+                                                        <span className="text-[10px] text-muted-foreground/60 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full">
+                                                            {statusConfig[emp.availabilityStatus as keyof typeof statusConfig]?.label || 'Available'}
+                                                        </span>
+                                                    )}
+                                                </span>
                                             </div>
                                         </div>
                                     </TableCell>
@@ -508,6 +547,12 @@ export default function EmployeesPage() {
                                             <Building className="h-3 w-3 mr-1.5 opacity-70" />
                                             {emp.department?.name || 'Unassigned'}
                                         </Badge>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <MapPin className="h-3.5 w-3.5" />
+                                            {emp.location || 'N/A'}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="py-4 px-6">
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -653,6 +698,18 @@ export default function EmployeesPage() {
                                     {departments.map(d => (
                                         <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                     ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Location</Label>
+                            <Select value={editLocation} onValueChange={setEditLocation}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Location" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Philippines">Philippines</SelectItem>
+                                    <SelectItem value="Australia">Australia</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

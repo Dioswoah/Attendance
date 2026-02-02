@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -185,8 +186,13 @@ export default function ManualEntryPage() {
     const handleLeaveSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
+        if (!lvEmpId) {
+            toast.error("Please select a staff member first")
+            return
+        }
+
         if (lvStart && lvEnd && new Date(lvEnd) < new Date(lvStart)) {
-            alert("End date cannot be earlier than start date.")
+            toast.error("End date cannot be earlier than start date.")
             return
         }
 
@@ -467,7 +473,7 @@ export default function ManualEntryPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Staff Name</Label>
-                                        <Select value={lvEmpId} onValueChange={setLvEmpId} required>
+                                        <Select value={lvEmpId} onValueChange={setLvEmpId}>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
@@ -511,7 +517,7 @@ export default function ManualEntryPage() {
                                     <div className="space-y-3 md:col-span-2">
                                         <Label className="block text-center mb-2">Work Duration</Label>
                                         <div className="flex justify-center gap-2">
-                                            {['Full Day', 'Half Day', 'Part Day'].map(d => (
+                                            {['Full Day', 'Part Day'].map(d => (
                                                 <Button
                                                     key={d}
                                                     type="button"

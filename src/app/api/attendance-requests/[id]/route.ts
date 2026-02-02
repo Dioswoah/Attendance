@@ -61,6 +61,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             })
 
             const updateData: any = {}
+
+            // PROVISIONAL CLEANUP (ON APPROVE): 
+            if (attendance && attendance.notes === `PROVISIONAL_REQUEST:${request.id}`) {
+                updateData.notes = null
+            }
+
             if (request.type === 'CLOCK_IN') updateData.clockIn = request.time
             if (request.type === 'CLOCK_OUT') updateData.clockOut = request.time
             if (request.type === 'BREAK_START') updateData.breakStart = request.time
@@ -83,6 +89,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         status: updateData.status || 'PRESENT',
                         ...updateData
                     }
+                })
+            }
+        } else if (status === 'DECLINED' && request.type === 'CLOCK_IN') {
+            // PROVISIONAL CLEANUP (ON DECLINE):
+            const provisional = await prisma.attendance.findFirst({
+                where: {
+                    userId: request.userId,
+                    notes: `PROVISIONAL_REQUEST:${request.id}`
+                }
+            })
+
+            if (provisional) {
+                await prisma.attendance.delete({
+                    where: { id: provisional.id }
                 })
             }
         }
