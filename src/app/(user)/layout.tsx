@@ -439,7 +439,7 @@ export default function UserLayout({
                 </header>
 
                 {/* Desktop Header */}
-                <header className="hidden lg:flex bg-white border-b border-border px-10 py-4 items-center justify-end gap-4 sticky top-0 z-30">
+                <header className="hidden lg:flex bg-white border-b border-border px-4 lg:px-8 py-4 items-center justify-end gap-4 sticky top-0 z-30">
                     {userRoles.includes('ADMIN') && (
                         <Link href="/admin">
                             <Button
@@ -456,7 +456,7 @@ export default function UserLayout({
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 flex flex-col items-center relative z-10 p-6 lg:p-10">
+                <main className="flex-1 flex flex-col relative z-10 p-4 lg:p-8">
                     {children}
                 </main>
             </div>

@@ -1227,7 +1227,7 @@ export default function UserPortal() {
     })
 
     return (
-        <div className="p-6 lg:p-10 space-y-8 max-w-7xl mx-auto">
+        <div className="space-y-8 w-full">
             {/* Header */}
             <div id="tour-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>

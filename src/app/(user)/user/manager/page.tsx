@@ -363,7 +363,7 @@ export default function ManagerControlPage() {
     }
 
     return (
-        <div className="space-y-8 max-w-[1600px] mx-auto p-2">
+        <div className="space-y-8 w-full">
 
             {/* Page Header is handled inside Tabs mainly, but we can put a global title */}
 

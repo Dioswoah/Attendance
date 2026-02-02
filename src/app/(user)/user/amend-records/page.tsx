@@ -346,7 +346,7 @@ export default function AmendRecordsPage() {
     const sortedDates = Object.keys(groupedRequests).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
 
     return (
-        <div className="space-y-8 w-full max-w-[1200px] mx-auto">
+        <div className="space-y-8 w-full">
             <div className="flex items-center justify-between">
                 <div id="tour-amend-header">
                     <h1 className="text-2xl font-bold tracking-tight">Amend Records</h1>

@@ -292,7 +292,7 @@ export default function LeaveRequestsPage() {
     }
 
     return (
-        <div className="space-y-8 w-full max-w-[1800px] mx-auto">
+        <div className="space-y-8 w-full">
             {/* Header */}
             <div id="tour-leaves-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>

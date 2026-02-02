@@ -167,7 +167,7 @@ export default function ActivityLogsPage() {
     }
 
     return (
-        <div className="space-y-8 w-full max-w-[1800px] mx-auto">
+        <div className="space-y-8 w-full">
             {/* Header */}
             <div id="tour-activity-header">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground">Activity Logs</h1>
