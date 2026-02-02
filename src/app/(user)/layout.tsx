@@ -11,7 +11,7 @@ import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { RisaChatbot } from "@/components/RisaChatbot"
 import { UserOnboardingTour } from "@/components/UserOnboardingTour"
-import { UserStatusDropdown } from "@/components/UserStatusDropdown"
+import { UserStatusDropdown, statusConfig } from "@/components/UserStatusDropdown"
 
 export default function UserLayout({
     children,
@@ -213,144 +213,194 @@ export default function UserLayout({
                     })}
                 </nav>
 
-                {/* User Profile */}
-                <div className="p-4 border-sidebar-border">
-                    <div className={cn("flex flex-col gap-3", sidebarCollapsed && "items-center")}>
-                        <div className={cn(
-                            "flex items-center gap-4 p-3 rounded-xl bg-white/5",
-                            sidebarCollapsed && "justify-center p-2"
-                        )}>
-                            <Avatar className="w-12 h-12 shrink-0">
-                                {session?.user?.image ? (
-                                    <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
-                                ) : (
-                                    <AvatarFallback className="bg-white text-[#8B2323] text-base font-bold">
-                                        {getInitials(session?.user?.name)}
-                                    </AvatarFallback>
-                                )}
-                            </Avatar>
-                            {!sidebarCollapsed && (
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-semibold text-sidebar-foreground truncate">{displayName}</p>
-                                    <p className="text-xs text-sidebar-foreground/60">{userRole}</p>
-                                    <div className="mt-1">
-                                        <UserStatusDropdown />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <Button
-                            variant="ghost"
-                            onClick={() => signOut({ callbackUrl: '/' })}
-                            className={cn(
-                                "w-full justify-start h-10 gap-3 text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/5 rounded-lg transition-colors",
-                                sidebarCollapsed && "justify-center px-0"
-                            )}
-                        >
-                            <LogOut className="w-5 h-5 shrink-0" />
-                            {!sidebarCollapsed && <span>Sign Out</span>}
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Footer */}
-                {!sidebarCollapsed && (
-                    <div className="p-4 border-sidebar-border">
-                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-center">
-                            © 2024 Redadair
-                        </p>
-                    </div>
-                )}
-            </aside>
-
-            {/* Mobile Sidebar Overlay */}
-            {sidebarOpen && (
-                <>
-                    <div
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
-                        onClick={() => setSidebarOpen(false)}
-                    />
-                    <aside className="fixed left-0 top-0 bottom-0 w-72 bg-white border-sidebar-border z-50 lg:hidden animate-in slide-in-from-left duration-300">
-                        {/* Mobile Logo */}
-                        <div className="p-6 border-sidebar-border flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-red-50 overflow-hidden">
-                                    <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-base font-black italic uppercase tracking-tighter text-slate-900 leading-none">Redadair</span>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-red-600 mt-0.5">Staff Portal</span>
-                                </div>
-                            </div>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setSidebarOpen(false)}
-                                className="h-8 w-8"
-                            >
-                                <X className="h-5 w-5" />
-                            </Button>
-                        </div>
-
-                        {/* Mobile Navigation */}
-                        <nav className="flex-1 p-4 space-y-2">
-                            {navItems.map((item) => {
-                                const Icon = item.icon
-                                const isActive = pathname === item.href
-                                return (
-                                    <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        onClick={() => setSidebarOpen(false)}
-                                        className={cn(
-                                            "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
-                                            isActive
-                                                ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-lg shadow-sidebar-accent/20"
-                                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
-                                        )}
-                                    >
-                                        <Icon className="h-6 w-6" />
-                                        <span className="text-xs font-black tracking-widest flex-1">{item.name}</span>
-                                        {item.badge ? (
-                                            <span className="bg-red-100/80 text-red-900 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                                                {item.badge}
-                                            </span>
-                                        ) : null}
-                                    </Link>
-                                )
-                            })}
-                        </nav>
-
-                        {/* Mobile User Profile */}
-                        <div className="p-4 border-sidebar-border">
-                            <div className="flex items-center gap-4 p-3 rounded-xl bg-red-50 mb-3">
-                                <Avatar className="w-12 h-12">
+                {/* User Profile Section */}
+                <div className="p-4 border-t border-white/5 mt-auto">
+                    <div className={cn(
+                        "flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/5 backdrop-blur-sm transition-all hover:bg-white/10 group",
+                        sidebarCollapsed && "justify-center p-2"
+                    )}>
+                        <UserStatusDropdown>
+                            <div className="relative cursor-pointer shrink-0">
+                                <Avatar className="w-12 h-12 border-2 border-white/10 shadow-lg transition-transform group-hover:scale-105">
                                     {session?.user?.image ? (
                                         <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
                                     ) : (
-                                        <AvatarFallback className="bg-[#8B2323] text-white text-base font-bold">
+                                        <AvatarFallback className="bg-white text-[#8B2323] text-base font-black">
                                             {getInitials(session?.user?.name)}
                                         </AvatarFallback>
                                     )}
                                 </Avatar>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-black uppercase text-slate-900 truncate">{displayName}</p>
-                                    <p className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-widest">{userRole}</p>
-                                </div>
+                                {/* Teams-style Status Indicator */}
+                                {(() => {
+                                    const status = (session?.user as any)?.availabilityStatus || 'AVAILABLE'
+                                    const config = (statusConfig as any)[status] || statusConfig.AVAILABLE
+                                    return (
+                                        <div className={cn(
+                                            "absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full border-2 bg-sidebar border-sidebar flex items-center justify-center shadow-lg z-10",
+                                            config.color.replace('text-', 'bg-').split(' ')[0]
+                                        )}>
+                                            <config.icon className="h-2.5 w-2.5 text-white" />
+                                        </div>
+                                    )
+                                })()}
                             </div>
-                            <Button
-                                variant="ghost"
-                                onClick={() => signOut({ callbackUrl: '/' })}
-                                className="w-full h-12 gap-3 text-xs font-black uppercase tracking-widest text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl"
-                            >
-                                <LogOut className="w-5 h-5" />
-                                <span>Sign Out</span>
-                            </Button>
+                        </UserStatusDropdown>
+
+                        {!sidebarCollapsed && (
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-bold text-white truncate leading-tight tracking-tight">{displayName}</p>
+                                <p className="text-[10px] font-medium text-white/40 uppercase tracking-[0.1em] mt-0.5">{userRole}</p>
+                                <UserStatusDropdown>
+                                    <div className="mt-1 flex items-center gap-1.5 cursor-pointer opacity-60 hover:opacity-100 transition-opacity">
+                                        <div className={cn("w-1.5 h-1.5 rounded-full", ((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).color.replace('text-', 'bg-'))} />
+                                        <span className="text-[9px] font-bold text-white uppercase tracking-widest leading-none">
+                                            {((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).label}
+                                        </span>
+                                    </div>
+                                </UserStatusDropdown>
+                            </div>
+                        )}
+                    </div>
+
+                    <Button
+                        variant="ghost"
+                        onClick={() => signOut({ callbackUrl: '/' })}
+                        className={cn(
+                            "w-full justify-start h-10 gap-3 text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/5 rounded-lg transition-colors mt-2",
+                            sidebarCollapsed && "justify-center px-0"
+                        )}
+                    >
+                        <LogOut className="w-5 h-5 shrink-0" />
+                        {!sidebarCollapsed && <span>Sign Out</span>}
+                    </Button>
+                </div>
+
+                {/* Footer */}
+                {
+                    !sidebarCollapsed && (
+                        <div className="p-4 border-sidebar-border">
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-center">
+                                © 2024 Redadair
+                            </p>
                         </div>
-                    </aside>
-                </>
-            )}
+                    )
+                }
+            </aside >
+
+            {/* Mobile Sidebar Overlay */}
+            {
+                sidebarOpen && (
+                    <>
+                        <div
+                            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+                            onClick={() => setSidebarOpen(false)}
+                        />
+                        <aside className="fixed left-0 top-0 bottom-0 w-72 bg-white border-sidebar-border z-50 lg:hidden animate-in slide-in-from-left duration-300">
+                            {/* Mobile Logo */}
+                            <div className="p-6 border-sidebar-border flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-red-50 overflow-hidden">
+                                        <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-base font-black italic uppercase tracking-tighter text-slate-900 leading-none">Redadair</span>
+                                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-red-600 mt-0.5">Staff Portal</span>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setSidebarOpen(false)}
+                                    className="h-8 w-8"
+                                >
+                                    <X className="h-5 w-5" />
+                                </Button>
+                            </div>
+
+                            {/* Mobile Navigation */}
+                            <nav className="flex-1 p-4 space-y-2">
+                                {navItems.map((item) => {
+                                    const Icon = item.icon
+                                    const isActive = pathname === item.href
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={item.href}
+                                            onClick={() => setSidebarOpen(false)}
+                                            className={cn(
+                                                "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
+                                                isActive
+                                                    ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-lg shadow-sidebar-accent/20"
+                                                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
+                                            )}
+                                        >
+                                            <Icon className="h-6 w-6" />
+                                            <span className="text-xs font-black tracking-widest flex-1">{item.name}</span>
+                                            {item.badge ? (
+                                                <span className="bg-red-100/80 text-red-900 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                                    {item.badge}
+                                                </span>
+                                            ) : null}
+                                        </Link>
+                                    )
+                                })}
+                            </nav>
+
+                            {/* Mobile User Profile Section */}
+                            <div className="p-4 border-t border-slate-100 mt-auto bg-white/50">
+                                <div className="flex items-center gap-4 p-4 rounded-[2rem] bg-white border border-slate-100 mb-4 shadow-sm group">
+                                    <UserStatusDropdown>
+                                        <div className="relative cursor-pointer shrink-0">
+                                            <Avatar className="w-14 h-14 border-2 border-white shadow-xl transition-transform group-hover:scale-105">
+                                                {session?.user?.image ? (
+                                                    <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                                                ) : (
+                                                    <AvatarFallback className="bg-[#8B2323] text-white text-xl font-black">
+                                                        {getInitials(session?.user?.name)}
+                                                    </AvatarFallback>
+                                                )}
+                                            </Avatar>
+                                            {/* Status Indicator (Teams Style) */}
+                                            {(() => {
+                                                const status = (session?.user as any)?.availabilityStatus || 'AVAILABLE'
+                                                const config = (statusConfig as any)[status] || statusConfig.AVAILABLE
+                                                return (
+                                                    <div className={cn(
+                                                        "absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full border-2 bg-white border-white flex items-center justify-center shadow-md z-10",
+                                                        config.color.replace('text-', 'bg-').split(' ')[0]
+                                                    )}>
+                                                        <config.icon className="h-3 w-3 text-white" />
+                                                    </div>
+                                                )
+                                            })()}
+                                        </div>
+                                    </UserStatusDropdown>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-base font-black text-slate-900 truncate tracking-tight leading-none">{displayName}</p>
+                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mt-1.5">{userRole}</p>
+                                        <UserStatusDropdown>
+                                            <div className="mt-2 flex items-center gap-2 cursor-pointer w-fit py-1 px-2.5 rounded-full bg-slate-100/50 hover:bg-slate-100 transition-colors">
+                                                <div className={cn("w-2 h-2 rounded-full", ((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).color.replace('text-', 'bg-'))} />
+                                                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest leading-none">
+                                                    {((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).label}
+                                                </span>
+                                            </div>
+                                        </UserStatusDropdown>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => signOut({ callbackUrl: '/' })}
+                                    className="w-full h-12 gap-3 text-xs font-black uppercase tracking-widest text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl"
+                                >
+                                    <LogOut className="w-5 h-5" />
+                                    <span>Sign Out</span>
+                                </Button>
+                            </div>
+                        </aside>
+                    </>
+                )
+            }
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-h-screen">
@@ -411,6 +461,6 @@ export default function UserLayout({
                 </main>
             </div>
             <RisaChatbot />
-        </div>
+        </div >
     )
 }
