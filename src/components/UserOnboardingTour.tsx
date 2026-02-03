@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { HelpCircle, PlayCircle, XCircle } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
-export function UserOnboardingTour() {
+export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger' | 'logic' }) {
     const [mounted, setMounted] = useState(false)
     const [showWelcomeDialog, setShowWelcomeDialog] = useState(false)
     const pathname = usePathname()
@@ -255,7 +255,7 @@ export function UserOnboardingTour() {
     const storageKey = `has_seen_tour_${pathname}`
 
     useEffect(() => {
-        if (!mounted || !currentTour) return
+        if (!mounted || !currentTour || mode === 'trigger') return
 
         const hasSeenTour = localStorage.getItem(storageKey)
         if (!hasSeenTour) {
@@ -265,7 +265,7 @@ export function UserOnboardingTour() {
             }, 1500)
             return () => clearTimeout(timer)
         }
-    }, [mounted, pathname, storageKey])
+    }, [mounted, pathname, storageKey, mode])
 
     const initiateDriver = () => {
         const driverObj = driver({
@@ -319,61 +319,65 @@ export function UserOnboardingTour() {
     return (
         <>
             {/* Header Trigger Button */}
-            <Button
-                variant="ghost"
-                size="icon"
-                onClick={startTour}
-                className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-all"
-                title="Page Guide"
-            >
-                <HelpCircle className="h-5 w-5" />
-            </Button>
+            {(mode === 'full' || mode === 'trigger') && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={startTour}
+                    className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-all"
+                    title="Page Guide"
+                >
+                    <HelpCircle className="h-5 w-5" />
+                </Button>
+            )}
 
             {/* Welcome Dialog */}
-            <Dialog open={showWelcomeDialog} onOpenChange={setShowWelcomeDialog}>
-                <DialogContent className="max-w-sm rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
-                    <div className="bg-sidebar p-8 text-center relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
-                        <div className="h-16 w-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner border border-white/5">
-                            <PlayCircle className="h-8 w-8 text-sidebar-foreground" />
+            {(mode === 'full' || mode === 'logic') && (
+                <Dialog open={showWelcomeDialog} onOpenChange={setShowWelcomeDialog}>
+                    <DialogContent className="max-w-sm rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
+                        <div className="bg-sidebar p-8 text-center relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                            <div className="h-16 w-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner border border-white/5">
+                                <PlayCircle className="h-8 w-8 text-sidebar-foreground" />
+                            </div>
+                            <DialogTitle className="text-xl font-bold text-sidebar-foreground uppercase tracking-tight relative z-10">
+                                {currentTour.title}
+                            </DialogTitle>
+                            <DialogDescription className="text-sidebar-foreground/70 font-medium text-[10px] uppercase tracking-widest mt-2 relative z-10">
+                                {currentTour.description}
+                            </DialogDescription>
                         </div>
-                        <DialogTitle className="text-xl font-bold text-sidebar-foreground uppercase tracking-tight relative z-10">
-                            {currentTour.title}
-                        </DialogTitle>
-                        <DialogDescription className="text-sidebar-foreground/70 font-medium text-[10px] uppercase tracking-widest mt-2 relative z-10">
-                            {currentTour.description}
-                        </DialogDescription>
-                    </div>
 
-                    <div className="p-6 bg-white space-y-6">
-                        <div className="space-y-4">
-                            <div className="flex items-start gap-4">
-                                <div className="h-2 w-2 mt-2 rounded-full bg-sidebar shrink-0" />
-                                <p className="text-sm text-slate-600 leading-relaxed">
-                                    <span className="font-bold text-slate-900 block text-xs uppercase tracking-wide mb-1">Quick Guide</span>
-                                    Get familiarity with the features on this page.
-                                </p>
+                        <div className="p-6 bg-white space-y-6">
+                            <div className="space-y-4">
+                                <div className="flex items-start gap-4">
+                                    <div className="h-2 w-2 mt-2 rounded-full bg-sidebar shrink-0" />
+                                    <p className="text-sm text-slate-600 leading-relaxed">
+                                        <span className="font-bold text-slate-900 block text-xs uppercase tracking-wide mb-1">Quick Guide</span>
+                                        Get familiarity with the features on this page.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3 pt-2">
+                                <Button
+                                    onClick={handleStartTour}
+                                    className="w-full h-12 bg-sidebar hover:bg-sidebar/90 text-sidebar-foreground font-bold rounded-xl shadow-lg shadow-slate-200 transition-all active:scale-95 uppercase tracking-widest text-[10px]"
+                                >
+                                    Start Interactive Tour
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    onClick={handleSkipTour}
+                                    className="w-full text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900"
+                                >
+                                    Skip Guide
+                                </Button>
                             </div>
                         </div>
-
-                        <div className="flex flex-col gap-3 pt-2">
-                            <Button
-                                onClick={handleStartTour}
-                                className="w-full h-12 bg-sidebar hover:bg-sidebar/90 text-sidebar-foreground font-bold rounded-xl shadow-lg shadow-slate-200 transition-all active:scale-95 uppercase tracking-widest text-[10px]"
-                            >
-                                Start Interactive Tour
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                onClick={handleSkipTour}
-                                className="w-full text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900"
-                            >
-                                Skip Guide
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+                    </DialogContent>
+                </Dialog>
+            )}
 
             {/* Driver.js Custom Styles Injection */}
             <style jsx global>{`

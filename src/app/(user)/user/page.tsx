@@ -322,8 +322,6 @@ export default function UserPortal() {
             }
 
             // --- INJECT PENDING BREAKS ---
-            // --- INJECT PENDING BREAKS ---
-            // Only inject breaks if they are relevant to the CURRENT session (i.e., not older than the real session start)
             if (modifiedTodayRecords.length > 0) {
                 const record = modifiedTodayRecords[0]
                 const realSessionStartTs = new Date(record.clockIn).getTime()
@@ -332,78 +330,78 @@ export default function UserPortal() {
                 record.breaks = record.breaks ? record.breaks.map((b: any) => ({ ...b })) : []
 
                 // 1. Pending Break Starts (Virtual Open Break)
-                const pendingBreakStarts = myAttendanceRequests.filter((req: any) => {
+                // DEDUPLICATE: Only take the LATEST pending break start for this session
+                const allPendingStarts = myAttendanceRequests.filter((req: any) => {
                     if (req.type !== 'BREAK_START' || req.status !== 'PENDING') return false
                     const reqDate = new Date(req.time || req.date)
                     if (reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) !== todayPHT) return false
-
-                    // CRITICAL FIX: Ignore pending breaks that are older than the current real session
                     if (reqDate.getTime() < realSessionStartTs) return false
-
                     return true
-                })
+                }).sort((a, b) => new Date(b.time || b.date).getTime() - new Date(a.time || a.date).getTime())
 
-                pendingBreakStarts.forEach(req => {
+                const pendingBreakStart = allPendingStarts[0]
+                if (pendingBreakStart) {
                     record.breaks.push({
-                        startTime: req.time || req.date,
+                        startTime: pendingBreakStart.time || pendingBreakStart.date,
                         endTime: null,
                         isPending: true
                     })
-                })
+                }
 
                 // 2. Pending Break Ends (Close virtual or real open breaks)
-                const pendingBreakEnds = myAttendanceRequests.filter((req: any) => {
+                // DEDUPLICATE: Only take the LATEST pending break end
+                const allPendingEnds = myAttendanceRequests.filter((req: any) => {
                     if (req.type !== 'BREAK_END' || req.status !== 'PENDING') return false
                     const reqDate = new Date(req.time || req.date)
                     if (reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) !== todayPHT) return false
-
-                    // CRITICAL FIX: Ignore pending break ends that are older than the current real session
                     if (reqDate.getTime() < realSessionStartTs) return false
-
                     return true
-                }).sort((a: any, b: any) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime())
+                }).sort((a, b) => new Date(b.time || b.date).getTime() - new Date(a.time || a.date).getTime())
 
-                pendingBreakEnds.forEach(req => {
-                    // Find the latest open break to close
-                    // We search in our potentially modified 'record.breaks'
+                const pendingBreakEnd = allPendingEnds[0]
+                if (pendingBreakEnd) {
                     const openBreak = record.breaks.find((b: any) => !b.endTime)
-                    const reqDate = new Date(req.time || req.date)
-
-                    if (openBreak) {
-                        // Ensure the pending end time is actually AFTER the break start
-                        if (reqDate.getTime() > new Date(openBreak.startTime).getTime()) {
-                            openBreak.endTime = req.time || req.date
-                        }
+                    const reqDate = new Date(pendingBreakEnd.time || pendingBreakEnd.date)
+                    if (openBreak && reqDate.getTime() > new Date(openBreak.startTime).getTime()) {
+                        openBreak.endTime = pendingBreakEnd.time || pendingBreakEnd.date
                     }
-                })
+                }
             }
 
             let totalWorkedMs = 0
             let totalBreakMs = 0
 
-            modifiedTodayRecords.forEach((record: any) => {
+            modifiedTodayRecords.forEach((record: any, index: number) => {
                 const start = new Date(record.clockIn)
-                const isSessionActive = !record.clockOut
+                // Only the LATEST session should be "Active" optimistically
+                const isSessionActive = index === 0 && ['clocked-in', 'on-break'].includes(optimisticStatus)
+                    ? true
+                    : !record.clockOut;
                 const end = isSessionActive ? now : new Date(record.clockOut)
 
                 // Calculate total breaks for this record
                 let sessionBreakMs = 0
                 if (record.breaks && record.breaks.length > 0) {
-                    record.breaks.forEach((b: any) => {
+                    // Sort breaks by startTime ASC to identify the latest
+                    const sortedBreaks = [...record.breaks].sort((a, b) =>
+                        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+                    )
+
+                    sortedBreaks.forEach((b: any, bIndex: number) => {
                         const bStart = new Date(b.startTime)
                         let bEnd: Date
+                        const isLatestBreak = bIndex === sortedBreaks.length - 1
 
                         if (b.endTime) {
                             bEnd = new Date(b.endTime)
                         } else if (!isSessionActive) {
                             // If session ended, break must have ended too (safety fallback)
                             bEnd = end
-                        } else if (optimisticStatus === 'on-break') {
-                            // Only tick if we are CURRENTLY supposed to be on break
+                        } else if (optimisticStatus === 'on-break' && index === 0 && isLatestBreak) {
+                            // Only tick if we are CURRENTLY supposed to be on break AND this is the latest session AND the latest break
                             bEnd = now
                         } else {
-                            // If we are "Working" but have an open break record, it's not currently ticking.
-                            // We treat it as ended at its start (0 duration) for the counter.
+                            // If we are "Working", or this is an old session, or its a ghost open break (not latest)
                             bEnd = bStart
                         }
                         sessionBreakMs += Math.max(0, bEnd.getTime() - bStart.getTime())

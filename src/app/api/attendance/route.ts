@@ -102,9 +102,41 @@ async function cleanupOldSessions() {
     }
 }
 
+/**
+ * Data integrity helper: ensure no session has multiple open breaks.
+ * This fixes "ghost breaks" that cause inflated break time.
+ */
+async function cleanupDuplicateBreaks() {
+    const today = getPHTToday()
+    const sessionsWithOpenBreaks = await prisma.attendance.findMany({
+        where: { date: today },
+        include: {
+            breaks: {
+                where: { endTime: null },
+                orderBy: { startTime: 'desc' }
+            }
+        }
+    })
+
+    for (const session of sessionsWithOpenBreaks) {
+        if (session.breaks.length > 1) {
+            // Keep the latest open break (index 0 due to orderby), close the others
+            const orphans = session.breaks.slice(1)
+            const latest = session.breaks[0]
+
+            await prisma.break.updateMany({
+                where: { id: { in: orphans.map(o => o.id) } },
+                data: { endTime: latest.startTime }
+            })
+            console.log(`Cleaned up ${orphans.length} ghost breaks for session ${session.id}`)
+        }
+    }
+}
+
 export async function GET(req: Request) {
     try {
         await cleanupOldSessions()
+        await cleanupDuplicateBreaks()
     } catch (e) {
         console.error("Cleanup failed:", e)
     }
@@ -461,6 +493,17 @@ export async function PATCH(req: Request) {
                 updateData.breakEnd = now
             }
         } else if (action === 'start-break') {
+            // Auto-close any existing open breaks first (safety)
+            await prisma.break.updateMany({
+                where: {
+                    attendanceId: existing.id,
+                    endTime: null
+                },
+                data: {
+                    endTime: now
+                }
+            })
+
             // Create a record in the Break table
             await prisma.break.create({
                 data: {

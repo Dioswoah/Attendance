@@ -432,7 +432,7 @@ export default function UserLayout({
                                 </Button>
                             </Link>
                         )}
-                        <UserOnboardingTour />
+                        <UserOnboardingTour mode="trigger" />
                         <UserStatusDropdown compact />
                         <NotificationBell />
                     </div>
@@ -451,7 +451,7 @@ export default function UserLayout({
                             </Button>
                         </Link>
                     )}
-                    <UserOnboardingTour />
+                    <UserOnboardingTour mode="trigger" />
                     <NotificationBell />
                 </header>
 
@@ -461,6 +461,7 @@ export default function UserLayout({
                 </main>
             </div>
             <RisaChatbot />
+            <UserOnboardingTour mode="logic" />
         </div >
     )
 }
