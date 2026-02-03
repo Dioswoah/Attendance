@@ -14,14 +14,13 @@ import { cn } from "@/lib/utils"
 import { useSession } from "next-auth/react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
-export type UserStatus = 'AVAILABLE' | 'BUSY' | 'DO_NOT_DISTURB' | 'BE_RIGHT_BACK' | 'APPEAR_AWAY' | 'APPEAR_OFFLINE'
+export type UserStatus = 'AVAILABLE' | 'BUSY' | 'DO_NOT_DISTURB' | 'BE_RIGHT_BACK' | 'APPEAR_OFFLINE'
 
 export const statusConfig: Record<UserStatus, { label: string, icon: any, color: string }> = {
     AVAILABLE: { label: 'Available', icon: CheckCircle2, color: 'text-emerald-500' },
     BUSY: { label: 'Busy', icon: Circle, color: 'text-red-500 fill-red-500' },
     DO_NOT_DISTURB: { label: 'Do not disturb', icon: MinusCircle, color: 'text-rose-500' },
     BE_RIGHT_BACK: { label: 'Be right back', icon: Clock, color: 'text-amber-500' },
-    APPEAR_AWAY: { label: 'Appear away', icon: Clock, color: 'text-amber-500' },
     APPEAR_OFFLINE: { label: 'Appear offline', icon: XCircle, color: 'text-slate-400' },
 }
 
