@@ -39,8 +39,10 @@ export default function UserPortal() {
     const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
     const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
     const [managerList, setManagerList] = useState<any[]>([])
+    const [departmentList, setDepartmentList] = useState<any[]>([])
     const [onboardingLocation, setOnboardingLocation] = useState("")
     const [onboardingManager, setOnboardingManager] = useState("")
+    const [onboardingDepartment, setOnboardingDepartment] = useState("")
 
     // Role & Leave Management State
     const [userRoles, setUserRoles] = useState<string[]>([])
@@ -84,8 +86,12 @@ export default function UserPortal() {
 
                             if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
                                 setIsOnboardingOpen(true)
-                                const mRes = await fetch('/api/managers')
+                                const [mRes, dRes] = await Promise.all([
+                                    fetch('/api/managers'),
+                                    fetch('/api/departments')
+                                ])
                                 if (mRes.ok) setManagerList(await mRes.json())
+                                if (dRes.ok) setDepartmentList(await dRes.json())
                             }
                         }
                     }
@@ -106,7 +112,8 @@ export default function UserPortal() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     location: onboardingLocation,
-                    managerId: onboardingManager || 'unassigned'
+                    managerId: onboardingManager || 'unassigned',
+                    departmentId: onboardingDepartment || null
                 })
             })
             if (res.ok) {
@@ -1986,7 +1993,7 @@ export default function UserPortal() {
                     <div className="bg-[#8B2323] p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
                         <Shield className="h-12 w-12 text-white/20 mx-auto mb-4" />
-                        <DialogTitle className="text-2xl font-bold text-white uppercase tracking-tight relative z-10">Setup User Profile</DialogTitle>
+                        <DialogTitle className="text-2xl font-bold text-white uppercase tracking-tight relative z-10">Set Up Your Profile</DialogTitle>
                         <DialogDescription className="text-white/60 font-medium text-[10px] uppercase tracking-widest mt-2 relative z-10">
                             Please update your details
                         </DialogDescription>
@@ -2003,6 +2010,21 @@ export default function UserPortal() {
                                     <SelectContent>
                                         <SelectItem value="Philippines">Philippines</SelectItem>
                                         <SelectItem value="Australia">Australia</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Select Your Department</Label>
+                                <Select value={onboardingDepartment} onValueChange={setOnboardingDepartment}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Which department are you in?" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unassigned">No department</SelectItem>
+                                        {departmentList.map(d => (
+                                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>

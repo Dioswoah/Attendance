@@ -259,10 +259,26 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
 
         const hasSeenTour = localStorage.getItem(storageKey)
         if (!hasSeenTour) {
-            // Delay to ensure hydration and layout stability
+            // Check if user profile setup is in progress
+            // Wait longer to allow profile setup dialog to show first
+            const checkProfileSetup = () => {
+                // Look for the onboarding dialog in the DOM
+                const onboardingDialog = document.querySelector('[role="dialog"]')
+                const hasOnboardingDialog = onboardingDialog?.textContent?.includes('Set Up Your Profile')
+
+                if (hasOnboardingDialog) {
+                    // Profile setup is showing, check again later
+                    setTimeout(checkProfileSetup, 2000)
+                } else {
+                    // Profile setup is complete or not needed, show tour
+                    setShowWelcomeDialog(true)
+                }
+            }
+
+            // Delay to ensure hydration and layout stability, then check
             const timer = setTimeout(() => {
-                setShowWelcomeDialog(true)
-            }, 1500)
+                checkProfileSetup()
+            }, 2000)
             return () => clearTimeout(timer)
         }
     }, [mounted, pathname, storageKey, mode])
