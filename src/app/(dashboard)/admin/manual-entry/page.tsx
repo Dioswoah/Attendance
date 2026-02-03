@@ -320,8 +320,8 @@ export default function ManualEntryPage() {
     }
 
     return (
-        <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Manual Entry</h1>
                     <p className="text-muted-foreground text-sm">Admin Override Tools</p>
@@ -378,7 +378,7 @@ export default function ManualEntryPage() {
             {/* Content Area */}
             {activeMode === 'create' ? (
                 <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                    <CardHeader className="border-b border-border p-6 bg-muted/20">
+                    <CardHeader className="border-b border-border p-5 bg-muted/20">
                         <CardTitle className="text-lg font-semibold text-foreground">
                             Manual {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Record
                         </CardTitle>
@@ -386,7 +386,7 @@ export default function ManualEntryPage() {
                             Create a new attendance record for a staff member.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="p-8">
+                    <CardContent className="p-6">
                         {activeTab === 'attendance' && (
                             <form onSubmit={handleAttendanceSubmit} className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -612,9 +612,9 @@ export default function ManualEntryPage() {
                     </CardContent>
                 </Card>
             ) : (
-                <div className="space-y-6">
+                <div className="space-y-4">
                     {/* Filters for Lists */}
-                    <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white p-6">
+                    <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white p-5">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                             <div className="space-y-2">
                                 <Label>Department</Label>

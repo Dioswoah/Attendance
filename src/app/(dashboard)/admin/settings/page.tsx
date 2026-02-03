@@ -52,8 +52,8 @@ export default function SettingsPage() {
     ]
 
     return (
-        <div className="space-y-10 animate-in fade-in duration-500 pb-20 max-w-5xl mx-auto">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-6 animate-in fade-in duration-500 pb-10 max-w-[1600px] mx-auto px-4 lg:px-8">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Settings</h1>
                     <p className="text-muted-foreground text-sm">System Configuration & Global Parameters</p>
@@ -68,7 +68,7 @@ export default function SettingsPage() {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 {/* Navigation Sidebar (UI Only) */}
                 <div className="lg:col-span-1 space-y-4">
                     <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
@@ -106,7 +106,7 @@ export default function SettingsPage() {
                     </Card>
                 </div>
 
-                <div className="lg:col-span-3 space-y-8">
+                <div className="lg:col-span-3 space-y-6">
                     {activeTab === 'General Configuration' && (
                         <>
                             {/* Organization Settings */}
