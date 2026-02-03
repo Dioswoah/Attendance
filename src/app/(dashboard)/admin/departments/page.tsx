@@ -147,8 +147,8 @@ export default function DepartmentsPage() {
     }
 
     return (
-        <div className="space-y-10 animate-in fade-in duration-500 pb-20">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Departments</h1>
                     <p className="text-muted-foreground text-sm">Structural Configuration & Hierarchies</p>
