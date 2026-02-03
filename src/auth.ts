@@ -51,25 +51,79 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             }
 
             try {
-                // Check if user exists
-                let dbUser = await prisma.user.findUnique({
-                    where: { email: user.email }
-                });
+                // ------------------------------------------------------------------
+                // SMART ACCOUNT SYNCING (Google ID vs Email)
+                // ------------------------------------------------------------------
+                // We prioritize looking up by the stable Google Account ID (providerAccountId).
+                // This handles cases where a user changes their email/name in Google Workspace 
+                // but is still the same person. We simply update their info in our DB.
 
-                // Create user if doesn't exist
+                let dbUser: any = null;
+
+                // 1. Check if we already have this specific Google Account linked
+                if (account) {
+                    const existingAccount = await prisma.account.findUnique({
+                        where: {
+                            provider_providerAccountId: {
+                                provider: account.provider,
+                                providerAccountId: account.providerAccountId
+                            }
+                        },
+                        include: { user: true }
+                    });
+
+                    if (existingAccount && existingAccount.user) {
+                        // FOUND! This is the same person, even if email changed.
+                        dbUser = existingAccount.user;
+                        console.log(`[Auth] User identified by Google ID: ${dbUser.id}`);
+
+                        // Check if details need updating (Sync Google -> DB)
+                        if (dbUser.email !== user.email || dbUser.name !== user.name || dbUser.image !== user.image) {
+                            console.log(`[Auth] User details changed in Google. Updating DB record...`);
+                            // Note: We don't change the Role or Availability, just identity info.
+                            dbUser = await prisma.user.update({
+                                where: { id: dbUser.id },
+                                data: {
+                                    email: user.email,
+                                    name: user.name,
+                                    image: user.image,
+                                    // optional: emailVerified: new Date()
+                                }
+                            });
+                        }
+                    }
+                }
+
+                // 2. If NOT found by Google ID, try finding by Email (Legacy/Invite flow)
+                // This happens if:
+                // a) It's a completely new user.
+                // b) They existed before but somehow didn't have an Account row (rare).
+                if (!dbUser && user.email) {
+                    dbUser = await prisma.user.findUnique({
+                        where: { email: user.email }
+                    });
+
+                    if (dbUser) {
+                        console.log(`[Auth] User identified by Email: ${dbUser.email}. Linking new Google Account...`);
+                    }
+                }
+
+                // 3. If STILL not found, create a fresh User
                 if (!dbUser) {
+                    console.log(`[Auth] New User detected. Creating account for: ${user.email}`);
                     dbUser = await prisma.user.create({
                         data: {
                             email: user.email,
                             name: user.name,
                             image: user.image,
                             emailVerified: new Date(),
+                            // Default Role/Dept will be assigned by schema defaults or later logic
                         }
                     });
                 }
 
-                // Check if account exists
-                if (account) {
+                // 4. Ensure the OAuth Account Link exists and is up to date (Tokens)
+                if (account && dbUser) {
                     const existingAccount = await prisma.account.findUnique({
                         where: {
                             provider_providerAccountId: {
@@ -79,25 +133,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         }
                     });
 
-                    // Create or update account
-                    if (!existingAccount) {
-                        await prisma.account.create({
-                            data: {
-                                userId: dbUser.id,
-                                type: account.type,
-                                provider: account.provider,
-                                providerAccountId: account.providerAccountId,
-                                refresh_token: account.refresh_token,
-                                access_token: account.access_token,
-                                expires_at: account.expires_at,
-                                token_type: account.token_type,
-                                scope: account.scope,
-                                id_token: account.id_token,
-                                session_state: account.session_state as string | null,
-                            }
-                        });
-                    } else {
-                        // Update existing account with new tokens
+                    // Define account data
+                    const accountData = {
+                        repo_userId: dbUser.id, // Ensure we link to the correct User ID
+                        type: account.type,
+                        provider: account.provider,
+                        providerAccountId: account.providerAccountId,
+                        refresh_token: account.refresh_token,
+                        access_token: account.access_token,
+                        expires_at: account.expires_at,
+                        token_type: account.token_type,
+                        scope: account.scope,
+                        id_token: account.id_token,
+                        session_state: account.session_state as string | null,
+                    };
+
+                    // Typescript fix for dynamic key in upsert
+                    const userIdKey = 'userId';
+
+                    if (existingAccount) {
+                        // Update tokens
                         await prisma.account.update({
                             where: {
                                 provider_providerAccountId: {
@@ -112,6 +167,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                                 scope: account.scope,
                                 id_token: account.id_token,
                                 session_state: account.session_state as string | null,
+                            }
+                        });
+                    } else {
+                        // Create Account Link
+                        await prisma.account.create({
+                            data: {
+                                ...accountData,
+                                userId: dbUser.id
                             }
                         });
                     }

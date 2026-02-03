@@ -6,7 +6,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { signIn, useSession } from "next-auth/react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Suspense, useEffect, useState } from "react"
-import { Lock, ShieldAlert, LogIn, Loader2 } from "lucide-react"
+import {
+    Lock,
+    ShieldAlert,
+    LogIn,
+    Loader2,
+    Clock,
+    Hourglass,
+    Calendar,
+    Timer,
+    History
+} from "lucide-react"
 
 function LoginContent() {
     const { data: session, status } = useSession()
@@ -41,84 +51,21 @@ function LoginContent() {
         }
     }
 
-    if (status === "loading") {
+    if (status === "loading" || status === "authenticated") {
         return (
             <div className="min-h-screen flex items-center justify-center bg-muted/30 relative overflow-hidden">
                 {/* Background elements */}
                 <div className="absolute top-0 right-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
                 <div className="absolute bottom-0 left-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
 
-                {/* Decorative flame shapes */}
-                <svg className="absolute top-20 left-10 w-48 h-48 text-red-600/5 rotate-12" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 10 C45 30, 40 40, 35 60 C32 70, 35 80, 45 85 C55 90, 65 85, 68 75 C70 65, 65 55, 60 45 C58 35, 55 25, 50 10 Z" />
-                </svg>
-                <svg className="absolute bottom-32 right-16 w-64 h-64 text-red-600/4 -rotate-45" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 15 C48 28, 42 38, 38 52 C35 62, 38 72, 46 78 C54 84, 62 80, 65 70 C67 60, 63 50, 58 40 C56 30, 52 22, 50 15 Z" />
-                </svg>
-                <svg className="absolute top-1/3 right-1/4 w-40 h-40 text-red-600/3 rotate-90" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 20 C47 32, 43 42, 40 55 C38 63, 40 71, 47 76 C54 81, 60 78, 62 69 C64 61, 61 52, 57 43 C55 34, 52 26, 50 20 Z" />
-                </svg>
-
-                {/* Decorative shield shapes */}
-                <svg className="absolute top-1/4 left-1/3 w-44 h-44 text-zinc-600/4 -rotate-12" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 10 L80 25 L80 50 C80 70, 65 85, 50 90 C35 85, 20 70, 20 50 L20 25 Z" />
-                </svg>
-                <svg className="absolute bottom-1/4 left-20 w-56 h-56 text-zinc-600/3 rotate-45" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 15 L75 27 L75 48 C75 65, 62 78, 50 83 C38 78, 25 65, 25 48 L25 27 Z" />
-                </svg>
-                <svg className="absolute top-2/3 right-1/3 w-32 h-32 text-zinc-600/5 rotate-[135deg]" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 20 L70 30 L70 50 C70 63, 60 73, 50 77 C40 73, 30 63, 30 50 L30 30 Z" />
-                </svg>
-
-                {/* Small accent flames */}
-                <svg className="absolute top-1/2 left-1/4 w-28 h-28 text-red-600/4 -rotate-[25deg]" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 25 C48 35, 45 42, 42 52 C40 58, 42 64, 48 68 C54 72, 58 69, 60 62 C61 56, 59 50, 56 44 C54 37, 52 30, 50 25 Z" />
-                </svg>
-                <svg className="absolute bottom-1/3 right-1/4 w-36 h-36 text-red-600/3 rotate-[60deg]" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 22 C48 33, 44 40, 41 50 C39 57, 41 63, 47 67 C53 71, 59 68, 61 61 C62 54, 60 48, 57 42 C55 35, 52 28, 50 22 Z" />
-                </svg>
-
-                <Loader2 className="h-8 w-8 animate-spin text-red-600 relative z-10" />
-            </div>
-        )
-    }
-
-    if (status === "authenticated") {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-muted/30 relative overflow-hidden">
-                {/* Background elements */}
-                <div className="absolute top-0 right-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
-                <div className="absolute bottom-0 left-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
-
-                {/* Decorative flame shapes */}
-                <svg className="absolute top-20 left-10 w-48 h-48 text-red-600/5 rotate-12" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 10 C45 30, 40 40, 35 60 C32 70, 35 80, 45 85 C55 90, 65 85, 68 75 C70 65, 65 55, 60 45 C58 35, 55 25, 50 10 Z" />
-                </svg>
-                <svg className="absolute bottom-32 right-16 w-64 h-64 text-red-600/4 -rotate-45" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 15 C48 28, 42 38, 38 52 C35 62, 38 72, 46 78 C54 84, 62 80, 65 70 C67 60, 63 50, 58 40 C56 30, 52 22, 50 15 Z" />
-                </svg>
-                <svg className="absolute top-1/3 right-1/4 w-40 h-40 text-red-600/3 rotate-90" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 20 C47 32, 43 42, 40 55 C38 63, 40 71, 47 76 C54 81, 60 78, 62 69 C64 61, 61 52, 57 43 C55 34, 52 26, 50 20 Z" />
-                </svg>
-
-                {/* Decorative shield shapes */}
-                <svg className="absolute top-1/4 left-1/3 w-44 h-44 text-zinc-600/4 -rotate-12" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 10 L80 25 L80 50 C80 70, 65 85, 50 90 C35 85, 20 70, 20 50 L20 25 Z" />
-                </svg>
-                <svg className="absolute bottom-1/4 left-20 w-56 h-56 text-zinc-600/3 rotate-45" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 15 L75 27 L75 48 C75 65, 62 78, 50 83 C38 78, 25 65, 25 48 L25 27 Z" />
-                </svg>
-                <svg className="absolute top-2/3 right-1/3 w-32 h-32 text-zinc-600/5 rotate-[135deg]" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 20 L70 30 L70 50 C70 63, 60 73, 50 77 C40 73, 30 63, 30 50 L30 30 Z" />
-                </svg>
-
-                {/* Small accent flames */}
-                <svg className="absolute top-1/2 left-1/4 w-28 h-28 text-red-600/4 -rotate-[25deg]" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 25 C48 35, 45 42, 42 52 C40 58, 42 64, 48 68 C54 72, 58 69, 60 62 C61 56, 59 50, 56 44 C54 37, 52 30, 50 25 Z" />
-                </svg>
-                <svg className="absolute bottom-1/3 right-1/4 w-36 h-36 text-red-600/3 rotate-[60deg]" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 22 C48 33, 44 40, 41 50 C39 57, 41 63, 47 67 C53 71, 59 68, 61 61 C62 54, 60 48, 57 42 C55 35, 52 28, 50 22 Z" />
-                </svg>
+                {/* Time-themed Background Shapes */}
+                <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                    <Clock className="absolute top-[10%] left-[10%] w-32 h-32 text-slate-300/20 rotate-12" />
+                    <Hourglass className="absolute bottom-[15%] right-[10%] w-40 h-40 text-slate-300/20 -rotate-12" />
+                    <Calendar className="absolute top-[20%] right-[20%] w-24 h-24 text-slate-300/15 rotate-6" />
+                    <Timer className="absolute bottom-[20%] left-[20%] w-28 h-28 text-slate-300/15 -rotate-6" />
+                    <History className="absolute top-[50%] left-[5%] w-20 h-20 text-slate-300/10 rotate-45" />
+                </div>
 
                 <Loader2 className="h-8 w-8 animate-spin text-red-600 relative z-10" />
             </div>
@@ -131,37 +78,16 @@ function LoginContent() {
             <div className="absolute top-0 right-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
             <div className="absolute bottom-0 left-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
 
-            {/* Decorative flame shapes - inspired by logo */}
-            <svg className="absolute top-20 left-10 w-48 h-48 text-red-600/5 rotate-12" viewBox="0 0 100 100" fill="currentColor">
-                <path d="M50 10 C45 30, 40 40, 35 60 C32 70, 35 80, 45 85 C55 90, 65 85, 68 75 C70 65, 65 55, 60 45 C58 35, 55 25, 50 10 Z" />
-            </svg>
-            <svg className="absolute bottom-32 right-16 w-64 h-64 text-red-600/4 -rotate-45" viewBox="0 0 100 100" fill="currentColor">
-                <path d="M50 15 C48 28, 42 38, 38 52 C35 62, 38 72, 46 78 C54 84, 62 80, 65 70 C67 60, 63 50, 58 40 C56 30, 52 22, 50 15 Z" />
-            </svg>
-            <svg className="absolute top-1/3 right-1/4 w-40 h-40 text-red-600/3 rotate-90" viewBox="0 0 100 100" fill="currentColor">
-                <path d="M50 20 C47 32, 43 42, 40 55 C38 63, 40 71, 47 76 C54 81, 60 78, 62 69 C64 61, 61 52, 57 43 C55 34, 52 26, 50 20 Z" />
-            </svg>
+            {/* Time-themed Background Shapes */}
+            <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                <Clock className="absolute top-[10%] left-[10%] w-32 h-32 text-slate-300/20 rotate-12" />
+                <Hourglass className="absolute bottom-[15%] right-[10%] w-40 h-40 text-slate-300/20 -rotate-12" />
+                <Calendar className="absolute top-[20%] right-[20%] w-24 h-24 text-slate-300/15 rotate-6" />
+                <Timer className="absolute bottom-[20%] left-[20%] w-28 h-28 text-slate-300/15 -rotate-6" />
+                <History className="absolute top-[50%] left-[5%] w-20 h-20 text-slate-300/10 rotate-45" />
+            </div>
 
-            {/* Decorative shield shapes - inspired by logo */}
-            <svg className="absolute top-1/4 left-1/3 w-44 h-44 text-zinc-600/4 -rotate-12" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M50 10 L80 25 L80 50 C80 70, 65 85, 50 90 C35 85, 20 70, 20 50 L20 25 Z" />
-            </svg>
-            <svg className="absolute bottom-1/4 left-20 w-56 h-56 text-zinc-600/3 rotate-45" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M50 15 L75 27 L75 48 C75 65, 62 78, 50 83 C38 78, 25 65, 25 48 L25 27 Z" />
-            </svg>
-            <svg className="absolute top-2/3 right-1/3 w-32 h-32 text-zinc-600/5 rotate-[135deg]" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M50 20 L70 30 L70 50 C70 63, 60 73, 50 77 C40 73, 30 63, 30 50 L30 30 Z" />
-            </svg>
-
-            {/* Small accent flames */}
-            <svg className="absolute top-1/2 left-1/4 w-28 h-28 text-red-600/4 -rotate-[25deg]" viewBox="0 0 100 100" fill="currentColor">
-                <path d="M50 25 C48 35, 45 42, 42 52 C40 58, 42 64, 48 68 C54 72, 58 69, 60 62 C61 56, 59 50, 56 44 C54 37, 52 30, 50 25 Z" />
-            </svg>
-            <svg className="absolute bottom-1/3 right-1/4 w-36 h-36 text-red-600/3 rotate-[60deg]" viewBox="0 0 100 100" fill="currentColor">
-                <path d="M50 22 C48 33, 44 40, 41 50 C39 57, 41 63, 47 67 C53 71, 59 68, 61 61 C62 54, 60 48, 57 42 C55 35, 52 28, 50 22 Z" />
-            </svg>
-
-            <div className="w-full max-w-[400px] space-y-6 animate-in fade-in zoom-in duration-500">
+            <div className="w-full max-w-[400px] space-y-6 animate-in fade-in zoom-in duration-500 relative z-10">
                 <div className="flex flex-col items-center text-center space-y-4">
                     <div className="h-28 w-28 bg-white rounded-3xl flex items-center justify-center shadow-lg mb-2 overflow-hidden border border-border/50">
                         <img src="/logo.png" alt="RSA Logo" className="w-full h-full object-cover" />
@@ -227,35 +153,14 @@ export default function LoginPage() {
                 <div className="absolute top-0 right-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
                 <div className="absolute bottom-0 left-0 h-96 w-96 bg-red-600/5 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
 
-                {/* Decorative flame shapes */}
-                <svg className="absolute top-20 left-10 w-48 h-48 text-red-600/5 rotate-12" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 10 C45 30, 40 40, 35 60 C32 70, 35 80, 45 85 C55 90, 65 85, 68 75 C70 65, 65 55, 60 45 C58 35, 55 25, 50 10 Z" />
-                </svg>
-                <svg className="absolute bottom-32 right-16 w-64 h-64 text-red-600/4 -rotate-45" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 15 C48 28, 42 38, 38 52 C35 62, 38 72, 46 78 C54 84, 62 80, 65 70 C67 60, 63 50, 58 40 C56 30, 52 22, 50 15 Z" />
-                </svg>
-                <svg className="absolute top-1/3 right-1/4 w-40 h-40 text-red-600/3 rotate-90" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 20 C47 32, 43 42, 40 55 C38 63, 40 71, 47 76 C54 81, 60 78, 62 69 C64 61, 61 52, 57 43 C55 34, 52 26, 50 20 Z" />
-                </svg>
-
-                {/* Decorative shield shapes */}
-                <svg className="absolute top-1/4 left-1/3 w-44 h-44 text-zinc-600/4 -rotate-12" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 10 L80 25 L80 50 C80 70, 65 85, 50 90 C35 85, 20 70, 20 50 L20 25 Z" />
-                </svg>
-                <svg className="absolute bottom-1/4 left-20 w-56 h-56 text-zinc-600/3 rotate-45" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 15 L75 27 L75 48 C75 65, 62 78, 50 83 C38 78, 25 65, 25 48 L25 27 Z" />
-                </svg>
-                <svg className="absolute top-2/3 right-1/3 w-32 h-32 text-zinc-600/5 rotate-[135deg]" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M50 20 L70 30 L70 50 C70 63, 60 73, 50 77 C40 73, 30 63, 30 50 L30 30 Z" />
-                </svg>
-
-                {/* Small accent flames */}
-                <svg className="absolute top-1/2 left-1/4 w-28 h-28 text-red-600/4 -rotate-[25deg]" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 25 C48 35, 45 42, 42 52 C40 58, 42 64, 48 68 C54 72, 58 69, 60 62 C61 56, 59 50, 56 44 C54 37, 52 30, 50 25 Z" />
-                </svg>
-                <svg className="absolute bottom-1/3 right-1/4 w-36 h-36 text-red-600/3 rotate-[60deg]" viewBox="0 0 100 100" fill="currentColor">
-                    <path d="M50 22 C48 33, 44 40, 41 50 C39 57, 41 63, 47 67 C53 71, 59 68, 61 61 C62 54, 60 48, 57 42 C55 35, 52 28, 50 22 Z" />
-                </svg>
+                {/* Time-themed Background Shapes */}
+                <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                    <Clock className="absolute top-[10%] left-[10%] w-32 h-32 text-slate-300/20 rotate-12" />
+                    <Hourglass className="absolute bottom-[15%] right-[10%] w-40 h-40 text-slate-300/20 -rotate-12" />
+                    <Calendar className="absolute top-[20%] right-[20%] w-24 h-24 text-slate-300/15 rotate-6" />
+                    <Timer className="absolute bottom-[20%] left-[20%] w-28 h-28 text-slate-300/15 -rotate-6" />
+                    <History className="absolute top-[50%] left-[5%] w-20 h-20 text-slate-300/10 rotate-45" />
+                </div>
 
                 <Loader2 className="h-8 w-8 animate-spin text-red-600 relative z-10" />
             </div>
