@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { TimezoneSettings } from "@/components/TimezoneSettings"
 
 import { useSession } from "next-auth/react"
 
@@ -133,6 +134,7 @@ export default function AdminLayout({
                             <span className="text-sm font-semibold text-foreground leading-none">Administrator</span>
                             <span className="text-xs text-muted-foreground mt-0.5">Authorized</span>
                         </div>
+                        <TimezoneSettings compact />
                         <NotificationBell role="ADMIN" />
                     </div>
                 </header>

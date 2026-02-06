@@ -18,7 +18,8 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2 } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2, Filter } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 
@@ -56,6 +57,10 @@ export default function ManagerControlPage() {
     const [todaysAttendance, setTodaysAttendance] = useState<any[]>([])
     const [currentMonth, setCurrentMonth] = useState(new Date())
 
+    // Department Filter State
+    const [managerDepartments, setManagerDepartments] = useState<any[]>([])
+    const [selectedDepartment, setSelectedDepartment] = useState<string>("all")
+
     // UI State
     const [searchQuery, setSearchQuery] = useState("")
     const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
@@ -84,13 +89,14 @@ export default function ManagerControlPage() {
         setIsLoading(true)
         try {
             // Parallel fetch for all needed data
-            const [pendingLeaveRes, pendingAttRes, approvedRes, employeesRes, attendanceRes, historyRes] = await Promise.all([
+            const [pendingLeaveRes, pendingAttRes, approvedRes, employeesRes, attendanceRes, historyRes, departmentsRes] = await Promise.all([
                 fetch(`/api/leaves?managerId=${session.user.id}&status=PENDING`),
                 fetch(`/api/attendance-requests?managerId=${session.user.id}&status=PENDING`),
                 fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED`),
                 fetch('/api/employees'),
                 fetch('/api/attendance'), // For today's sidebar status
-                fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED,DECLINED`)
+                fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED,DECLINED`),
+                fetch('/api/departments')
             ])
 
             let combinedPending: Request[] = []
@@ -134,6 +140,14 @@ export default function ManagerControlPage() {
             if (attendanceRes.ok) {
                 const attData = await attendanceRes.json()
                 setTodaysAttendance(attData)
+            }
+
+            // Fetch manager's departments
+            if (departmentsRes.ok) {
+                const allDepts = await departmentsRes.json()
+                // Filter departments where this user is the manager
+                const myDepts = allDepts.filter((dept: any) => dept.managerId === session.user?.id)
+                setManagerDepartments(myDepts)
             }
 
             // Initial monthly fetch
@@ -240,6 +254,44 @@ export default function ManagerControlPage() {
         }
     }
 
+    // --- Filter Data First (Before Using in Functions) ---
+    // Filter Team Members
+    const filteredTeam = useMemo(() => {
+        if (selectedDepartment === "all") return myTeam
+        return myTeam.filter(member => member.department?.name === selectedDepartment)
+    }, [myTeam, selectedDepartment])
+
+    // Filter Approved Leaves
+    const filteredApprovedLeaves = useMemo(() => {
+        if (selectedDepartment === "all") return approvedLeaves
+        return approvedLeaves.filter(leave => {
+            const member = myTeam.find(m => m.id === leave.userId)
+            return member?.department?.name === selectedDepartment
+        })
+    }, [approvedLeaves, myTeam, selectedDepartment])
+
+    // Filter Monthly Attendance
+    const filteredMonthlyAttendance = useMemo(() => {
+        if (selectedDepartment === "all") return monthlyAttendance
+        return monthlyAttendance.filter(att => {
+            const member = myTeam.find(m => m.id === att.userId)
+            return member?.department?.name === selectedDepartment
+        })
+    }, [monthlyAttendance, myTeam, selectedDepartment])
+
+    // Filter Pending Requests
+    const filteredRequests = pendingRequests.filter(r => {
+        const matchesSearch = r.userName.toLowerCase().includes(searchQuery.toLowerCase())
+        const matchesDepartment = selectedDepartment === "all" || r.department === selectedDepartment
+        return matchesSearch && matchesDepartment
+    })
+
+    // Filter Request History
+    const filteredHistory = requestHistory.filter(r => {
+        const matchesDepartment = selectedDepartment === "all" || r.department === selectedDepartment
+        return matchesDepartment
+    })
+
     // --- Calendar Helpers ---
     const NSW_HOLIDAYS_2026: any = {
         '2026-01-01': "New Year's Day",
@@ -266,7 +318,7 @@ export default function ManagerControlPage() {
         const dateStr = format(date, 'yyyy-MM-dd')
 
         // Leaves
-        const leaves = approvedLeaves.filter(leave =>
+        const leaves = filteredApprovedLeaves.filter(leave =>
             isWithinInterval(date, {
                 start: parseISO(leave.startDate),
                 end: parseISO(leave.endDate)
@@ -274,7 +326,7 @@ export default function ManagerControlPage() {
         ).map(l => ({ type: 'leave', data: l }))
 
         // Attendance (Present)
-        const attendance = monthlyAttendance.filter((a: any) => {
+        const attendance = filteredMonthlyAttendance.filter((a: any) => {
             const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
             return attDate === dateStr
         }).map(a => ({ type: 'present', data: a }))
@@ -294,9 +346,9 @@ export default function ManagerControlPage() {
         const isHoliday = NSW_HOLIDAYS_2026[dateStr]
         const isWeekend = ['Sat', 'Sun'].includes(format(date, 'EEE'))
 
-        return myTeam.map(member => {
+        return filteredTeam.map(member => {
             // Find approved leave
-            const leave = approvedLeaves.find(l =>
+            const leave = filteredApprovedLeaves.find(l =>
                 l.userId === member.id &&
                 isWithinInterval(date, {
                     start: parseISO(l.startDate),
@@ -305,7 +357,7 @@ export default function ManagerControlPage() {
             )
 
             // Find attendance
-            const attendance = monthlyAttendance.find(a => {
+            const attendance = filteredMonthlyAttendance.find(a => {
                 const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
                 return a.userId === member.id && attDate === dateStr
             })
@@ -322,12 +374,12 @@ export default function ManagerControlPage() {
 
     // --- Team Status Helpers ---
     const sortedTeam = useMemo(() => {
-        return [...myTeam].map(member => {
+        return [...filteredTeam].map(member => {
             // Find attendance record
             const record = todaysAttendance.find((a: any) => a.userId === member.id)
             // Determine status
             // Check if they are on APPROVED leave today
-            const onLeaveToday = approvedLeaves.find(l =>
+            const onLeaveToday = filteredApprovedLeaves.find(l =>
                 l.userId === member.id &&
                 isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
             )
@@ -343,13 +395,9 @@ export default function ManagerControlPage() {
             const order: any = { present: 0, break: 1, leave: 2, offline: 3, absent: 4 }
             return order[a.status] - order[b.status]
         })
-    }, [myTeam, todaysAttendance, approvedLeaves])
+    }, [filteredTeam, todaysAttendance, filteredApprovedLeaves])
 
 
-    // Filter Pending Requests
-    const filteredRequests = pendingRequests.filter(r =>
-        r.userName.toLowerCase().includes(searchQuery.toLowerCase())
-    )
 
     if (status === "loading" || isLoading) {
         return (
@@ -393,19 +441,37 @@ export default function ManagerControlPage() {
 
                 {/* --- REQUESTS TAB --- */}
                 <TabsContent value="requests" className="space-y-6 animate-in slide-in-from-left-4 duration-300">
-                    <div id="tour-manager-pending" className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
+                    <div id="tour-manager-pending" className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm gap-4">
                         <div className="flex items-center gap-2">
                             <AlertCircle className="w-5 h-5 text-yellow-600" />
                             <h2 className="font-semibold text-foreground">Pending Approvals</h2>
                         </div>
-                        <div className="relative w-64">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search requests..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 bg-muted/30 border-border"
-                            />
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                            {managerDepartments.length > 1 && (
+                                <div className="flex items-center gap-2">
+                                    <Filter className="w-4 h-4 text-muted-foreground" />
+                                    <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                        <SelectTrigger className="w-[180px] h-9 bg-muted/30 border-border">
+                                            <SelectValue placeholder="All Departments" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Departments</SelectItem>
+                                            {managerDepartments.map(dept => (
+                                                <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+                            <div className="relative flex-1 sm:flex-initial sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search requests..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-9 bg-muted/30 border-border"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -500,15 +566,31 @@ export default function ManagerControlPage() {
 
                 {/* --- HISTORY TAB --- */}
                 <TabsContent value="history" className="space-y-6 animate-in slide-in-from-left-4 duration-300">
-                    <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm gap-4">
                         <div className="flex items-center gap-2">
                             <Clock className="w-5 h-5 text-blue-600" />
                             <h2 className="font-semibold text-foreground">Decision Archive</h2>
                         </div>
+                        {managerDepartments.length > 1 && (
+                            <div className="flex items-center gap-2">
+                                <Filter className="w-4 h-4 text-muted-foreground" />
+                                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                    <SelectTrigger className="w-[180px] h-9 bg-muted/30 border-border">
+                                        <SelectValue placeholder="All Departments" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Departments</SelectItem>
+                                        {managerDepartments.map(dept => (
+                                            <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                     </div>
 
                     <div className="grid gap-4">
-                        {requestHistory.length === 0 ? (
+                        {filteredHistory.length === 0 ? (
                             <Card className="border-dashed shadow-none bg-muted/30">
                                 <CardContent className="flex flex-col items-center justify-center py-20 text-center">
                                     <h3 className="text-lg font-semibold">No History</h3>
@@ -516,7 +598,7 @@ export default function ManagerControlPage() {
                                 </CardContent>
                             </Card>
                         ) : (
-                            requestHistory.map(request => (
+                            filteredHistory.map(request => (
                                 <Card key={request.id} className="group hover:shadow-md transition-all border-border bg-white overflow-hidden opacity-90">
                                     <div className="flex flex-col lg:flex-row">
                                         <div className={cn("lg:w-1", request.status === 'APPROVED' ? "bg-green-500" : "bg-red-500")} />
@@ -600,29 +682,47 @@ export default function ManagerControlPage() {
 
                         {/* Main Calendar View */}
                         <Card className="xl:col-span-3 border border-border shadow-sm bg-white overflow-hidden rounded-2xl">
-                            <CardHeader className="border-b border-border bg-muted/10 p-4 flex flex-row items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <h2 className="text-xl font-bold text-foreground">
-                                        {format(currentMonth, 'MMMM yyyy')}
-                                    </h2>
-                                    <div className="flex items-center gap-1 bg-white border border-border rounded-lg p-1 shadow-sm">
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                                            className="h-7 w-7"
-                                        >
-                                            <ChevronLeft className="w-4 h-4" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                                            className="h-7 w-7"
-                                        >
-                                            <ChevronRight className="w-4 h-4" />
-                                        </Button>
+                            <CardHeader className="border-b border-border bg-muted/10 p-4 flex flex-col gap-4">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                    <div className="flex items-center gap-4">
+                                        <h2 className="text-xl font-bold text-foreground">
+                                            {format(currentMonth, 'MMMM yyyy')}
+                                        </h2>
+                                        <div className="flex items-center gap-1 bg-white border border-border rounded-lg p-1 shadow-sm">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                                                className="h-7 w-7"
+                                            >
+                                                <ChevronLeft className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                                                className="h-7 w-7"
+                                            >
+                                                <ChevronRight className="w-4 h-4" />
+                                            </Button>
+                                        </div>
                                     </div>
+                                    {managerDepartments.length > 1 && (
+                                        <div className="flex items-center gap-2">
+                                            <Filter className="w-4 h-4 text-muted-foreground" />
+                                            <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                                <SelectTrigger className="w-[180px] h-9 bg-white border-border">
+                                                    <SelectValue placeholder="All Departments" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All Departments</SelectItem>
+                                                    {managerDepartments.map(dept => (
+                                                        <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                                     <div className="flex items-center gap-1.5">

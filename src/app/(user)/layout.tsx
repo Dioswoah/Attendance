@@ -11,7 +11,8 @@ import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { RisaChatbot } from "@/components/RisaChatbot"
 import { UserOnboardingTour } from "@/components/UserOnboardingTour"
-import { UserStatusDropdown, statusConfig } from "@/components/UserStatusDropdown"
+
+import { TimezoneSettings } from "@/components/TimezoneSettings"
 
 export default function UserLayout({
     children,
@@ -219,45 +220,22 @@ export default function UserLayout({
                         "flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/5 backdrop-blur-sm transition-all hover:bg-white/10 group",
                         sidebarCollapsed && "justify-center p-2"
                     )}>
-                        <UserStatusDropdown>
-                            <div className="relative cursor-pointer shrink-0">
-                                <Avatar className="w-12 h-12 border-2 border-white/10 shadow-lg transition-transform group-hover:scale-105">
-                                    {session?.user?.image ? (
-                                        <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
-                                    ) : (
-                                        <AvatarFallback className="bg-white text-[#8B2323] text-base font-black">
-                                            {getInitials(session?.user?.name)}
-                                        </AvatarFallback>
-                                    )}
-                                </Avatar>
-                                {/* Teams-style Status Indicator */}
-                                {(() => {
-                                    const status = (session?.user as any)?.availabilityStatus || 'AVAILABLE'
-                                    const config = (statusConfig as any)[status] || statusConfig.AVAILABLE
-                                    return (
-                                        <div className={cn(
-                                            "absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full border-2 bg-sidebar border-sidebar flex items-center justify-center shadow-lg z-10",
-                                            config.color.replace('text-', 'bg-').split(' ')[0]
-                                        )}>
-                                            <config.icon className="h-2.5 w-2.5 text-white" />
-                                        </div>
-                                    )
-                                })()}
-                            </div>
-                        </UserStatusDropdown>
+                        <div className="relative shrink-0">
+                            <Avatar className="w-12 h-12 border-2 border-white/10 shadow-lg transition-transform group-hover:scale-105">
+                                {session?.user?.image ? (
+                                    <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                                ) : (
+                                    <AvatarFallback className="bg-white text-[#8B2323] text-base font-black">
+                                        {getInitials(session?.user?.name)}
+                                    </AvatarFallback>
+                                )}
+                            </Avatar>
+                        </div>
 
                         {!sidebarCollapsed && (
                             <div className="flex-1 min-w-0">
                                 <p className="text-[13px] font-bold text-white truncate leading-tight tracking-tight">{displayName}</p>
                                 <p className="text-[10px] font-medium text-white/40 uppercase tracking-[0.1em] mt-0.5">{userRole}</p>
-                                <UserStatusDropdown>
-                                    <div className="mt-1 flex items-center gap-1.5 cursor-pointer opacity-60 hover:opacity-100 transition-opacity">
-                                        <div className={cn("w-1.5 h-1.5 rounded-full", ((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).color.replace('text-', 'bg-'))} />
-                                        <span className="text-[9px] font-bold text-white uppercase tracking-widest leading-none">
-                                            {((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).label}
-                                        </span>
-                                    </div>
-                                </UserStatusDropdown>
                             </div>
                         )}
                     </div>
@@ -349,43 +327,20 @@ export default function UserLayout({
                             {/* Mobile User Profile Section */}
                             <div className="p-4 border-t border-slate-100 mt-auto bg-white/50">
                                 <div className="flex items-center gap-4 p-4 rounded-[2rem] bg-white border border-slate-100 mb-4 shadow-sm group">
-                                    <UserStatusDropdown>
-                                        <div className="relative cursor-pointer shrink-0">
-                                            <Avatar className="w-14 h-14 border-2 border-white shadow-xl transition-transform group-hover:scale-105">
-                                                {session?.user?.image ? (
-                                                    <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
-                                                ) : (
-                                                    <AvatarFallback className="bg-[#8B2323] text-white text-xl font-black">
-                                                        {getInitials(session?.user?.name)}
-                                                    </AvatarFallback>
-                                                )}
-                                            </Avatar>
-                                            {/* Status Indicator (Teams Style) */}
-                                            {(() => {
-                                                const status = (session?.user as any)?.availabilityStatus || 'AVAILABLE'
-                                                const config = (statusConfig as any)[status] || statusConfig.AVAILABLE
-                                                return (
-                                                    <div className={cn(
-                                                        "absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full border-2 bg-white border-white flex items-center justify-center shadow-md z-10",
-                                                        config.color.replace('text-', 'bg-').split(' ')[0]
-                                                    )}>
-                                                        <config.icon className="h-3 w-3 text-white" />
-                                                    </div>
-                                                )
-                                            })()}
-                                        </div>
-                                    </UserStatusDropdown>
+                                    <div className="relative shrink-0">
+                                        <Avatar className="w-14 h-14 border-2 border-white shadow-xl transition-transform group-hover:scale-105">
+                                            {session?.user?.image ? (
+                                                <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                                            ) : (
+                                                <AvatarFallback className="bg-[#8B2323] text-white text-xl font-black">
+                                                    {getInitials(session?.user?.name)}
+                                                </AvatarFallback>
+                                            )}
+                                        </Avatar>
+                                    </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-base font-black text-slate-900 truncate tracking-tight leading-none">{displayName}</p>
                                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mt-1.5">{userRole}</p>
-                                        <UserStatusDropdown>
-                                            <div className="mt-2 flex items-center gap-2 cursor-pointer w-fit py-1 px-2.5 rounded-full bg-slate-100/50 hover:bg-slate-100 transition-colors">
-                                                <div className={cn("w-2 h-2 rounded-full", ((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).color.replace('text-', 'bg-'))} />
-                                                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest leading-none">
-                                                    {((statusConfig as any)[(session?.user as any)?.availabilityStatus || 'AVAILABLE'] || statusConfig.AVAILABLE).label}
-                                                </span>
-                                            </div>
-                                        </UserStatusDropdown>
                                     </div>
                                 </div>
                                 <Button
@@ -433,7 +388,7 @@ export default function UserLayout({
                             </Link>
                         )}
                         <UserOnboardingTour mode="trigger" />
-                        <UserStatusDropdown compact />
+
                         <NotificationBell />
                     </div>
                 </header>
@@ -451,6 +406,7 @@ export default function UserLayout({
                             </Button>
                         </Link>
                     )}
+                    <TimezoneSettings />
                     <UserOnboardingTour mode="trigger" />
                     <NotificationBell />
                 </header>

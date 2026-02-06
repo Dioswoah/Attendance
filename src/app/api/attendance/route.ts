@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { auth } from "@/auth"
 import { sendAdminActionEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
+import { syncStatusToCalendar } from "@/lib/calendar"
 
 // NSW Public Holidays 2026
 const HOLIDAYS_2026 = [
@@ -133,10 +134,32 @@ async function cleanupDuplicateBreaks() {
     }
 }
 
+/**
+ * Reset all users' availability status to APPEAR_OFFLINE at the start of each day.
+ * This ensures everyone appears offline until they clock in.
+ */
+async function resetDailyAvailability() {
+    try {
+        await prisma.user.updateMany({
+            where: {
+                deletedAt: null,
+                isArchived: false
+            },
+            data: {
+                availabilityStatus: 'APPEAR_OFFLINE'
+            }
+        })
+        console.log('Daily availability status reset completed')
+    } catch (error) {
+        console.error('Failed to reset daily availability:', error)
+    }
+}
+
 export async function GET(req: Request) {
     try {
         await cleanupOldSessions()
         await cleanupDuplicateBreaks()
+        await resetDailyAvailability()
     } catch (e) {
         console.error("Cleanup failed:", e)
     }
@@ -416,8 +439,22 @@ export async function POST(req: Request) {
             }
         })
 
-        // Notify User if Admin created it
+        // Update user availability status to AVAILABLE when clocking in
+        await prisma.user.update({
+            where: { id: userId },
+            data: { availabilityStatus: 'AVAILABLE' }
+        })
+
+        // Sync to Google Calendar (non-blocking)
         const session = await auth() as any
+        if (session?.accessToken) {
+            const userForTimezone = await prisma.user.findUnique({ where: { id: userId } }) as any
+            const timezone = userForTimezone?.selectedTimezone || 'UTC'
+            syncStatusToCalendar(session.accessToken, 'AVAILABLE', mode || 'OFFICE', timezone)
+                .catch(err => console.error('[Calendar Sync] Failed on clock-in:', err))
+        }
+
+        // Notify User if Admin created it
         if (session && session.user.id !== userId) {
             const targetUser = await prisma.user.findUnique({ where: { id: userId } })
             if (targetUser && targetUser.email && session.accessToken) {
@@ -492,6 +529,21 @@ export async function PATCH(req: Request) {
             if (existing.breakStart && !existing.breakEnd) {
                 updateData.breakEnd = now
             }
+
+            // Update user availability to APPEAR_OFFLINE when clocking out
+            await prisma.user.update({
+                where: { id: userId },
+                data: { availabilityStatus: 'APPEAR_OFFLINE' }
+            })
+
+            // Sync to Google Calendar - remove working location (non-blocking)
+            const sessionClockOut = await auth() as any
+            if (sessionClockOut?.accessToken) {
+                const userForTimezone = await prisma.user.findUnique({ where: { id: userId } }) as any
+                const timezone = userForTimezone?.selectedTimezone || 'UTC'
+                syncStatusToCalendar(sessionClockOut.accessToken, 'APPEAR_OFFLINE', existing.mode, timezone)
+                    .catch(err => console.error('[Calendar Sync] Failed on clock-out:', err))
+            }
         } else if (action === 'start-break') {
             // Auto-close any existing open breaks first (safety)
             await prisma.break.updateMany({
@@ -513,6 +565,21 @@ export async function PATCH(req: Request) {
             })
             // Convenience field (current break)
             updateData = { breakStart: now, breakEnd: null }
+
+            // Update user availability to BE_RIGHT_BACK when starting a break
+            await prisma.user.update({
+                where: { id: userId },
+                data: { availabilityStatus: 'BE_RIGHT_BACK' }
+            })
+
+            // Sync to Google Calendar (non-blocking)
+            const sessionBreakStart = await auth() as any
+            if (sessionBreakStart?.accessToken) {
+                const userForTimezone = await prisma.user.findUnique({ where: { id: userId } }) as any
+                const timezone = userForTimezone?.selectedTimezone || 'UTC'
+                syncStatusToCalendar(sessionBreakStart.accessToken, 'BE_RIGHT_BACK', existing.mode, timezone)
+                    .catch(err => console.error('[Calendar Sync] Failed on break start:', err))
+            }
         } else if (action === 'end-break') {
             // Close the latest break in the Break table
             const latestBreak = await prisma.break.findFirst({
@@ -531,6 +598,21 @@ export async function PATCH(req: Request) {
             }
             // Convenience field
             updateData = { breakEnd: now }
+
+            // Update user availability to AVAILABLE when ending a break
+            await prisma.user.update({
+                where: { id: userId },
+                data: { availabilityStatus: 'AVAILABLE' }
+            })
+
+            // Sync to Google Calendar (non-blocking)
+            const sessionBreakEnd = await auth() as any
+            if (sessionBreakEnd?.accessToken) {
+                const userForTimezone = await prisma.user.findUnique({ where: { id: userId } }) as any
+                const timezone = userForTimezone?.selectedTimezone || 'UTC'
+                syncStatusToCalendar(sessionBreakEnd.accessToken, 'AVAILABLE', existing.mode, timezone)
+                    .catch(err => console.error('[Calendar Sync] Failed on break end:', err))
+            }
         }
 
         const updated = await prisma.attendance.update({

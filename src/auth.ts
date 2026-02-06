@@ -118,7 +118,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                             image: user.image,
                             emailVerified: new Date(),
                             // Default Role/Dept will be assigned by schema defaults or later logic
+                            availabilityStatus: 'AVAILABLE', // Default to AVAILABLE on creation
                         }
+                    });
+                }
+
+                // 4. Force initial sync with Google Chat Presence on Login
+                // Instead of blindly forcing 'AVAILABLE', we try to fetch the real status immediately
+                if (dbUser && account?.access_token) {
+                    let initialStatus = 'AVAILABLE';
+                    try {
+                        const chatRes = await fetch('https://chat.googleapis.com/v1/users/me/presence', {
+                            headers: { 'Authorization': `Bearer ${account.access_token}` }
+                        });
+
+                        if (chatRes.ok) {
+                            const chatData = await chatRes.json();
+                            console.log('[Auth] Login Sync - Chat Presence:', chatData);
+
+                            if (chatData.presence === 'DO_NOT_DISTURB') initialStatus = 'DO_NOT_DISTURB';
+                            else if (chatData.presence === 'AWAY' || chatData.presence === 'OFFLINE') initialStatus = 'APPEAR_OFFLINE';
+                            else initialStatus = 'AVAILABLE';
+                        }
+                    } catch (e) {
+                        console.error('[Auth] Failed to sync status on login:', e);
+                    }
+
+                    await prisma.user.update({
+                        where: { id: dbUser.id },
+                        data: { availabilityStatus: initialStatus as any }
                     });
                 }
 
@@ -135,7 +163,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
                     // Define account data
                     const accountData = {
-                        repo_userId: dbUser.id, // Ensure we link to the correct User ID
+                        userId: dbUser.id, // Ensure we link to the correct User ID
                         type: account.type,
                         provider: account.provider,
                         providerAccountId: account.providerAccountId,
@@ -186,7 +214,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 return false;
             }
         },
-        async jwt({ token, account, user }) {
+        async jwt({ token, account, user, trigger, session }: any) {
+            // Handle client-side session updates
+            if (trigger === "update" && session) {
+                console.log('[Auth] Session Update Triggered:', session);
+                // We trust the update loop because it's initiated by our own app logic
+                // after verifying with Google.
+                // However, we mainly rely on the DB being updated.
+                // But updating the token helps with immediate consistency.
+                return { ...token, ...session.user };
+            }
+
             // Initial sign in
             if (account && user) {
                 // Find internal DB user by email to ensure we use our internal ID
@@ -240,6 +278,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         (session.user as any).roles = dbUser.roles || [dbUser.role] || ["USER"];
                         (session.user as any).managerId = dbUser.managerId;
                         (session.user as any).availabilityStatus = dbUser.availabilityStatus;
+                        (session.user as any).useCurrentTimezone = dbUser.useCurrentTimezone ?? true;
+                        (session.user as any).selectedTimezone = dbUser.selectedTimezone || "UTC";
+                        (session.user as any).customStatusMessage = dbUser.customStatusMessage;
                         console.log('[Auth] Updated session roles to:', (session.user as any).roles)
                     }
                 }

@@ -134,6 +134,12 @@ export default function LeaveRequestsPage() {
         e.preventDefault()
         if (!session?.user?.id) return
 
+        // Validate time range for Part Day requests
+        if (duration !== 'Full Day' && startTime >= endTime) {
+            toast.error("Start time must be earlier than end time")
+            return
+        }
+
         setIsSubmitting(true)
         try {
             const start = new Date(startDate)
@@ -390,7 +396,14 @@ export default function LeaveRequestsPage() {
                                         <Input
                                             type="time"
                                             value={startTime}
-                                            onChange={e => setStartTime(e.target.value)}
+                                            onChange={e => {
+                                                const newStartTime = e.target.value
+                                                if (endTime && newStartTime >= endTime) {
+                                                    toast.error("Start time must be earlier than end time")
+                                                    return
+                                                }
+                                                setStartTime(newStartTime)
+                                            }}
                                             className="h-10"
                                         />
                                     </div>
@@ -399,7 +412,14 @@ export default function LeaveRequestsPage() {
                                         <Input
                                             type="time"
                                             value={endTime}
-                                            onChange={e => setEndTime(e.target.value)}
+                                            onChange={e => {
+                                                const newEndTime = e.target.value
+                                                if (startTime && newEndTime <= startTime) {
+                                                    toast.error("End time must be later than start time")
+                                                    return
+                                                }
+                                                setEndTime(newEndTime)
+                                            }}
                                             className="h-10"
                                         />
                                     </div>

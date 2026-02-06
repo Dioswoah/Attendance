@@ -29,6 +29,8 @@ import { format } from "date-fns"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Users, ChevronDown } from "lucide-react"
+import { AdminTimezoneSelect } from "@/components/AdminTimezoneSelect"
+import { prepareTimeForExport, formatWithTimezone } from "@/lib/timezone"
 
 export default function ExportPage() {
     const [generating, setGenerating] = useState(false)
@@ -42,6 +44,7 @@ export default function ExportPage() {
     const [includeArchived, setIncludeArchived] = useState(false)
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
+    const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
 
     useEffect(() => {
         fetchData()
@@ -176,15 +179,25 @@ export default function ExportPage() {
 
                 const logData = sortedData.map((record: any) => {
                     const stats = calculateDurations([record])
+
+                    // Prepare timezone data for clock in/out
+                    const clockInData = record.clockIn ? prepareTimeForExport(record.clockIn, reportTimezone) : null
+                    const clockOutData = record.clockOut ? prepareTimeForExport(record.clockOut, reportTimezone) : null
+
                     return {
                         'Employee': record.userName,
                         'Department': record.department,
                         'Date': record.date,
-                        'Clock In': record.clockIn ? format(new Date(record.clockIn), "HH:mm") : '-',
-                        'Clock Out': record.clockOut ? format(new Date(record.clockOut), "HH:mm") : '-',
+                        'Clock In (UTC)': clockInData?.utcTime || '-',
+                        'Clock In (TZ Offset)': clockInData?.timezoneOffset || '-',
+                        'Clock In (Adjusted)': clockInData ? formatWithTimezone(record.clockIn, reportTimezone, 'time') : '-',
+                        'Clock Out (UTC)': clockOutData?.utcTime || '-',
+                        'Clock Out (TZ Offset)': clockOutData?.timezoneOffset || '-',
+                        'Clock Out (Adjusted)': clockOutData ? formatWithTimezone(record.clockOut, reportTimezone, 'time') : '-',
                         'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
                         'Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2)),
-                        'Work Location': record.mode
+                        'Work Location': record.mode,
+                        'Report Timezone': reportTimezone
                     }
                 })
 
@@ -287,6 +300,12 @@ export default function ExportPage() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <AdminTimezoneSelect
+                            value={reportTimezone}
+                            onChange={setReportTimezone}
+                            label="Report Timezone"
+                            className=""
+                        />
                     </div>
                     <div className="space-y-2">
                         <Label>Staff Filter</Label>

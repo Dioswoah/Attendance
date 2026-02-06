@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap, Home } from "lucide-react"
 import { io } from "socket.io-client"
 import { statusConfig } from "@/components/UserStatusDropdown"
@@ -22,6 +23,11 @@ export default function AdminDashboard() {
     const [departments, setDepartments] = useState<any[]>([])
     const [attendanceRecords, setAttendanceRecords] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+
+    // Dialog state for staff details
+    const [dialogOpen, setDialogOpen] = useState(false)
+    const [dialogTitle, setDialogTitle] = useState("")
+    const [dialogStaff, setDialogStaff] = useState<any[]>([])
 
     // Filters
     const [searchTerm, setSearchTerm] = useState("")
@@ -116,6 +122,47 @@ export default function AdminDashboard() {
         return `${h}h ${m}m ${s}s`
     }
 
+    // Handle stat card click to show staff details
+    const handleStatClick = (statType: string) => {
+        let staff: any[] = []
+        let title = ""
+
+        switch (statType) {
+            case "total":
+                staff = employees
+                title = "All Staff Members"
+                break
+            case "active":
+                staff = employees.filter(emp =>
+                    attendanceRecords.some(a => a.userId === emp.id && a.status === 'clocked-in')
+                )
+                title = "Active Staff (Clocked In)"
+                break
+            case "break":
+                staff = employees.filter(emp =>
+                    attendanceRecords.some(a => a.userId === emp.id && a.status === 'on-break')
+                )
+                title = "Staff On Break"
+                break
+            case "leave":
+                staff = employees.filter(emp =>
+                    attendanceRecords.some(a => a.userId === emp.id && a.status === 'on-leave')
+                )
+                title = "Staff On Leave"
+                break
+            case "absent":
+                staff = employees.filter(emp =>
+                    !attendanceRecords.some(a => a.userId === emp.id && a.status !== 'absent')
+                )
+                title = "Absent Staff"
+                break
+        }
+
+        setDialogTitle(title)
+        setDialogStaff(staff)
+        setDialogOpen(true)
+    }
+
     const filteredEmployees = employees.filter(emp => {
         const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -154,16 +201,20 @@ export default function AdminDashboard() {
             {/* Top Stats Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 {[
-                    { label: "Total Staff", value: stats.totalStaff, icon: Users, sub: "Authorized Personnel", color: "blue" },
-                    { label: "Active Staff", value: stats.clockedIn, icon: Zap, sub: `${Math.round((stats.clockedIn / stats.totalStaff) * 100) || 0}% Clocked In`, color: "green" },
-                    { label: "On Break", value: stats.onBreak, icon: Coffee, sub: "Temporary Idle", color: "yellow" },
-                    { label: "On Leave", value: stats.onLeave, icon: CalendarOff, sub: "Scheduled Exit", color: "slate" },
-                    { label: "Absent", value: stats.absent, icon: ShieldAlert, sub: "Not Clocked In", color: "red" }
+                    { label: "Total Staff", value: stats.totalStaff, icon: Users, sub: "Authorized Personnel", color: "blue", type: "total" },
+                    { label: "Active Staff", value: stats.clockedIn, icon: Zap, sub: `${Math.round((stats.clockedIn / stats.totalStaff) * 100) || 0}% Clocked In`, color: "green", type: "active" },
+                    { label: "On Break", value: stats.onBreak, icon: Coffee, sub: "Temporary Idle", color: "yellow", type: "break" },
+                    { label: "On Leave", value: stats.onLeave, icon: CalendarOff, sub: "Scheduled Exit", color: "slate", type: "leave" },
+                    { label: "Absent", value: stats.absent, icon: ShieldAlert, sub: "Not Clocked In", color: "red", type: "absent" }
                 ].map((stat, i) => (
-                    <Card key={i} className="border border-border shadow-sm rounded-xl bg-white overflow-hidden relative group">
+                    <Card
+                        key={i}
+                        className="border border-border shadow-sm rounded-xl bg-white overflow-hidden relative group cursor-pointer hover:shadow-md hover:border-primary/50 transition-all duration-200"
+                        onClick={() => handleStatClick(stat.type)}
+                    >
                         <CardHeader className="flex flex-row items-center justify-between pb-2 px-6 pt-6">
                             <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
-                            <stat.icon className={`h-4 w-4 text-muted-foreground`} />
+                            <stat.icon className={`h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors`} />
                         </CardHeader>
                         <CardContent className="px-6 pb-6">
                             <div className="text-2xl font-bold text-foreground">{stat.value}</div>
@@ -187,8 +238,8 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent className="p-0">
                         {attendanceRecords.length > 0 ? (
-                            <div className="divide-y divide-border">
-                                {attendanceRecords.slice(0, 5).map((record) => (
+                            <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
+                                {attendanceRecords.slice(0, 10).map((record) => (
                                     <div key={record.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-all duration-200">
                                         <div className="flex items-center gap-4">
                                             <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-medium text-sm">
@@ -229,7 +280,7 @@ export default function AdminDashboard() {
                             <Building2 className="h-5 w-5 text-muted-foreground" />
                         </div>
                     </CardHeader>
-                    <CardContent className="p-6 space-y-6">
+                    <CardContent className="p-6 space-y-6 max-h-[400px] overflow-y-auto">
                         {departments.map(dept => {
                             const deptEmps = employees.filter(e => e.departmentId === dept.id)
                             const present = deptEmps.filter(e => attendanceRecords.some(a => a.userId === e.id && a.status !== 'absent')).length
@@ -422,6 +473,61 @@ export default function AdminDashboard() {
                     </Table>
                 </CardContent>
             </Card>
+
+            {/* Staff Details Dialog */}
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-hidden flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold text-foreground">{dialogTitle}</DialogTitle>
+                        <DialogDescription className="text-sm text-muted-foreground">
+                            {dialogStaff.length} {dialogStaff.length === 1 ? 'person' : 'people'} in this category
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto pr-2">
+                        {dialogStaff.length > 0 ? (
+                            <div className="space-y-2">
+                                {dialogStaff.map((staff) => {
+                                    const dept = departments.find(d => d.id === staff.departmentId)
+                                    const attendance = attendanceRecords.find(a => a.userId === staff.id)
+
+                                    return (
+                                        <div
+                                            key={staff.id}
+                                            className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                                                    {staff.name?.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-foreground">{staff.name}</p>
+                                                    <p className="text-sm text-muted-foreground">{dept?.name || 'No Department'}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                {attendance ? (
+                                                    <Badge variant="outline" className="font-medium">
+                                                        {attendance.status.replace('-', ' ').toUpperCase()}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                        Absent
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                                <Users className="h-12 w-12 mb-3 opacity-50" />
+                                <p className="text-sm font-medium">No staff in this category</p>
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

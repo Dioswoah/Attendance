@@ -2,6 +2,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "../ERD.svg"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -38,6 +43,9 @@ model User {
   team               Team?          @relation(fields: [teamId], references: [id])
   chatSessions       ChatSession[]
   availabilityStatus UserStatus    @default(AVAILABLE)
+  useCurrentTimezone Boolean       @default(true)
+  selectedTimezone   String?       @default("UTC")
+  customStatusMessage String?
 }
 
 model Account {

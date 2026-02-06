@@ -253,56 +253,216 @@ export default function ManualEntryPage() {
         e.preventDefault()
         setProcessing(true)
         try {
+            // Validate break sessions for attendance edits
+            if (activeTab === 'attendance' && editForm.breaks && editForm.breaks.length > 0) {
+                const clockInTime = editForm.clockIn ? new Date(editForm.clockIn).getTime() : null
+                const clockOutTime = editForm.clockOut ? new Date(editForm.clockOut).getTime() : null
+
+                // Check if any break sessions fall outside the new clock in/out timeframe
+                const invalidBreaks = editForm.breaks.filter((breakSession: any) => {
+                    const breakStart = new Date(breakSession.startTime).getTime()
+                    const breakEnd = breakSession.endTime ? new Date(breakSession.endTime).getTime() : null
+
+                    if (clockInTime && breakStart < clockInTime) return true
+                    if (clockOutTime && breakEnd && breakEnd > clockOutTime) return true
+                    if (clockOutTime && !breakEnd && breakStart > clockOutTime) return true
+
+                    return false
+                })
+
+                if (invalidBreaks.length > 0) {
+                    const proceed = confirm(
+                        `⚠️ WARNING: ${invalidBreaks.length} break session(s) fall outside the new clock in/out timeframe.\n\n` +
+                        `These break sessions may become invalid after this change.\n\n` +
+                        `Do you want to proceed? You may need to manually adjust or remove these break sessions.`
+                    )
+
+                    if (!proceed) {
+                        setProcessing(false)
+                        return
+                    }
+
+                    toast.warning(`${invalidBreaks.length} break session(s) may need adjustment`, {
+                        position: 'top-right',
+                        duration: 5000
+                    })
+                }
+            }
+
             const endpoint = `/api/${activeTab}/${editingRecord.id}`
             const res = await fetch(endpoint, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(editForm)
             })
+
             if (res.ok) {
-                showStatus('success')
+                toast.success('Record updated successfully', {
+                    position: 'top-right'
+                })
                 setEditingRecord(null)
                 fetchRecords()
-            } else showStatus('error')
-        } catch { showStatus('error') }
-        finally { setProcessing(false) }
+            } else {
+                const error = await res.json()
+                toast.error(error.message || 'Failed to update record', {
+                    position: 'top-right'
+                })
+            }
+        } catch (error) {
+            console.error('Edit error:', error)
+            toast.error('An error occurred while updating the record', {
+                position: 'top-right'
+            })
+        } finally {
+            setProcessing(false)
+        }
     }
 
-    const startEditing = (rec: any) => {
-        setEditingRecord(rec)
-        if (activeTab === 'attendance') {
-            setEditForm({
-                clockIn: rec.clockIn,
-                clockOut: rec.clockOut,
-                mode: rec.mode,
-                date: rec.date,
-                status: rec.status
-            })
-        } else if (activeTab === 'leaves') {
-            setEditForm({
-                startDate: rec.startDate,
-                endDate: rec.endDate,
-                type: rec.type,
-                duration: rec.duration,
-                reason: rec.reason,
-                status: rec.status
-            })
-        } else if (activeTab === 'breaks') {
-            setEditForm({
-                startTime: rec.startTime,
-                endTime: rec.endTime,
-                date: rec.date
-            })
+    const startEditing = async (rec: any) => {
+        setProcessing(true)
+        try {
+            if (activeTab === 'attendance') {
+                // Fetch detailed attendance data including all breaks
+                const res = await fetch(`/api/attendance/${rec.id}`)
+                if (res.ok) {
+                    const detailedData = await res.json()
+                    setEditingRecord(detailedData)
+                    setEditForm({
+                        clockIn: detailedData.clockIn,
+                        clockOut: detailedData.clockOut,
+                        mode: detailedData.mode,
+                        date: detailedData.date,
+                        status: detailedData.status,
+                        breaks: detailedData.breaks || []
+                    })
+                } else {
+                    setEditingRecord(rec)
+                    setEditForm({
+                        clockIn: rec.clockIn,
+                        clockOut: rec.clockOut,
+                        mode: rec.mode,
+                        date: rec.date,
+                        status: rec.status,
+                        breaks: []
+                    })
+                }
+            } else if (activeTab === 'leaves') {
+                setEditingRecord(rec)
+                setEditForm({
+                    startDate: rec.startDate,
+                    endDate: rec.endDate,
+                    type: rec.type,
+                    duration: rec.duration,
+                    reason: rec.reason,
+                    status: rec.status
+                })
+            } else if (activeTab === 'breaks') {
+                // Fetch all breaks for this attendance record
+                const res = await fetch(`/api/breaks/${rec.id}`)
+                if (res.ok) {
+                    const detailedData = await res.json()
+                    setEditingRecord(detailedData)
+                    setEditForm({
+                        startTime: detailedData.startTime,
+                        endTime: detailedData.endTime,
+                        date: detailedData.date,
+                        attendanceId: detailedData.attendanceId
+                    })
+                } else {
+                    setEditingRecord(rec)
+                    setEditForm({
+                        startTime: rec.startTime,
+                        endTime: rec.endTime,
+                        date: rec.date
+                    })
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching detailed record:', error)
+            setEditingRecord(rec)
+        } finally {
+            setProcessing(false)
         }
     }
 
     const deleteRecord = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this record?")) return
         setProcessing(true)
         try {
-            const res = await fetch(`/api/${activeTab}/${id}`, { method: 'DELETE' })
-            if (res.ok) fetchRecords()
-        } finally { setProcessing(false) }
+            // For attendance records, check if there are break sessions
+            if (activeTab === 'attendance') {
+                const res = await fetch(`/api/attendance/${id}`)
+                if (res.ok) {
+                    const record = await res.json()
+
+                    // Check if there are breaks associated with this attendance
+                    if (record.breaks && record.breaks.length > 0) {
+                        const breakCount = record.breaks.length
+                        const confirmMsg = `⚠️ WARNING: This attendance record has ${breakCount} break session(s) associated with it.\n\nDeleting this record will also delete all associated break sessions.\n\nAre you sure you want to proceed?`
+
+                        if (!confirm(confirmMsg)) {
+                            setProcessing(false)
+                            return
+                        }
+
+                        // Notify user about the breaks that will be deleted
+                        toast.warning(`Deleting ${breakCount} break session(s) along with attendance record`, {
+                            duration: 5000,
+                            position: 'top-right'
+                        })
+                    } else {
+                        // Standard confirmation for records without breaks
+                        if (!confirm("Are you sure you want to delete this attendance record?")) {
+                            setProcessing(false)
+                            return
+                        }
+                    }
+                }
+            } else if (activeTab === 'breaks') {
+                // For break sessions, check if deleting would affect attendance computation
+                const res = await fetch(`/api/breaks/${id}`)
+                if (res.ok) {
+                    const breakRecord = await res.json()
+
+                    if (!confirm(`Are you sure you want to delete this break session?\n\nThis will affect the total hours computation for this day.`)) {
+                        setProcessing(false)
+                        return
+                    }
+
+                    toast.info('Break session deleted. Attendance hours have been recalculated.', {
+                        position: 'top-right',
+                        duration: 4000
+                    })
+                }
+            } else {
+                // Standard confirmation for other record types
+                if (!confirm("Are you sure you want to delete this record?")) {
+                    setProcessing(false)
+                    return
+                }
+            }
+
+            // Proceed with deletion
+            const deleteRes = await fetch(`/api/${activeTab}/${id}`, { method: 'DELETE' })
+
+            if (deleteRes.ok) {
+                toast.success('Record deleted successfully', {
+                    position: 'top-right'
+                })
+                fetchRecords()
+            } else {
+                const error = await deleteRes.json()
+                toast.error(error.message || 'Failed to delete record', {
+                    position: 'top-right'
+                })
+            }
+        } catch (error) {
+            console.error('Delete error:', error)
+            toast.error('An error occurred while deleting the record', {
+                position: 'top-right'
+            })
+        } finally {
+            setProcessing(false)
+        }
     }
 
     const filteredRecords = records.filter(r =>
@@ -795,6 +955,37 @@ export default function ManualEntryPage() {
                                             }} />
                                     </div>
                                 </div>
+
+                                {/* Break Sessions Compilation */}
+                                {editForm.breaks && editForm.breaks.length > 0 && (
+                                    <div className="space-y-2 border-t pt-4">
+                                        <Label className="text-sm font-semibold flex items-center gap-2">
+                                            <Coffee className="h-4 w-4 text-yellow-600" />
+                                            Break Sessions ({editForm.breaks.length})
+                                        </Label>
+                                        <div className="space-y-2 max-h-[200px] overflow-y-auto bg-muted/30 rounded-lg p-3">
+                                            {editForm.breaks.map((breakSession: any, index: number) => (
+                                                <div key={breakSession.id || index} className="flex items-center justify-between bg-white p-2 rounded border border-border">
+                                                    <div className="flex items-center gap-2 text-sm">
+                                                        <span className="font-medium text-yellow-700">#{index + 1}</span>
+                                                        <span className="text-muted-foreground">{formatPHT(breakSession.startTime)}</span>
+                                                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                                        <span className="text-muted-foreground">{formatPHT(breakSession.endTime)}</span>
+                                                    </div>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {breakSession.endTime && breakSession.startTime
+                                                            ? `${((new Date(breakSession.endTime).getTime() - new Date(breakSession.startTime).getTime()) / (1000 * 60)).toFixed(0)} min`
+                                                            : 'Ongoing'}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground italic">
+                                            ⚠️ Note: Modifying clock in/out times may affect break session validity. Ensure break sessions fall within the new timeframe.
+                                        </p>
+                                    </div>
+                                )}
+
                                 <div className="space-y-2">
                                     <Label>Work Location</Label>
                                     <Select value={editForm.mode} onValueChange={m => setEditForm({ ...editForm, mode: m })}>

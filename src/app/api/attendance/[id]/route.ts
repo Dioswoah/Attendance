@@ -1,6 +1,47 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+    const { id } = await params
+    try {
+        const attendance = await prisma.attendance.findUnique({
+            where: { id },
+            include: {
+                breaks: {
+                    where: { deletedAt: null },
+                    orderBy: { startTime: 'asc' }
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        department: {
+                            select: {
+                                name: true
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+        if (!attendance) {
+            return NextResponse.json({ error: "Attendance record not found" }, { status: 404 })
+        }
+
+        return NextResponse.json({
+            ...attendance,
+            userName: attendance.user.name,
+            department: attendance.user.department?.name
+        })
+    } catch (error) {
+        console.error('Error fetching attendance record:', error)
+        return NextResponse.json({ error: "Failed to fetch attendance record" }, { status: 500 })
+    }
+}
+
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {

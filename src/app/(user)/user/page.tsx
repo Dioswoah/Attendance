@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -22,8 +22,9 @@ import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
 import { statusConfig } from "@/components/UserStatusDropdown"
 
+
 export default function UserPortal() {
-    const { data: session, status } = useSession()
+    const { data: session, status, update } = useSession()
     const [currentAttendance, setCurrentAttendance] = useState<any | null>(null)
     const [userAttendanceList, setUserAttendanceList] = useState<any[]>([])
     const [employees, setEmployees] = useState<any[]>([])
@@ -33,6 +34,11 @@ export default function UserPortal() {
     const [showLocationDialog, setShowLocationDialog] = useState(false)
     const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
+    const [hasAutoSwitchedStatus, setHasAutoSwitchedStatus] = useState(false)
+
+    // Auto-switch to AVAILABLE if user is APPEAR_OFFLINE but active in the app
+    // Auto-switch logic REMOVED to respect Google Chat Status
+    // We do NOT want to force "Available" if Google says "Away/Offline".
 
     // User Profile & Location State
     const [userProfile, setUserProfile] = useState<any>(null)
@@ -240,17 +246,6 @@ export default function UserPortal() {
                     }
                     else if (payload.type === 'leaves') {
                         fetchMyLeaveRequests();
-                        // Only fetch pending if we are a manager/admin
-                        // Note: We use the functional state update or refs if we needed fresh state here,
-                        // but since we are inside the effect, these values are closed over. 
-                        // However, for a simple refresh triggering a fetch is fine.
-                        // Ideally we check roles again, but fetching explicitly is safe.
-                        if (session?.user?.email) {
-                            // We re-fetch user details to be safe or just fetch leaves
-                            // For now, let's just trigger the potential manager fetch if we suspect they are one
-                            // Or we can rely on the data we fetched initially if we move `fetchPendingLeaves` outside or pass params.
-                            // To avoid complexity, we can blindly fetch pending leaves if the endpoint handles permissions safely.
-                        }
                     }
                 } catch (e) {
                     console.error("SSE Parse Error", e);
@@ -271,6 +266,8 @@ export default function UserPortal() {
         // We only want this to run when the session (user identity) changes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session?.user?.id])
+
+
 
     // 2. Timer Logic (Updates UI every second based on current data)
     useEffect(() => {
@@ -1459,6 +1456,8 @@ export default function UserPortal() {
                     </CardContent>
                 </Card>
             </div>
+
+
 
             {/* Dashboard Secondary Section: Staff Table / Calendar */}
             <Tabs defaultValue="staff-overview" className="space-y-6">

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance App - Detailed Process Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            background-color: #f1f5f9;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: #1e293b;
+            margin: 0;
+            padding: 40px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #0f172a;
+            margin-bottom: 60px;
+            font-size: 2.8rem;
+            font-weight: 800;
+        }
+
+        .card {
+            background: white;
+            padding: 50px;
+            margin-bottom: 50px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            border-bottom: 3px solid #e2e8f0;
+            padding-bottom: 15px;
+            margin-top: 0;
+            margin-bottom: 40px;
+            color: #2563eb;
+            font-size: 1.8rem;
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        /* Grid for Admin Section */
+        .admin-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+        }
+
+        .admin-subcard {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 25px;
+        }
+
+        .admin-subcard h3 {
+            text-align: center;
+            color: #475569;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Application Logic & Workflows</h1>
+
+        <!-- 1. AUTHENTICATION -->
+        <div class="card">
+            <h2>1. User Login & Access Control</h2>
+            <div class="mermaid">
+                flowchart TD
+                Start(["User Opens App"]) --> Login{"Login with Google"}
+
+                Login -->|Success| Domain{"Email Domain @redadair?"}
+
+                Domain -- No --> Deny(["⛔ Access Denied"])
+                Domain -- Yes --> CheckDB{"User in Database?"}
+
+                CheckDB -- No --> Create["Auto-create Account"]
+                Create --> Onboard["Show Setup (Manager/Location)"]
+                Onboard --> Dash(["🚀 User Dashboard"])
+
+                CheckDB -- Yes --> Role{"Check Role"}
+                Role -- USER --> Dash
+                Role -- MANAGER --> Dash
+                Role -- ADMIN --> AdminPortal(["🛡️ Admin Portal"])
+
+                %% Special link for managers
+                Dash -.->|If Manager Role| MgrControl["Manager Control Tab"]
+
+                style Start fill:#eff6ff,stroke:#3b82f6,color:#1e3a8a
+                style Dash fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
+                style AdminPortal fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
+                style Deny fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+                style MgrControl fill:#fef3c7,stroke:#d97706,stroke-dasharray: 5 5
+            </div>
+        </div>
+
+        <!-- 2. REQUEST CYCLE -->
+        <div class="card">
+            <h2>2. Request & Approval Cycle</h2>
+            <div class="mermaid">
+                flowchart LR
+                subgraph UserSide ["User Portal"]
+                Submit["📝 User Submits Request"]
+                Pending["⏳ Status: PENDING"]
+                Approved["✅ Status: APPROVED"]
+                Declined["❌ Status: DECLINED"]
+                end
+
+                subgraph ManagerSide ["Manager Control"]
+                Notify["🔔 Manager Notification"]
+                Review{"Manager Decision"}
+                end
+
+                Submit --> Pending
+                Pending --> Notify
+                Notify --> Review
+
+                Review -->|Approve| Approved
+                Review -->|Decline| Declined
+
+                style UserSide fill:#f0f9ff,stroke:#bae6fd
+                style ManagerSide fill:#fff7ed,stroke:#fed7aa
+                style Approved fill:#dcfce7,stroke:#22c55e
+                style Declined fill:#fee2e2,stroke:#ef4444
+            </div>
+        </div>
+
+        <!-- 3. WORK TRACKING -->
+        <div class="card">
+            <h2>3. Daily Work Tracking</h2>
+            <div class="mermaid">
+                stateDiagram-v2
+                direction LR
+                state "⚪ Clocked Out" as Out
+                state "🟢 Working" as Work
+                state "☕ On Break" as Break
+
+                [*] --> Out
+                Out --> Work : Click 'Clock In'
+                Work --> Break : Click 'Start Break'
+                Break --> Work : Click 'End Break'
+                Work --> Out : Click 'Clock Out'
+            </div>
+        </div>
+
+        <!-- 4. ADMIN PORTAL (BROKEN DOWN FOR CLARITY) -->
+        <div class="card">
+            <h2>4. Admin Portal: Capabilities Breakdown</h2>
+            <p style="text-align: center; margin-bottom: 30px; color: #64748b;">
+                The Admin Portal is divided into 4 key functional areas to manage the organizations workforce.
+            </p>
+
+            <div class="admin-grid">
+                <!-- 4A. DASHBOARD -->
+                <div class="admin-subcard">
+                    <h3>📊 Dashboard</h3>
+                    <div class="mermaid">
+                        flowchart TD
+                        D[Admin Dashboard]
+
+                        subgraph Live["Live Monitoring"]
+                        L1[Real-time Status Counter]
+                        L2[Employee Feed]
+                        end
+
+                        subgraph Metrics["Analytics"]
+                        M1[Dept Distribution]
+                        M2[Daily % Stats]
+                        end
+
+                        D --> Live
+                        D --> Metrics
+
+                        style D fill:#ede9fe,stroke:#7c3aed
+                        style Live fill:#fff,stroke:#e2e8f0
+                        style Metrics fill:#fff,stroke:#e2e8f0
+                    </div>
+                </div>
+
+                <!-- 4B. STAFF MANAGEMENT -->
+                <div class="admin-subcard">
+                    <h3>👥 Staff Management</h3>
+                    <div class="mermaid">
+                        flowchart TD
+                        S[Staff List]
+
+                        subgraph Actions["User Actions"]
+                        A1[Edit Details]
+                        A2[Assign Role]
+                        A3[Assign Manager]
+                        A4[Archive User]
+                        end
+
+                        S --> Actions
+                        style S fill:#dbeafe,stroke:#2563eb
+                        style Actions fill:#fff,stroke:#e2e8f0
+                    </div>
+                </div>
+
+                <!-- 4C. OPERATIONS -->
+                <div class="admin-subcard">
+                    <h3>⚙️ Operations</h3>
+                    <div class="mermaid">
+                        flowchart TD
+                        O[Operations]
+
+                        subgraph Depts["Departments"]
+                        D1[Create New Dept]
+                        D2[Assign Managers]
+                        end
+
+                        subgraph Manual["Time Correction"]
+                        M1[Fix Missing Logs]
+                        M2[Manual Clock In/Out]
+                        end
+
+                        O --> Depts
+                        O --> Manual
+                        style O fill:#ffedd5,stroke:#ea580c
+                        style Depts fill:#fff,stroke:#e2e8f0
+                        style Manual fill:#fff,stroke:#e2e8f0
+                    </div>
+                </div>
+
+                <!-- 4D. REPORTS -->
+                <div class="admin-subcard">
+                    <h3>📝 Reports & Audit</h3>
+                    <div class="mermaid">
+                        flowchart TD
+                        R[Reports Hub]
+
+                        subgraph History["Audit Logs"]
+                        H1[Global History View]
+                        H2[Manager Activity Log]
+                        end
+
+                        subgraph Export["Data Export"]
+                        E1[Payroll CSV]
+                        E2[Date Range Filters]
+                        end
+
+                        R --> History
+                        R --> Export
+                        style R fill:#dcfce7,stroke:#16a34a
+                        style History fill:#fff,stroke:#e2e8f0
+                        style Export fill:#fff,stroke:#e2e8f0
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. MANAGER WORKFLOW -->
+        <div class="card">
+            <h2>5. Manager Control Workflow</h2>
+            <div class="mermaid">
+                flowchart TD
+                subgraph Access ["Access Point"]
+                UD[User Dashboard] -->|Click Sidebar| MC[Manager Control Tab]
+                end
+
+                subgraph Features ["Manager Control Features"]
+                MC --> Tabs{Select Tab}
+
+                Tabs --> Req[Pending Requests]
+                Tabs --> Hist[Request History]
+                Tabs --> Cal[Team Calendar]
+
+                Req --> Act1[Approve / Deny]
+                Hist --> Act2[View / Delete Past Decisions]
+                Cal --> View[View Monthly Schedule]
+                Cal --> Status[View Today's Team Status]
+                end
+
+                style MC fill:#fef3c7,stroke:#d97706,stroke-width:2px
+                style Features fill:#fffbeb,stroke:#fcd34d
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'base',
+            flowchart: { useMaxWidth: true, htmlLabels: true },
+            themeVariables: {
+                primaryColor: '#e0e7ff',
+                edgeLabelBackground: '#ffffff',
+                tertiaryColor: '#f1f5f9',
+                fontFamily: 'Segoe UI'
+            }
+        });
+    </script>
+
+</body>
+
+</html>

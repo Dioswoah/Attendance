@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive QA Test Report - Attendance System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #dc2626;
+            --primary-light: #fef2f2;
+            --success: #16a34a;
+            --success-light: #dcfce7;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #dc2626;
+            --danger-light: #fee2e2;
+            --info: #3b82f6;
+            --info-light: #dbeafe;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-600: #4b5563;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--gray-900);
+            background: var(--gray-50);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 32px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--gray-600);
+            font-size: 1.125rem;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .meta-card {
+            background: var(--primary-light);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
+        }
+
+        .meta-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--gray-600);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .meta-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--gray-900);
+        }
+
+        .section {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 24px;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            color: var(--gray-900);
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--gray-200);
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            color: var(--gray-800);
+            margin: 24px 0 12px 0;
+        }
+
+        .test-case {
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+            background: var(--gray-50);
+        }
+
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .test-id {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 0.875rem;
+        }
+
+        .test-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--gray-900);
+            margin: 4px 0;
+        }
+
+        .test-description {
+            color: var(--gray-600);
+            margin-bottom: 16px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.025em;
+            text-transform: uppercase;
+        }
+
+        .badge-pass {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .badge-fail {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .badge-blocked {
+            background: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .badge-positive {
+            background: var(--info-light);
+            color: var(--info);
+        }
+
+        .badge-negative {
+            background: var(--warning-light);
+            color: #92400e;
+        }
+
+        .steps-list {
+            background: white;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+
+        .steps-list ol {
+            padding-left: 20px;
+        }
+
+        .steps-list li {
+            margin: 8px 0;
+            color: var(--gray-700);
+        }
+
+        .expected-result {
+            background: var(--success-light);
+            border-left: 4px solid var(--success);
+            padding: 12px 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+        }
+
+        .expected-result strong {
+            color: var(--success);
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .actual-result {
+            background: var(--danger-light);
+            border-left: 4px solid var(--danger);
+            padding: 12px 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+        }
+
+        .actual-result strong {
+            color: var(--danger);
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .info-box {
+            background: var(--info-light);
+            border-left: 4px solid var(--info);
+            padding: 16px;
+            margin: 24px 0;
+            border-radius: 4px;
+        }
+
+        .info-box strong {
+            color: var(--info);
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .warning-box {
+            background: var(--warning-light);
+            border-left: 4px solid var(--warning);
+            padding: 16px;
+            margin: 24px 0;
+            border-radius: 4px;
+        }
+
+        .warning-box strong {
+            color: var(--warning);
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        th {
+            background: var(--gray-100);
+            font-weight: 600;
+            color: var(--gray-700);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:hover {
+            background: var(--gray-50);
+        }
+
+        .screenshot-note {
+            font-style: italic;
+            color: var(--gray-600);
+            font-size: 0.875rem;
+            margin-top: 8px;
+        }
+
+        ul {
+            padding-left: 24px;
+        }
+
+        ul li {
+            margin: 8px 0;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 32px;
+            color: var(--gray-600);
+            font-size: 0.875rem;
+        }
+
+        code {
+            background: var(--gray-100);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Comprehensive QA Test Report</h1>
+            <p class="subtitle">Redadair Staff Attendance System - Phase 1</p>
+
+            <div class="meta-grid">
+                <div class="meta-card">
+                    <div class="meta-label">Test Date</div>
+                    <div class="meta-value">February 4, 2026</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Tester</div>
+                    <div class="meta-value">Antigravity AI Agent</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Environment</div>
+                    <div class="meta-value">localhost:3000</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Test Status</div>
+                    <div class="meta-value"><span class="badge badge-blocked">BLOCKED</span></div>
+                </div>
+            </div>
+        </header>
+
+        <div class="section">
+            <h2>Executive Summary</h2>
+            <p>A comprehensive test suite was designed and executed to validate the functionality of both the User
+                Portal and Admin Portal of the Redadair Staff Attendance System. The test suite included 6 test cases
+                covering critical user workflows.</p>
+
+            <div class="warning-box">
+                <strong>⚠️ Authentication Requirement</strong>
+                <p>All test cases were <strong>blocked</strong> due to Google OAuth authentication requirements. The
+                    application correctly redirects unauthenticated users to the login page, which prevented automated
+                    testing of protected routes.</p>
+                <p><strong>Why Screenshots Show Loading State:</strong> The screenshots captured during testing show the
+                    application's loading spinner because the browser was being redirected from protected routes (e.g.,
+                    <code>/user</code>, <code>/admin</code>) back to the root login page. This is the expected security
+                    behavior.</p>
+            </div>
+
+            <h3>Test Summary</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Total</th>
+                        <th>Passed</th>
+                        <th>Failed</th>
+                        <th>Blocked</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>User Portal</strong></td>
+                        <td>4</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>4</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Admin Portal</strong></td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>2</td>
+                    </tr>
+                    <tr style="font-weight: 600; background: var(--gray-100);">
+                        <td>TOTAL</td>
+                        <td>6</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>6</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>User Portal Test Cases</h2>
+
+            <!-- TC-U-001 -->
+            <div class="test-case">
+                <div class="test-header">
+                    <div>
+                        <div class="test-id">TC-U-001</div>
+                        <div class="test-title">User Dashboard Access</div>
+                    </div>
+                    <div>
+                        <span class="badge badge-positive">Positive Test</span>
+                        <span class="badge badge-blocked">Blocked</span>
+                    </div>
+                </div>
+
+                <p class="test-description">Verify that the user dashboard loads successfully and displays user
+                    information including attendance card, navigation menu, and user profile.</p>
+
+                <div class="steps-list">
+                    <strong>Test Steps:</strong>
+                    <ol>
+                        <li>Navigate to <code>/user</code> endpoint</li>
+                        <li>Wait for page to fully load and React components to hydrate</li>
+                        <li>Verify user name is displayed in the sidebar/header</li>
+                        <li>Verify attendance tracking card is visible</li>
+                        <li>Verify sidebar navigation menu is present with all tabs</li>
+                        <li>Verify "Redadair" branding is displayed</li>
+                    </ol>
+                </div>
+
+                <div class="expected-result">
+                    <strong>Expected Result:</strong>
+                    Dashboard loads successfully with user information, attendance card showing current status (Clock
+                    In/Out buttons), sidebar navigation with tabs (Dashboard, Leave Requests, Amend Records, Activity
+                    Logs), and user profile section.
+                </div>
+
+                <div class="actual-result">
+                    <strong>Actual Result:</strong>
+                    Application redirected to login page due to missing authentication. This is the correct security
+                    behavior - the route is properly protected.
+                </div>
+
+                <p class="screenshot-note">📸 Screenshot shows loading spinner during redirect to login page</p>
+            </div>
+
+            <!-- TC-U-002 -->
+            <div class="test-case">
+                <div class="test-header">
+                    <div>
+                        <div class="test-id">TC-U-002</div>
+                        <div class="test-title">Attendance Card Visibility & Interaction</div>
+                    </div>
+                    <div>
+                        <span class="badge badge-positive">Positive Test</span>
+                        <span class="badge badge-blocked">Blocked</span>
+                    </div>
+                </div>
+
+                <p class="test-description">Verify that the attendance tracking card displays correctly with appropriate
+                    action buttons based on current user status.</p>
+
+                <div class="steps-list">
+                    <strong>Test Steps:</strong>
+                    <ol>
+                        <li>Navigate to user dashboard</li>
+                        <li>Locate the attendance tracking card</li>
+                        <li>Verify current attendance status is displayed (e.g., "Clocked Out", "Working", "On Break")
+                        </li>
+                        <li>Verify appropriate action buttons are visible:
+                            <ul>
+                                <li>If clocked out: "Clock In" button</li>
+                                <li>If working: "Start Break" and "Clock Out" buttons</li>
+                                <li>If on break: "End Break" button</li>
+                            </ul>
+                        </li>
+                        <li>Verify time tracker displays hours worked and break time</li>
+                        <li>Verify "Amend Record" dropdown is available</li>
+                    </ol>
+                </div>
+
+                <div class="expected-result">
+                    <strong>Expected Result:</strong>
+                    Attendance card displays with current status, contextual action buttons, real-time time tracking,
+                    and amendment options.
+                </div>
+
+                <div class="actual-result">
+                    <strong>Actual Result:</strong>
+                    Could not verify - authentication required to access dashboard.
+                </div>
+            </div>
+
+            <!-- TC-U-003 -->
+            <div class="test-case">
+                <div class="test-header">
+                    <div>
+                        <div class="test-id">TC-U-003</div>
+                        <div class="test-title">Leave Requests Page Navigation</div>
+                    </div>
+                    <div>
+                        <span class="badge badge-positive">Positive Test</span>
+                        <span class="badge badge-blocked">Blocked</span>
+                    </div>
+                </div>
+
+                <p class="test-description">Verify that users can navigate to the Leave Requests page and view their
+                    leave request history.</p>
+
+                <div class="steps-list">
+                    <strong>Test Steps:</strong>
+                    <ol>
+                        <li>From the user dashboard, click "Leave Requests" in the sidebar navigation</li>
+                        <li>Verify the page navigates to <code>/user/leaves</code></li>
+                        <li>Verify "Leave Requests" heading is displayed</li>
+                        <li>Verify "New Request" button is visible and clickable</li>
+                        <li>Verify leave requests table/list displays with columns:
+                            <ul>
+                                <li>Type (Sick, Annual, etc.)</li>
+                                <li>Date Range</li>
+                                <li>Duration</li>
+                                <li>Status (Pending, Approved, Declined)</li>
+                                <li>Actions</li>
+                            </ul>
+                        </li>
+                        <li>Verify pending requests show a badge count in the sidebar</li>
+                    </ol>
+                </div>
+
+                <div class="expected-result">
+                    <strong>Expected Result:</strong>
+                    Leave Requests page loads with request history table, "New Request" button, and status indicators.
+                </div>
+
+                <div class="actual-result">
+                    <strong>Actual Result:</strong>
+                    Could not verify - authentication required.
+                </div>
+            </div>
+
+            <!-- TC-U-004 -->
+            <div class="test-case">
+                <div class="test-header">
+                    <div>
+                        <div class="test-id">TC-U-004</div>
+                        <div class="test-title">Leave Request Form Validation (Negative Test)</div>
+                    </div>
+                    <div>
+                        <span class="badge badge-negative">Negative Test</span>
+                        <span class="badge badge-blocked">Blocked</span>
+                    </div>
+                </div>
+
+                <p class="test-description">Verify that the leave request form properly validates required fields and
+                    prevents submission of incomplete data.</p>
+
+                <div class="steps-list">
+                    <strong>Test Steps:</strong>
+                    <ol>
+                        <li>Navigate to Leave Requests page</li>
+                        <li>Click "New Request" button to open the form dialog</li>
+                        <li>Attempt to submit the form without filling any fields</li>
+                        <li>Verify validation error messages appear for required fields:
+                            <ul>
+                                <li>Leave Type (required)</li>
+                                <li>Start Date (required)</li>
+                                <li>End Date (required)</li>
+                                <li>Reason (required)</li>
+                            </ul>
+                        </li>
+                        <li>Verify the form is NOT submitted</li>
+                        <li>Verify the dialog remains open</li>
+                        <li>Fill in only partial information and verify specific field errors</li>
+                        <li>Test invalid date ranges (end date before start date)</li>
+                    </ol>
+                </div>
+
+                <div class="expected-result">
+                    <strong>Expected Result:</strong>
+                    Form validation prevents submission when required fields are empty. Clear error messages are
+                    displayed for each invalid field. Form only submits when all validations pass.
+                </div>
+
+                <div class="actual-result">
+                    <strong>Actual Result:</strong>
+                    Could not verify - authentication required to access the form.
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Admin Portal Test Cases</h2>
+
+            <!-- TC-A-001 -->
+            <div class="test-case">
+                <div class="test-header">
+                    <div>
+                        <div class="test-id">TC-A-001</div>
+                        <div class="test-title">Admin Dashboard Access & Overview</div>
+                    </div>
+                    <div>
+                        <span class="badge badge-positive">Positive Test</span>
+                        <span class="badge badge-blocked">Blocked</span>
+                    </div>
+                </div>
+
+                <p class="test-description">Verify that administrators can access the admin dashboard and view
+                    comprehensive staff overview statistics.</p>
+
+                <div class="steps-list">
+                    <strong>Test Steps:</strong>
+                    <ol>
+                        <li>Login as a user with ADMIN role</li>
+                        <li>Navigate to <code>/admin</code> endpoint</li>
+                        <li>Verify "Staff Overview" section is visible</li>
+                        <li>Verify statistics cards display:
+                            <ul>
+                                <li>Total Employees count</li>
+                                <li>Present Today count</li>
+                                <li>On Leave count</li>
+                                <li>Pending Requests count</li>
+                            </ul>
+                        </li>
+                        <li>Verify "Team Calendar" tab is present</li>
+                        <li>Verify "Today's Activity" feed shows recent actions</li>
+                        <li>Verify "Staff Status Today" table displays current employee statuses</li>
+                    </ol>
+                </div>
+
+                <div class="expected-result">
+                    <strong>Expected Result:</strong>
+                    Admin dashboard loads with comprehensive overview including statistics, activity feed, staff status
+                    table, and team calendar. All data is current and accurate.
+                </div>
+
+                <div class="actual-result">
+                    <strong>Actual Result:</strong>
+                    Could not verify - requires ADMIN role authentication.
+                </div>
+            </div>
+
+            <!-- TC-A-002 -->
+            <div class="test-case">
+                <div class="test-header">
+                    <div>
+                        <div class="test-id">TC-A-002</div>
+                        <div class="test-title">Staff Management & Bulk Actions</div>
+                    </div>
+                    <div>
+                        <span class="badge badge-positive">Positive Test</span>
+                        <span class="badge badge-blocked">Blocked</span>
+                    </div>
+                </div>
+
+                <p class="test-description">Verify that the staff management page displays the employee list with bulk
+                    action capabilities.</p>
+
+                <div class="steps-list">
+                    <strong>Test Steps:</strong>
+                    <ol>
+                        <li>Navigate to <code>/admin/staff</code></li>
+                        <li>Verify "Staff Management" heading is displayed</li>
+                        <li>Verify employee table is visible with columns:
+                            <ul>
+                                <li>Checkbox for selection</li>
+                                <li>Name</li>
+                                <li>Email</li>
+                                <li>Department</li>
+                                <li>Role</li>
+                                <li>Status</li>
+                                <li>Actions</li>
+                            </ul>
+                        </li>
+                        <li>Verify bulk action controls are present:
+                            <ul>
+                                <li>"Select All" checkbox</li>
+                                <li>"Archive Selected" button</li>
+                                <li>"Delete Selected" button</li>
+                            </ul>
+                        </li>
+                        <li>Verify search/filter controls work:
+                            <ul>
+                                <li>Search by name/email</li>
+                                <li>Filter by department</li>
+                                <li>Filter by role</li>
+                                <li>Filter by status</li>
+                            </ul>
+                        </li>
+                        <li>Verify individual edit actions are available per employee</li>
+                    </ol>
+                </div>
+
+                <div class="expected-result">
+                    <strong>Expected Result:</strong>
+                    Staff list displays all employees with complete information. Bulk selection checkboxes work
+                    correctly. Search and filter controls narrow down the list appropriately. Individual and bulk
+                    actions are available.
+                </div>
+
+                <div class="actual-result">
+                    <strong>Actual Result:</strong>
+                    Could not verify - requires ADMIN role authentication.
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Recommendations for QA Team</h2>
+
+            <h3>1. Authentication Setup for Testing</h3>
+            <p>To execute these test cases, the QA team should:</p>
+            <ul>
+                <li>Create dedicated test accounts with appropriate roles (USER, ADMIN)</li>
+                <li>Use Google OAuth test credentials or implement a test authentication bypass</li>
+                <li>Consider using Playwright's <code>storageState</code> to persist authentication across tests</li>
+                <li>Document the authentication setup process in the QA workflow</li>
+            </ul>
+
+            <h3>2. Additional Test Cases to Consider</h3>
+            <ul>
+                <li><strong>Clock In/Out Flow:</strong> Test complete attendance workflow from clock in through breaks
+                    to clock out</li>
+                <li><strong>Amendment Requests:</strong> Test the time amendment request flow and approval process</li>
+                <li><strong>Manager Controls:</strong> Test manager-specific features for approving leave and attendance
+                    requests</li>
+                <li><strong>Activity Logs:</strong> Verify activity log displays all user actions with correct
+                    timestamps</li>
+                <li><strong>Chatbot Integration:</strong> Test the RISA chatbot functionality</li>
+                <li><strong>Notifications:</strong> Verify notification bell shows pending items and marks as read</li>
+                <li><strong>User Status:</strong> Test the Microsoft Teams-style status dropdown</li>
+                <li><strong>Responsive Design:</strong> Test mobile and tablet layouts</li>
+            </ul>
+
+            <h3>3. Test Data Requirements</h3>
+            <ul>
+                <li>At least 3 test users: 1 regular user, 1 manager, 1 admin</li>
+                <li>Sample attendance records for different scenarios</li>
+                <li>Sample leave requests in various states (pending, approved, declined)</li>
+                <li>Sample amendment requests</li>
+                <li>Test department and team structures</li>
+            </ul>
+
+            <div class="info-box">
+                <strong>ℹ️ Note on Screenshot Artifacts</strong>
+                <p>The screenshots captured during this test run show the application's loading spinner. This is
+                    because:</p>
+                <ul>
+                    <li>The application correctly enforces authentication on all protected routes</li>
+                    <li>When accessing <code>/user</code> or <code>/admin</code> without authentication, Next.js
+                        redirects to the login page</li>
+                    <li>During the redirect, the loading state is briefly visible</li>
+                    <li>This is the expected and secure behavior of the application</li>
+                </ul>
+                <p><strong>To obtain proper screenshots:</strong> Tests must be executed with valid authentication
+                    credentials, which will allow the application to render the actual dashboard content instead of
+                    redirecting.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Conclusion</h2>
+            <p>This comprehensive test plan documents 6 critical test cases covering both User and Admin portals. While
+                the automated execution was blocked by authentication requirements, the test cases themselves are
+                well-defined with:</p>
+            <ul>
+                <li>Clear step-by-step instructions</li>
+                <li>Expected results for each test</li>
+                <li>Coverage of both positive and negative scenarios</li>
+                <li>Detailed validation criteria</li>
+            </ul>
+            <p><strong>Next Steps:</strong> The QA team should set up proper test authentication credentials and
+                re-execute these test cases to validate the application's functionality. The test framework is ready and
+                can be easily extended with additional test cases as needed.</p>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Generated by Antigravity AI Agent | February 4, 2026</p>
+        <p>Redadair Staff Attendance System - Quality Assurance Report</p>
+    </div>
+</body>
+
+</html>

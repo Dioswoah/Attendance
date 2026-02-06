@@ -1,0 +1,113 @@
+{
+  "timestamp": "2026-02-04T00:54:59.161Z",
+  "summary": {
+    "total": 6,
+    "passed": 0,
+    "failed": 6
+  },
+  "userPortal": [
+    {
+      "id": "TC-U-001",
+      "name": "User Dashboard Access",
+      "description": "Verify that the user dashboard loads successfully and displays user information",
+      "type": "Positive",
+      "steps": [
+        "1. Navigate to /user endpoint",
+        "2. Wait for page to fully load",
+        "3. Verify user name is displayed",
+        "4. Verify attendance card is visible",
+        "5. Verify sidebar navigation is present"
+      ],
+      "status": "FAIL",
+      "screenshot": "TC-U-001_FAIL.png",
+      "error": "Redirected to login - authentication required",
+      "actualResult": "Error: Redirected to login - authentication required"
+    },
+    {
+      "id": "TC-U-002",
+      "name": "Attendance Card Visibility",
+      "description": "Verify attendance tracking card displays with correct action buttons",
+      "type": "Positive",
+      "steps": [
+        "1. Navigate to user dashboard",
+        "2. Locate attendance tracking card",
+        "3. Verify current status is displayed",
+        "4. Verify action buttons (Clock In/Out, Break) are visible",
+        "5. Verify time tracker displays hours worked"
+      ],
+      "status": "FAIL",
+      "screenshot": "TC-U-002_FAIL.png",
+      "error": "No attendance action buttons found",
+      "actualResult": "Error: No attendance action buttons found"
+    },
+    {
+      "id": "TC-U-003",
+      "name": "Leave Requests Navigation",
+      "description": "Verify navigation to Leave Requests page works correctly",
+      "type": "Positive",
+      "steps": [
+        "1. Navigate to /user/leaves",
+        "2. Verify \"Leave Requests\" heading is displayed",
+        "3. Verify \"New Request\" button is visible",
+        "4. Verify leave requests table/list is present"
+      ],
+      "status": "FAIL",
+      "screenshot": "TC-U-003_FAIL.png",
+      "error": "page.waitForSelector: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('text=Leave Requests') to be visible\u001b[22m\n",
+      "actualResult": "Error: page.waitForSelector: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('text=Leave Requests') to be visible\u001b[22m\n"
+    },
+    {
+      "id": "TC-U-004",
+      "name": "Leave Request Form Validation",
+      "description": "Verify leave request form validates required fields (Negative Test)",
+      "type": "Negative",
+      "steps": [
+        "1. Navigate to Leave Requests page",
+        "2. Click \"New Request\" button",
+        "3. Attempt to submit form without filling required fields",
+        "4. Verify validation errors are displayed",
+        "5. Verify form is not submitted"
+      ],
+      "status": "FAIL",
+      "screenshot": "TC-U-004_FAIL.png",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"New Request\")').first()\u001b[22m\n",
+      "actualResult": "Error: locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"New Request\")').first()\u001b[22m\n"
+    }
+  ],
+  "adminPortal": [
+    {
+      "id": "TC-A-001",
+      "name": "Admin Dashboard Access",
+      "description": "Verify admin dashboard loads with overview statistics",
+      "type": "Positive",
+      "steps": [
+        "1. Navigate to /admin endpoint",
+        "2. Verify admin dashboard loads",
+        "3. Verify \"Staff Overview\" section is visible",
+        "4. Verify statistics cards are displayed",
+        "5. Verify navigation tabs are present"
+      ],
+      "status": "FAIL",
+      "screenshot": "TC-A-001_FAIL.png",
+      "error": "page.waitForSelector: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('text=Staff Overview') to be visible\u001b[22m\n",
+      "actualResult": "Error: page.waitForSelector: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('text=Staff Overview') to be visible\u001b[22m\n"
+    },
+    {
+      "id": "TC-A-002",
+      "name": "Staff Management Access",
+      "description": "Verify staff management page displays employee list",
+      "type": "Positive",
+      "steps": [
+        "1. Navigate to /admin/staff",
+        "2. Verify \"Staff Management\" heading is displayed",
+        "3. Verify employee table is visible",
+        "4. Verify bulk action checkboxes are present",
+        "5. Verify search/filter controls are available"
+      ],
+      "status": "FAIL",
+      "screenshot": "TC-A-002_FAIL.png",
+      "error": "page.waitForSelector: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('text=Staff Management') to be visible\u001b[22m\n",
+      "actualResult": "Error: page.waitForSelector: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('text=Staff Management') to be visible\u001b[22m\n"
+    }
+  ]
+}
