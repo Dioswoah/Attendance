@@ -10,6 +10,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
+# Skip Puppeteer browser download (not needed for production)
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
 # Install dependencies
 RUN npm ci
 
