@@ -1460,8 +1460,139 @@ export default function UserPortal() {
 
 
             {/* Dashboard Secondary Section: Staff Table / Calendar */}
-            <Tabs defaultValue="calendar" className="space-y-6">
+            <Tabs defaultValue="overview" className="space-y-6">
 
+
+                <TabsContent value="overview" className="animate-in fade-in-50 duration-500">
+                    <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
+                        <CardHeader className="border-b border-border p-6 bg-muted/40 flex flex-col xl:flex-row items-center justify-between gap-4">
+                            <div className="flex flex-col sm:flex-row items-center gap-6 w-full xl:w-auto">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-primary">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <CardTitle className="text-lg font-bold text-foreground">Staff Availability</CardTitle>
+                                        <CardDescription className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Real-time status monitor</CardDescription>
+                                    </div>
+                                </div>
+
+                                <TabsList className="bg-slate-100 p-1 rounded-xl h-9 self-start sm:self-center">
+                                    <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                        Staff Overview
+                                    </TabsTrigger>
+                                    <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                        Team Calendar
+                                    </TabsTrigger>
+                                </TabsList>
+                            </div>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <div className="relative flex-1 sm:w-64">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search staff..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-9 h-10 bg-white border-slate-200 rounded-xl text-sm focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-primary"
+                                    />
+                                </div>
+                            </div>
+                        </CardHeader>
+
+                        <div className="p-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center gap-3">
+                            <Select value={filterStatus} onValueChange={setFilterStatus}>
+                                <SelectTrigger className="h-9 w-[140px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0">
+                                    <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="clocked-in">Clocked In</SelectItem>
+                                    <SelectItem value="on-break">On Break</SelectItem>
+                                    <SelectItem value="clocked-out">Clocked Out</SelectItem>
+                                    <SelectItem value="on-leave">On Leave</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                                <SelectTrigger className="h-9 w-[160px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0">
+                                    <SelectValue placeholder="Department" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Departments</SelectItem>
+                                    {uniqueDepartments.map((dept: any) => (
+                                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <div className="ml-auto flex items-center gap-2">
+                                <span className="text-[10px] uppercase font-black tracking-widest text-slate-400">Sort By</span>
+                                <Select value={sortBy} onValueChange={setSortBy}>
+                                    <SelectTrigger className="h-9 w-[130px] bg-transparent border-transparent hover:bg-slate-200/50 rounded-lg text-xs font-bold text-slate-600 shadow-none focus:ring-0">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="name">Name</SelectItem>
+                                        <SelectItem value="status">Status</SelectItem>
+                                        <SelectItem value="department">Department</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <CardContent className="p-0">
+                            <Table>
+                                <TableHeader className="bg-slate-50">
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead className="w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
+                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
+                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
+                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right pr-6">Last Active</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {sortedStaff.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm">
+                                                No staff found matching your criteria
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        sortedStaff.map((staff: any) => (
+                                            <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
+                                                <TableCell className="pl-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
+                                                            <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
+                                                                {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
+                                                            <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {getStaffStatusBadge(staff.status)}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline" className="text-[10px] font-medium text-slate-500 border-slate-200 bg-white">
+                                                        {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right pr-6 text-xs font-mono font-medium text-slate-500">
+                                                    {staff.lastActive ? new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }) : '--:--'}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
 
                 <TabsContent value="calendar" className="animate-in fade-in-50 duration-500">
                     <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
@@ -1470,7 +1601,9 @@ export default function UserPortal() {
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <TabsList className="bg-slate-100 p-1 rounded-xl h-9">
-
+                                            <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                                Staff Overview
+                                            </TabsTrigger>
                                             <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
                                                 Team Calendar
                                             </TabsTrigger>
