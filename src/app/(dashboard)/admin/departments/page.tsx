@@ -139,15 +139,17 @@ export default function DepartmentsPage() {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm font-medium text-muted-foreground">Loading Departments...</p>
+            <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
+                <div className="h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-sm overflow-hidden animate-bounce p-2">
+                    <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Departments...</p>
             </div>
         )
     }
 
     return (
-        <div className="max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
+        <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Departments</h1>

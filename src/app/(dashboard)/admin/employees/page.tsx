@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin } from "lucide-react"
+import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle } from "lucide-react"
 import { statusConfig } from "@/components/UserStatusDropdown"
+import { toast } from "sonner"
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<any[]>([])
@@ -51,6 +52,26 @@ export default function EmployeesPage() {
     // Bulk Actions
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+
+    // Confirmation Dialog State
+    const [confirmOpen, setConfirmOpen] = useState(false)
+    const [isConfirming, setIsConfirming] = useState(false)
+    const [confirmConfig, setConfirmConfig] = useState<{
+        title: string
+        description: string
+        action: () => Promise<void>
+        variant?: "default" | "destructive"
+    } | null>(null)
+
+    const executeConfirm = async () => {
+        if (!confirmConfig?.action) return
+        setIsConfirming(true)
+        try {
+            await confirmConfig.action()
+        } finally {
+            setIsConfirming(false)
+        }
+    }
 
     useEffect(() => {
         fetchData()
@@ -143,43 +164,58 @@ export default function EmployeesPage() {
         }
     }
 
-    const handleArchiveEmployee = async (id: string, archive: boolean) => {
+    const handleArchiveEmployee = (id: string, archive: boolean) => {
         const action = archive ? "archive" : "unarchive"
-        if (!confirm(`Are you sure you want to ${action} this staff member?`)) return
 
-        setProcessingId(id)
-        try {
-            const res = await fetch(`/api/employees/${id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isArchived: archive })
-            })
-            if (res.ok) {
-                fetchData()
+        setConfirmConfig({
+            title: `Confirm ${archive ? 'Archive' : 'Restore'}`,
+            description: `Are you sure you want to ${action} this staff member? ${archive ? 'They will be moved to the archived list.' : 'They will be restored to the active list.'}`,
+            variant: "default",
+            action: async () => {
+                try {
+                    const res = await fetch(`/api/employees/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ isArchived: archive })
+                    })
+                    if (res.ok) {
+                        toast.success(`Staff member ${archive ? 'archived' : 'restored'} successfully`)
+                        fetchData()
+                        setConfirmOpen(false)
+                    } else {
+                        toast.error("Failed to update staff member")
+                    }
+                } catch (error) {
+                    toast.error("An error occurred while updating staff member")
+                }
             }
-        } catch (error) {
-            // Error handled
-        } finally {
-            setProcessingId(null)
-        }
+        })
+        setConfirmOpen(true)
     }
 
-    const handleDeleteEmployee = async (id: string) => {
-        if (!confirm("Are you sure you want to PERMANENTLY delete this staff member? This action cannot be undone.")) return
-
-        setProcessingId(id)
-        try {
-            const res = await fetch(`/api/employees/${id}`, {
-                method: 'DELETE'
-            })
-            if (res.ok) {
-                fetchData()
+    const handleDeleteEmployee = (id: string) => {
+        setConfirmConfig({
+            title: "Delete Staff Member",
+            description: "Are you sure you want to PERMANENTLY delete this staff member? This action cannot be undone and will remove all associated records.",
+            variant: "destructive",
+            action: async () => {
+                try {
+                    const res = await fetch(`/api/employees/${id}`, {
+                        method: 'DELETE'
+                    })
+                    if (res.ok) {
+                        toast.success("Staff member deleted successfully")
+                        fetchData()
+                        setConfirmOpen(false)
+                    } else {
+                        toast.error("Failed to delete staff member")
+                    }
+                } catch (error) {
+                    toast.error("An error occurred while deleting staff member")
+                }
             }
-        } catch (error) {
-            // Error handled
-        } finally {
-            setProcessingId(null)
-        }
+        })
+        setConfirmOpen(true)
     }
 
     const handleSelectAll = (checked: boolean) => {
@@ -197,43 +233,62 @@ export default function EmployeesPage() {
         setSelectedIds(newSelected)
     }
 
-    const handleBulkArchive = async (archive: boolean) => {
+    const handleBulkArchive = (archive: boolean) => {
         const action = archive ? "archive" : "unarchive"
-        if (!confirm(`Are you sure you want to ${action} ${selectedIds.size} staff members?`)) return
 
-        setIsBulkProcessing(true)
-        try {
-            await Promise.all(Array.from(selectedIds).map(id =>
-                fetch(`/api/employees/${id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isArchived: archive })
-                })
-            ))
-            setSelectedIds(new Set())
-            fetchData()
-        } catch (error) {
-            console.error("Bulk action failed", error)
-        } finally {
-            setIsBulkProcessing(false)
-        }
+        setConfirmConfig({
+            title: `Bulk ${archive ? 'Archive' : 'Restore'}`,
+            description: `Are you sure you want to ${action} ${selectedIds.size} staff members?`,
+            variant: "default",
+            action: async () => {
+                setIsBulkProcessing(true)
+                try {
+                    await Promise.all(Array.from(selectedIds).map(id =>
+                        fetch(`/api/employees/${id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ isArchived: archive })
+                        })
+                    ))
+                    toast.success(`${selectedIds.size} staff members ${archive ? 'archived' : 'restored'} successfully`)
+                    setSelectedIds(new Set())
+                    fetchData()
+                    setConfirmOpen(false)
+                } catch (error) {
+                    console.error("Bulk action failed", error)
+                    toast.error("Failed to perform bulk action")
+                } finally {
+                    setIsBulkProcessing(false)
+                }
+            }
+        })
+        setConfirmOpen(true)
     }
 
-    const handleBulkDelete = async () => {
-        if (!confirm(`Are you sure you want to PERMANENTLY delete ${selectedIds.size} staff members?`)) return
-
-        setIsBulkProcessing(true)
-        try {
-            await Promise.all(Array.from(selectedIds).map(id =>
-                fetch(`/api/employees/${id}`, { method: 'DELETE' })
-            ))
-            setSelectedIds(new Set())
-            fetchData()
-        } catch (error) {
-            console.error("Bulk delete failed", error)
-        } finally {
-            setIsBulkProcessing(false)
-        }
+    const handleBulkDelete = () => {
+        setConfirmConfig({
+            title: "Bulk Delete Staff",
+            description: `Are you sure you want to PERMANENTLY delete ${selectedIds.size} staff members? This action cannot be undone.`,
+            variant: "destructive",
+            action: async () => {
+                setIsBulkProcessing(true)
+                try {
+                    await Promise.all(Array.from(selectedIds).map(id =>
+                        fetch(`/api/employees/${id}`, { method: 'DELETE' })
+                    ))
+                    toast.success(`${selectedIds.size} staff members deleted successfully`)
+                    setSelectedIds(new Set())
+                    fetchData()
+                    setConfirmOpen(false)
+                } catch (error) {
+                    console.error("Bulk delete failed", error)
+                    toast.error("Failed to delete staff members")
+                } finally {
+                    setIsBulkProcessing(false)
+                }
+            }
+        })
+        setConfirmOpen(true)
     }
 
     const filteredEmployees = employees.filter(emp => {
@@ -267,15 +322,17 @@ export default function EmployeesPage() {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-vh-50 space-y-4">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm font-medium text-muted-foreground">Syncing Staff...</p>
+            <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
+                <div className="h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-sm overflow-hidden animate-bounce p-2">
+                    <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Staff Directory...</p>
             </div>
         )
     }
 
     return (
-        <div className="max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
+        <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Staff Management</h1>
@@ -798,14 +855,43 @@ export default function EmployeesPage() {
                                 Managers are department-specific. Please select a department first to ensure the correct managerial hierarchy.
                             </p>
                         </div>
-                        <DialogFooter className="sm:justify-center">
-                            <DialogClose asChild>
-                                <Button className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg">
-                                    Okay, I'll Assign a Department
-                                </Button>
-                            </DialogClose>
-                        </DialogFooter>
+                        <Button onClick={() => setShowDeptWarning(false)} className="w-full">
+                            Understood
+                        </Button>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* General Confirmation Dialog */}
+            <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <div className="flex items-center gap-2">
+                            {confirmConfig?.variant === 'destructive' && <AlertTriangle className="h-5 w-5 text-destructive" />}
+                            <DialogTitle>{confirmConfig?.title}</DialogTitle>
+                        </div>
+                        <DialogDescription>
+                            {confirmConfig?.description}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setConfirmOpen(false)}
+                            disabled={isConfirming}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant={confirmConfig?.variant === 'destructive' ? 'destructive' : 'default'}
+                            onClick={executeConfirm}
+                            disabled={isConfirming}
+                            className="gap-2"
+                        >
+                            {isConfirming && <Loader2 className="h-4 w-4 animate-spin" />}
+                            Confirm
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

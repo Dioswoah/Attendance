@@ -5,21 +5,44 @@ import { sendAdminActionEmail } from "@/lib/email"
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
     const date = searchParams.get('date')
     const userId = searchParams.get('userId')
 
     try {
+        // Construct attendance filter object to avoid overwriting keys
+        const attendanceWhere: any = {}
+
+        if (userId) {
+            attendanceWhere.userId = userId
+        }
+
+        if (startDate && endDate) {
+            // Include the entire end date (until 23:59:59.999)
+            const endDateTime = new Date(endDate)
+            endDateTime.setUTCHours(23, 59, 59, 999)
+
+            attendanceWhere.date = {
+                gte: new Date(startDate),
+                lte: endDateTime
+            }
+        } else if (date) {
+            const startOfDay = new Date(date)
+            startOfDay.setUTCHours(0, 0, 0, 0)
+
+            const endOfDay = new Date(date)
+            endOfDay.setUTCHours(23, 59, 59, 999)
+
+            attendanceWhere.date = {
+                gte: startOfDay,
+                lte: endOfDay
+            }
+        }
+
         const breaks = await prisma.break.findMany({
             where: {
-                ...(userId && { attendance: { userId } }),
-                ...(date && {
-                    attendance: {
-                        date: {
-                            gte: new Date(date),
-                            lt: new Date(new Date(date).getTime() + 24 * 60 * 60 * 1000)
-                        }
-                    }
-                })
+                attendance: attendanceWhere
             },
             include: {
                 attendance: {

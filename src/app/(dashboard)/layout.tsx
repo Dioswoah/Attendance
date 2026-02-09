@@ -134,7 +134,7 @@ export default function AdminLayout({
                             <span className="text-sm font-semibold text-foreground leading-none">Administrator</span>
                             <span className="text-xs text-muted-foreground mt-0.5">Authorized</span>
                         </div>
-                        <TimezoneSettings compact />
+                        <TimezoneSettings />
                         <NotificationBell role="ADMIN" />
                     </div>
                 </header>

@@ -10,6 +10,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <Toaster
                 position="top-right"
                 richColors
+                closeButton
                 toastOptions={{
                     classNames: {
                         actionButton: "!bg-red-600 hover:!bg-red-700 !text-white !font-medium",

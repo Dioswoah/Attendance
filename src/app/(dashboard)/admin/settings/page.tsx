@@ -1,5 +1,7 @@
 "use client"
 
+import { toast } from "sonner"
+
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -43,16 +45,26 @@ export default function SettingsPage() {
     }
 
     const tabs = [
-        { label: 'General Configuration', icon: SettingsIcon },
-        { label: 'Security & Access', icon: Lock },
-        { label: 'Notifications', icon: Bell },
-        { label: 'Branding & Theme', icon: Palette },
-        { label: 'Data Management', icon: Database },
-        { label: 'Audit Records', icon: History },
+        { label: 'General Configuration', icon: SettingsIcon, implemented: true },
+        { label: 'Security & Access', icon: Lock, implemented: true },
+        { label: 'Notifications', icon: Bell, implemented: true },
+        { label: 'Branding & Theme', icon: Palette, implemented: false },
+        { label: 'Data Management', icon: Database, implemented: false },
+        { label: 'Audit Records', icon: History, implemented: false },
     ]
 
+    const handleTabChange = (tab: any) => {
+        if (!tab.implemented) {
+            toast.info("This feature is currently under development.", {
+                description: "This module will be available in a future update."
+            })
+            return
+        }
+        setActiveTab(tab.label)
+    }
+
     return (
-        <div className="space-y-6 animate-in fade-in duration-500 pb-10 max-w-[1600px] mx-auto px-4 lg:px-8">
+        <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Settings</h1>
@@ -73,21 +85,28 @@ export default function SettingsPage() {
                 <div className="lg:col-span-1 space-y-4">
                     <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                         <CardContent className="p-2 space-y-1">
-                            {tabs.map(item => (
-                                <button
-                                    key={item.label}
-                                    onClick={() => setActiveTab(item.label)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === item.label
-                                        ? "bg-muted text-foreground font-semibold"
-                                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                        }`}
-                                >
-                                    <item.icon className={`h-4 w-4 ${activeTab === item.label ? "text-primary" : "text-muted-foreground"}`} />
-                                    {item.label}
-                                </button>
-                            ))}
-                        </CardContent>
-                    </Card>
+                            {
+                                tabs.map(item => (
+                                    <button
+                                        key={item.label}
+                                        onClick={() => handleTabChange(item)}
+                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === item.label
+                                            ? "bg-muted text-foreground font-semibold"
+                                            : item.implemented
+                                                ? "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                                                : "text-muted-foreground/50 cursor-not-allowed hover:bg-transparent"
+                                            }`}
+                                    >
+                                        <item.icon className={`h-4 w-4 ${activeTab === item.label ? "text-primary" : item.implemented ? "text-muted-foreground" : "text-muted-foreground/50"}`} />
+                                        {item.label}
+                                        {!item.implemented && (
+                                            <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 bg-muted/20 px-1.5 py-0.5 rounded">Soon</span>
+                                        )}
+                                    </button>
+                                ))
+                            }
+                        </CardContent >
+                    </Card >
 
                     <Card className="border border-border shadow-sm rounded-xl bg-slate-900 p-6 text-white relative overflow-hidden">
                         <Flame className="absolute -bottom-4 -right-4 h-24 w-24 text-red-600/20 rotate-12" />
@@ -104,7 +123,7 @@ export default function SettingsPage() {
                             </div>
                         </div>
                     </Card>
-                </div>
+                </div >
 
                 <div className="lg:col-span-3 space-y-6">
                     {activeTab === 'General Configuration' && (
@@ -266,10 +285,10 @@ export default function SettingsPage() {
                         </Card>
                     )}
                 </div>
-            </div>
+            </div >
 
             {/* NotImplemented Dialog (404 style) */}
-            <Dialog open={!!notImplemented} onOpenChange={(open) => !open && setNotImplemented(null)}>
+            < Dialog open={!!notImplemented} onOpenChange={(open) => !open && setNotImplemented(null)}>
                 <DialogContent className="sm:max-w-md border-none p-0 bg-transparent shadow-none outline-none">
                     <Card className="border border-border shadow-2xl rounded-2xl overflow-hidden bg-white">
                         <CardContent className="flex flex-col items-center justify-center p-12 text-center space-y-6">
@@ -304,7 +323,7 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
                 </DialogContent>
-            </Dialog>
-        </div>
+            </Dialog >
+        </div >
     )
 }
