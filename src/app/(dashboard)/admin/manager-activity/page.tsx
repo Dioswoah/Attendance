@@ -44,6 +44,8 @@ import {
 } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { toast } from "sonner"
+import { useSession } from "next-auth/react"
+import { getBrowserTimezone } from "@/lib/timezone"
 
 export default function ManagerActivityPage() {
     const [activeTab, setActiveTab] = useState<'logs' | 'control'>('logs')
@@ -62,6 +64,18 @@ export default function ManagerActivityPage() {
 
     const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [userTimeZone, setUserTimeZone] = useState("UTC")
+    const { data: session } = useSession()
+
+    useEffect(() => {
+        if (session?.user) {
+            const stored = (session.user as any).selectedTimezone
+            if (stored && stored !== 'UTC') setUserTimeZone(stored)
+            else if ((session.user as any).useCurrentTimezone) {
+                setUserTimeZone(getBrowserTimezone())
+            }
+        }
+    }, [session])
 
     // Edit State
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -182,14 +196,22 @@ export default function ManagerActivityPage() {
                 reason: editForm.reason,
             }
 
+            // Calculate offset for the user's timezone
+            const offset = (() => {
+                try {
+                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
+                    return part?.value.replace('GMT', '') || '+00:00'
+                } catch { return '+00:00' }
+            })()
+
             if (editingItem.kind === 'ATTENDANCE') {
                 body.date = editForm.startDate
-                body.time = `${editForm.startDate}T${editForm.time}:00`
+                body.time = `${editForm.startDate}T${editForm.time}:00${offset}`
             } else {
                 body.startDate = editForm.startDate
                 body.endDate = editForm.endDate
-                if (editForm.startTime) body.startTime = `${editForm.startDate}T${editForm.startTime}:00`
-                if (editForm.endTime) body.endTime = `${editForm.endDate}T${editForm.endTime}:00`
+                if (editForm.startTime) body.startTime = `${editForm.startDate}T${editForm.startTime}:00${offset}`
+                if (editForm.endTime) body.endTime = `${editForm.endDate}T${editForm.endTime}:00${offset}`
             }
 
             const res = await fetch(endpoint, {
@@ -291,9 +313,9 @@ export default function ManagerActivityPage() {
                                 type: leaf.type,
                                 reason: leaf.reason,
                                 status: leaf.status,
-                                startTime: leaf.startTime ? new Date(leaf.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : "",
-                                endTime: leaf.endTime ? new Date(leaf.endTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : "",
-                                time: leaf.time ? new Date(leaf.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : ""
+                                startTime: leaf.startTime ? new Date(leaf.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : "",
+                                endTime: leaf.endTime ? new Date(leaf.endTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : "",
+                                time: leaf.time ? new Date(leaf.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : ""
                             })
                             setIsEditDialogOpen(true)
                         }}
@@ -417,7 +439,7 @@ export default function ManagerActivityPage() {
                                                 return (
                                                     <TableRow key={leaf.id}>
                                                         <TableCell className="pl-6 font-medium text-muted-foreground">
-                                                            {new Date(leaf.createdAt || new Date().toISOString()).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'Asia/Manila' })}
+                                                            {new Date(leaf.createdAt || new Date().toISOString()).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: userTimeZone })}
                                                         </TableCell>
                                                         <TableCell>
                                                             <div className="flex flex-col">

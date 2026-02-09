@@ -35,6 +35,8 @@ import {
     Home
 } from "lucide-react"
 import { format, eachDayOfInterval, parseISO, isSameDay } from "date-fns"
+import { useSession } from "next-auth/react"
+import { getBrowserTimezone } from "@/lib/timezone"
 import * as XLSX from 'xlsx'
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
@@ -48,6 +50,12 @@ export default function HistoryPage() {
     const [refreshing, setRefreshing] = useState(false)
     const [history, setHistory] = useState<any[]>([])
     const [departments, setDepartments] = useState<any[]>([])
+
+    // Timezone Logic
+    const { data: session } = useSession()
+    const userTimeZone = (session?.user as any)?.useCurrentTimezone
+        ? getBrowserTimezone()
+        : (session?.user as any)?.selectedTimezone || "Asia/Manila"
 
     // Filters
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
@@ -286,8 +294,8 @@ export default function HistoryPage() {
                 Employee: r.userName,
                 Dept: r.department,
                 Date: r.date,
-                'Clock In': r.clockIn ? new Date(r.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '-',
-                'Clock Out': r.clockOut ? new Date(r.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '-',
+                'Clock In': r.clockIn ? new Date(r.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '-',
+                'Clock Out': r.clockOut ? new Date(r.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '-',
                 'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
                 'Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2)),
                 'Work Location': r.mode
@@ -622,7 +630,7 @@ export default function HistoryPage() {
                                                                                     "bg-slate-300"
                                                                     )} />
                                                                     <span className="text-[10px] text-muted-foreground font-medium opacity-0 group-hover/mark:opacity-100 transition-opacity absolute -mt-6 bg-popover px-1.5 py-0.5 rounded shadow-sm border border-border">
-                                                                        {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '--'}
+                                                                        {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '--'}
                                                                     </span>
                                                                 </div>
                                                             ) : (
@@ -708,7 +716,7 @@ export default function HistoryPage() {
                                                         </Badge>
                                                         {status === 'on-leave' && record?.returnDate && (
                                                             <span className="text-[10px] font-semibold text-muted-foreground">
-                                                                Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Asia/Manila' })}
+                                                                Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: userTimeZone })}
                                                             </span>
                                                         )}
                                                     </div>
@@ -717,7 +725,7 @@ export default function HistoryPage() {
                                                     <div className="flex flex-col">
                                                         <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                                                             <Clock className="h-3 w-3 text-muted-foreground" />
-                                                            <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Manila' }) : '---'}</span>
+                                                            <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '---'}</span>
                                                         </div>
                                                         {/* For historical records, we can't show "Live" duration if it's not today. If it is today, we can. */}
                                                         {isSameDay(parseISO(endDate), new Date()) ? (
@@ -864,7 +872,7 @@ export default function HistoryPage() {
                                     </div>
                                     <div className="text-right">
                                         <p className="text-xs font-mono font-bold">
-                                            {r.clockIn ? format(parseISO(r.clockIn), "HH:mm") : '--'} - {r.clockOut ? format(parseISO(r.clockOut), "HH:mm") : '--'}
+                                            {r.clockIn ? new Date(r.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '--'} - {r.clockOut ? new Date(r.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '--'}
                                         </p>
                                         <Badge variant="outline" className="h-4 text-[10px] uppercase font-black text-muted-foreground p-0 px-1.5 mt-0.5">
                                             {r.status.replace('-', ' ')}

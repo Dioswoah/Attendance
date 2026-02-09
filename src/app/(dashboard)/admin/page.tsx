@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap, Home } from "lucide-react"
 import { io } from "socket.io-client"
+import { useSession } from "next-auth/react"
+import { getBrowserTimezone } from "@/lib/timezone"
 import { statusConfig } from "@/components/UserStatusDropdown"
 
 export default function AdminDashboard() {
@@ -33,6 +35,12 @@ export default function AdminDashboard() {
     const [searchTerm, setSearchTerm] = useState("")
     const [deptFilter, setDeptFilter] = useState("all")
     const [statusFilter, setStatusFilter] = useState("all")
+
+    // Timezone Logic
+    const { data: session } = useSession()
+    const userTimeZone = (session?.user as any)?.useCurrentTimezone
+        ? getBrowserTimezone()
+        : (session?.user as any)?.selectedTimezone || "Asia/Manila"
 
     useEffect(() => {
         const fetchData = async () => {
@@ -255,7 +263,7 @@ export default function AdminDashboard() {
                                                 {record.status.replace('-', ' ')}
                                             </Badge>
                                             <p className="text-xs text-muted-foreground mt-1 font-mono">
-                                                {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}
+                                                {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
                                             </p>
                                         </div>
                                     </div>
@@ -431,7 +439,7 @@ export default function AdminDashboard() {
                                                 </Badge>
                                                 {status === 'on-leave' && record?.returnDate && (
                                                     <span className="text-[10px] font-semibold text-muted-foreground">
-                                                        Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Asia/Manila' })}
+                                                        Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: userTimeZone })}
                                                     </span>
                                                 )}
                                             </div>
@@ -440,7 +448,7 @@ export default function AdminDashboard() {
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                                                     <Clock className="h-3 w-3 text-muted-foreground" />
-                                                    <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : '---'}</span>
+                                                    <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }) : '---'}</span>
                                                 </div>
                                                 <span className="text-xs text-muted-foreground font-mono tabular-nums">{calculateLiveDuration(record)}</span>
                                             </div>

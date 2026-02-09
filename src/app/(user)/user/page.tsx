@@ -20,6 +20,7 @@ import Link from "next/link"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
+import { getBrowserTimezone } from "@/lib/timezone"
 import { statusConfig } from "@/components/UserStatusDropdown"
 
 
@@ -83,9 +84,17 @@ export default function UserPortal() {
                     if (res.ok) {
                         const data = await res.json()
                         setUserProfile(data)
-                        if (data.location === 'Philippines') setUserTimeZone('Asia/Manila')
-                        else if (data.location === 'Australia') setUserTimeZone('Australia/Sydney')
-                        else {
+                        if (data.useCurrentTimezone) {
+                            setUserTimeZone(getBrowserTimezone())
+                        } else if (data.selectedTimezone) {
+                            setUserTimeZone(data.selectedTimezone)
+                        } else {
+                            // Fallback for legacy behavior
+                            if (data.location === 'Philippines') setUserTimeZone('Asia/Manila')
+                            else if (data.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                        }
+
+                        if (data.location !== 'Philippines' && data.location !== 'Australia') {
                             // Only show onboarding if the account is "fresh" (created < 24 hours ago) 
                             // AND we haven't skipped it this session.
                             const isFreshAccount = data.createdAt ? (new Date().getTime() - new Date(data.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
@@ -125,8 +134,14 @@ export default function UserPortal() {
             if (res.ok) {
                 const updated = await res.json()
                 setUserProfile(updated)
-                if (updated.location === 'Philippines') setUserTimeZone('Asia/Manila')
-                else if (updated.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                if (updated.useCurrentTimezone) {
+                    setUserTimeZone(getBrowserTimezone())
+                } else if (updated.selectedTimezone) {
+                    setUserTimeZone(updated.selectedTimezone)
+                } else {
+                    if (updated.location === 'Philippines') setUserTimeZone('Asia/Manila')
+                    else if (updated.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                }
                 setIsOnboardingOpen(false)
             }
         } catch (error) {
@@ -739,13 +754,19 @@ export default function UserPortal() {
         e.preventDefault()
         if (!userId) return
 
-        const start = new Date(leaveStartDate + "T00:00:00+08:00")
-        const end = new Date(leaveEndDate + "T00:00:00+08:00")
+        // Calculate offset for the user's timezone
+        const offset = (() => {
+            try {
+                const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
+                return part?.value.replace('GMT', '') || '+00:00'
+            } catch { return '+00:00' }
+        })()
+
+        const start = new Date(`${leaveStartDate}T00:00:00${offset}`)
+        const end = new Date(`${leaveEndDate}T00:00:00${offset}`)
         const diffTime = Math.abs(end.getTime() - start.getTime())
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
         const duration = `${diffDays} Day${diffDays > 1 ? 's' : ''}`
-
-
 
         try {
             const res = await fetch('/api/leaves', {
@@ -758,8 +779,8 @@ export default function UserPortal() {
                     type: leaveType,
                     reason: leaveReason,
                     duration: leaveDurationType === 'Full Day' && diffDays > 1 ? `${diffDays} Days` : leaveDurationType,
-                    startTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveStartTime}:00+08:00`).toISOString() : null,
-                    endTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveEndTime}:00+08:00`).toISOString() : null
+                    startTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveStartTime}:00${offset}`).toISOString() : null,
+                    endTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveEndTime}:00${offset}`).toISOString() : null
                 })
             })
 

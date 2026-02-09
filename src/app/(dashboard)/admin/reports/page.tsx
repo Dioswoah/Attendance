@@ -30,7 +30,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox"
 import { Users, ChevronDown } from "lucide-react"
 import { AdminTimezoneSelect } from "@/components/AdminTimezoneSelect"
-import { prepareTimeForExport, formatWithTimezone } from "@/lib/timezone"
+import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
+import { useSession } from "next-auth/react"
 
 export default function ExportPage() {
     const [generating, setGenerating] = useState(false)
@@ -45,6 +46,16 @@ export default function ExportPage() {
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
+    const { data: session } = useSession()
+
+    useEffect(() => {
+        if (session?.user) {
+            const tz = (session.user as any).useCurrentTimezone
+                ? getBrowserTimezone()
+                : (session.user as any).selectedTimezone || "Asia/Manila"
+            setReportTimezone(tz)
+        }
+    }, [session])
 
     useEffect(() => {
         fetchData()

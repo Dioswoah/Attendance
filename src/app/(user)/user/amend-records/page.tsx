@@ -199,16 +199,24 @@ export default function AmendRecordsPage() {
         try {
             // Use selected date string directly (YYYY-MM-DD)
             const dateStr = selectedDateOption
-            const targetDate = new Date(dateStr)
+
+            // Calculate offset for the user's timezone
+            const offset = (() => {
+                try {
+                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
+                    return part?.value.replace('GMT', '') || '+00:00'
+                } catch { return '+00:00' }
+            })()
 
             // Construct DateTime for the "time"
             // We need to combine targetDate (YYYY-MM-DD) with time (HH:MM)
-            // LOCK to PHT (+08:00)
-            const dateTimeStr = `${dateStr}T${time}:00+08:00`
+            const dateTimeStr = `${dateStr}T${time}:00${offset}`
 
             const payload = {
                 userId: session.user.id,
-                date: new Date(dateStr + "T00:00:00+08:00").toISOString(),
+                // For the logical 'date' field, we always want UTC Midnight of the selected day,
+                // regardless of user timezone, so it matches the canonical session date.
+                date: new Date(`${dateStr}T00:00:00Z`).toISOString(),
                 type: recordType,
                 time: new Date(dateTimeStr).toISOString(),
                 reason

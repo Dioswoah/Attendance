@@ -32,6 +32,8 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { format, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
+import { useSession } from "next-auth/react"
+import { getBrowserTimezone } from "@/lib/timezone"
 
 type TabType = 'attendance' | 'leaves' | 'breaks'
 type ModeType = 'create' | 'list'
@@ -39,6 +41,12 @@ type ModeType = 'create' | 'list'
 export default function ManualEntryPage() {
     const [activeTab, setActiveTab] = useState<TabType>('attendance')
     const [activeMode, setActiveMode] = useState<ModeType>('create')
+    const { data: session } = useSession()
+
+    // Timezone Logic
+    const userTimeZone = (session?.user as any)?.useCurrentTimezone
+        ? getBrowserTimezone()
+        : (session?.user as any)?.selectedTimezone || "Asia/Manila"
 
     // Core Data
     const [employees, setEmployees] = useState<any[]>([])
@@ -128,22 +136,23 @@ export default function ManualEntryPage() {
         }
     }
 
-    // Unified PHT Formatting Helpers
-    const formatPHT = (dateStr: string | null | undefined, options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false }) => {
+    // Unified Time Formatting Helpers
+    const formatTime = (dateStr: string | null | undefined, options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false }) => {
         if (!dateStr) return '---'
         try {
-            return new Date(dateStr).toLocaleTimeString('en-US', { ...options, timeZone: 'Asia/Manila' })
+            return new Date(dateStr).toLocaleTimeString('en-US', { ...options, timeZone: userTimeZone })
         } catch (e) { return '---' }
     }
 
-    const formatDatePHT = (dateStr: string | null | undefined) => {
+    const formatDate = (dateStr: string | null | undefined) => {
         if (!dateStr) return '---'
         try {
             // Check if string is just a date like YYYY-MM-DD
             if (dateStr.length === 10 && dateStr.includes('-')) {
-                return new Date(dateStr + "T00:00:00+08:00").toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' })
+                // Return just the date string as is for display if straightforward, or format it
+                return new Date(dateStr).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
             }
-            return new Date(dateStr).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' })
+            return new Date(dateStr).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: userTimeZone })
         } catch (e) { return '---' }
     }
 
@@ -157,16 +166,18 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            // LOCK to PHT (+08:00)
-            const clockIn = new Date(`${attDate}T${attIn}:00+08:00`)
-            const clockOut = attOut ? new Date(`${attDate}T${attOut}:00+08:00`) : null
+            // Use standard Date construction which uses system/browser timezone
+            // This assumes the admin inputs time in their local system time
+            const clockIn = new Date(`${attDate}T${attIn}:00`)
+            const clockOut = attOut ? new Date(`${attDate}T${attOut}:00`) : null
+            const dateObj = new Date(attDate)
 
             const res = await fetch('/api/attendance', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: attEmpId,
-                    date: new Date(`${attDate}T00:00:00+08:00`).toISOString(),
+                    date: dateObj.toISOString(),
                     clockIn: clockIn.toISOString(),
                     clockOut: clockOut?.toISOString(),
                     mode: attMode
@@ -209,8 +220,8 @@ export default function ManualEntryPage() {
                     reason: lvReason,
                     duration: lvDuration,
                     status: 'APPROVED',
-                    startTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvStartTime}:00+08:00`).toISOString() : null,
-                    endTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvEndTime}:00+08:00`).toISOString() : null
+                    startTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvStartTime}:00`).toISOString() : null,
+                    endTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvEndTime}:00`).toISOString() : null
                 })
             })
             if (res.ok) showStatus('success')
@@ -229,16 +240,16 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            // LOCK to PHT (+08:00)
-            const startTime = new Date(`${brDate}T${brIn}:00+08:00`)
-            const endTime = brOut ? new Date(`${brDate}T${brOut}:00+08:00`) : null
+            // Use standard Date construction
+            const startTime = new Date(`${brDate}T${brIn}:00`)
+            const endTime = brOut ? new Date(`${brDate}T${brOut}:00`) : null
 
             const res = await fetch('/api/breaks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: brEmpId,
-                    date: new Date(`${brDate}T00:00:00+08:00`).toISOString(),
+                    date: new Date(brDate).toISOString(),
                     startTime: startTime.toISOString(),
                     endTime: endTime?.toISOString()
                 })
@@ -839,13 +850,13 @@ export default function ManualEntryPage() {
                                             <TableCell className="py-4 px-6 text-sm text-muted-foreground">{rec.department}</TableCell>
                                             <TableCell className="py-4 px-6 text-sm text-muted-foreground whitespace-nowrap">
                                                 {activeTab === 'leaves'
-                                                    ? `${formatDatePHT(rec.startDate)} - ${formatDatePHT(rec.endDate)}`
-                                                    : formatDatePHT(rec.clockIn || rec.date || rec.startTime)}
+                                                    ? `${formatDate(rec.startDate)} - ${formatDate(rec.endDate)}`
+                                                    : formatDate(rec.clockIn || rec.date || rec.startTime)}
                                             </TableCell>
                                             {activeTab === 'attendance' ? (
                                                 <>
-                                                    <TableCell className="py-4 px-6 text-sm text-primary font-medium">{formatPHT(rec.clockIn)}</TableCell>
-                                                    <TableCell className="py-4 px-6 text-sm text-muted-foreground">{formatPHT(rec.clockOut)}</TableCell>
+                                                    <TableCell className="py-4 px-6 text-sm text-primary font-medium">{formatTime(rec.clockIn)}</TableCell>
+                                                    <TableCell className="py-4 px-6 text-sm text-muted-foreground">{formatTime(rec.clockOut)}</TableCell>
                                                     <TableCell className="py-4 px-6 text-sm font-semibold">
                                                         {rec.clockIn && rec.clockOut ?
                                                             ((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60 * 60)).toFixed(2) + ' hrs'
@@ -873,9 +884,9 @@ export default function ManualEntryPage() {
                                                     )}
                                                     {activeTab === 'breaks' && (
                                                         <div className="flex gap-2 items-center text-sm font-medium text-yellow-600">
-                                                            <span>{formatPHT(rec.startTime)}</span>
+                                                            <span>{formatTime(rec.startTime)}</span>
                                                             <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
-                                                            <span>{formatPHT(rec.endTime)}</span>
+                                                            <span>{formatTime(rec.endTime)}</span>
                                                         </div>
                                                     )}
                                                 </TableCell>
@@ -940,17 +951,17 @@ export default function ManualEntryPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Clock In</Label>
-                                        <Input type="time" value={editForm.clockIn ? formatPHT(editForm.clockIn) : ""}
+                                        <Input type="time" value={editForm.clockIn ? formatTime(editForm.clockIn) : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00+08:00`);
+                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
                                                 setEditForm({ ...editForm, clockIn: localDate.toISOString() });
                                             }} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Clock Out</Label>
-                                        <Input type="time" value={editForm.clockOut ? formatPHT(editForm.clockOut) : ""}
+                                        <Input type="time" value={editForm.clockOut ? formatTime(editForm.clockOut) : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00+08:00`);
+                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
                                                 setEditForm({ ...editForm, clockOut: localDate.toISOString() });
                                             }} />
                                     </div>
@@ -968,9 +979,9 @@ export default function ManualEntryPage() {
                                                 <div key={breakSession.id || index} className="flex items-center justify-between bg-white p-2 rounded border border-border">
                                                     <div className="flex items-center gap-2 text-sm">
                                                         <span className="font-medium text-yellow-700">#{index + 1}</span>
-                                                        <span className="text-muted-foreground">{formatPHT(breakSession.startTime)}</span>
+                                                        <span className="text-muted-foreground">{formatTime(breakSession.startTime)}</span>
                                                         <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                                                        <span className="text-muted-foreground">{formatPHT(breakSession.endTime)}</span>
+                                                        <span className="text-muted-foreground">{formatTime(breakSession.endTime)}</span>
                                                     </div>
                                                     <span className="text-xs text-muted-foreground">
                                                         {breakSession.endTime && breakSession.startTime

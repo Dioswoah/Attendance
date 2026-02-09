@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Calendar, Clock, LogIn, LogOut, Coffee, FileText, Loader2 } from "lucide-react"
 import { format } from "date-fns"
+import { getBrowserTimezone } from "@/lib/timezone"
 
 interface ActivityLog {
     id: string
@@ -25,13 +26,24 @@ export default function ActivityLogsPage() {
     const [filterType, setFilterType] = useState<string>("all")
     const [startDate, setStartDate] = useState<string>(format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'))
     const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
+    const [userTimeZone, setUserTimeZone] = useState("UTC")
     const [isLoading, setIsLoading] = useState(true)
+
+    useEffect(() => {
+        if (session?.user) {
+            const stored = (session.user as any).selectedTimezone
+            if (stored && stored !== 'UTC') setUserTimeZone(stored)
+            else if ((session.user as any).useCurrentTimezone) {
+                setUserTimeZone(getBrowserTimezone())
+            }
+        }
+    }, [session])
 
     useEffect(() => {
         if (session?.user?.id) {
             fetchActivityLogs()
         }
-    }, [session, startDate, endDate])
+    }, [session, startDate, endDate, userTimeZone])
 
     const fetchActivityLogs = async () => {
         if (!session?.user?.id) return
@@ -65,7 +77,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-in`,
                     date: new Date(record.clockIn).toISOString().split('T')[0],
                     type: "clock-in",
-                    time: new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
+                    time: new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
                     details: `Clocked in from ${record.mode.toLowerCase()}`
                 })
             }
@@ -75,7 +87,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-break-start`,
                     date: new Date(record.breakStart).toISOString().split('T')[0],
                     type: "break-start",
-                    time: new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
+                    time: new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
                     details: "Started break"
                 })
             }
@@ -85,7 +97,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-break-end`,
                     date: new Date(record.breakEnd).toISOString().split('T')[0],
                     type: "break-end",
-                    time: new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
+                    time: new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
                     details: "Ended break"
                 })
             }
@@ -95,7 +107,7 @@ export default function ActivityLogsPage() {
                     id: `${record.id}-out`,
                     date: new Date(record.clockOut).toISOString().split('T')[0],
                     type: "clock-out",
-                    time: new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }),
+                    time: new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
                     details: "Clocked out"
                 })
             }

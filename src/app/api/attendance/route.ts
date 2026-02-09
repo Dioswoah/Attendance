@@ -65,12 +65,13 @@ function getPHTToday() {
  * If someone forgot to clock out or end a break, we close them at 11:59:59 PM of that day.
  */
 async function cleanupOldSessions() {
-    const today = getPHTToday()
+    const cutoff = new Date()
+    cutoff.setHours(cutoff.getHours() - 24)
 
-    // Find sessions from previous days where clockOut is null
+    // Find sessions started more than 24 hours ago that are still open
     const unclosed = await prisma.attendance.findMany({
         where: {
-            date: { lt: today },
+            clockIn: { lt: cutoff },
             clockOut: null
         }
     })
@@ -412,14 +413,23 @@ export async function POST(req: Request) {
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
-        const targetDate = date ? new Date(date) : getPHTToday()
-        targetDate.setUTCHours(0, 0, 0, 0)
+        // Fetch User to determine timezone
+        const user = await prisma.user.findUnique({ where: { id: userId } })
+        if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+        const timeZone = user.selectedTimezone || 'Asia/Manila'
+        const sessionStart = clockIn ? new Date(clockIn) : new Date()
+
+        // Determine the "Session Date" based on User's Local Time
+        // This ensures Oct 27 9AM Sydney is recorded as Oct 27, not Oct 26 (UTC)
+        const localDateStr = sessionStart.toLocaleDateString('en-CA', { timeZone }) // YYYY-MM-DD
+        const targetDate = new Date(`${localDateStr}T00:00:00Z`)
 
         // Check for an ACTIVE session (not clocked out)
+        // Check for an ACTIVE session (not clocked out) - ignore date, just check if user has open session
         const activeSession = await prisma.attendance.findFirst({
             where: {
                 userId,
-                date: targetDate,
                 clockOut: null
             }
         })
@@ -448,23 +458,24 @@ export async function POST(req: Request) {
         // Sync to Google Calendar (non-blocking)
         const session = await auth() as any
         if (session?.accessToken) {
-            const userForTimezone = await prisma.user.findUnique({ where: { id: userId } }) as any
-            const timezone = userForTimezone?.selectedTimezone || 'UTC'
+            // User already fetched
+            const timezone = user.selectedTimezone || 'UTC'
             syncStatusToCalendar(session.accessToken, 'AVAILABLE', mode || 'OFFICE', timezone)
                 .catch(err => console.error('[Calendar Sync] Failed on clock-in:', err))
         }
 
         // Notify User if Admin created it
         if (session && session.user.id !== userId) {
-            const targetUser = await prisma.user.findUnique({ where: { id: userId } })
-            if (targetUser && targetUser.email && session.accessToken) {
-                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : 'N/A'}` +
-                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}` : '') +
+            // User already fetched above as 'user'
+            if (user.email && session.accessToken) {
+                const emailTz = user.selectedTimezone || 'Asia/Manila'
+                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
+                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
                     ` (${attendance.mode})`
 
                 await sendAdminActionEmail({
-                    userName: targetUser.name || "Employee",
-                    userEmail: targetUser.email,
+                    userName: user.name || "Employee",
+                    userEmail: user.email,
                     adminName: session.user.name || "Administrator",
                     adminEmail: session.user.email,
                     adminAccessToken: session.accessToken,
@@ -491,13 +502,10 @@ export async function PATCH(req: Request) {
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
-        const today = getPHTToday()
-
         // Find ACTIVE session
         const existing = await prisma.attendance.findFirst({
             where: {
                 userId,
-                date: today,
                 clockOut: null
             }
         })
