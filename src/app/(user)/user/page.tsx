@@ -1008,6 +1008,14 @@ export default function UserPortal() {
             }
         })
 
+    const departmentStaff = useMemo(() => {
+        if (!userDepartmentId) return sortedStaff
+        return sortedStaff.filter((s: any) =>
+            s.departmentId === userDepartmentId ||
+            (typeof s.department === 'object' && s.department?.id === userDepartmentId)
+        )
+    }, [sortedStaff, userDepartmentId])
+
     const uniqueDepartments = Array.from(new Set(
         employees
             .map((e: any) => {
@@ -1705,7 +1713,7 @@ export default function UserPortal() {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-6 flex-1 flex flex-col justify-center">
-                                    {sortedStaff.length === 0 ? (
+                                    {departmentStaff.length === 0 ? (
                                         <div className="text-center py-12 px-4 space-y-3">
                                             <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto border border-slate-100">
                                                 <Users className="w-6 h-6 text-slate-300" />
@@ -1717,19 +1725,19 @@ export default function UserPortal() {
                                     ) : (
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="p-6 rounded-[2rem] bg-green-50/50 border border-green-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-green-700">{sortedStaff.filter((s: any) => s.status === 'present' || s.status === 'clocked-in' || s.status === 'Working').length}</span>
+                                                <span className="text-3xl font-black text-green-700">{departmentStaff.filter((s: any) => s.status === 'present' || s.status === 'clocked-in' || s.status === 'Working').length}</span>
                                                 <span className="text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mt-2">Clocked In</span>
                                             </div>
                                             <div className="p-6 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-amber-700">{sortedStaff.filter((s: any) => s.status === 'break' || s.status === 'on-break' || s.status === 'On Break').length}</span>
+                                                <span className="text-3xl font-black text-amber-700">{departmentStaff.filter((s: any) => s.status === 'break' || s.status === 'on-break' || s.status === 'On Break').length}</span>
                                                 <span className="text-[10px] font-bold text-amber-600 uppercase tracking-[0.2em] mt-2">On Break</span>
                                             </div>
                                             <div className="p-6 rounded-[2rem] bg-blue-50/50 border border-blue-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-blue-700">{sortedStaff.filter((s: any) => s.status === 'on-leave' || s.status === 'On Leave' || s.status === 'leave').length}</span>
+                                                <span className="text-3xl font-black text-blue-700">{departmentStaff.filter((s: any) => s.status === 'on-leave' || s.status === 'On Leave' || s.status === 'leave').length}</span>
                                                 <span className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mt-2">On Leave</span>
                                             </div>
                                             <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-slate-700">{sortedStaff.filter((s: any) => s.status === 'absent' || s.status === 'clocked-out' || s.status === 'Off Duty' || s.status === 'offline').length}</span>
+                                                <span className="text-3xl font-black text-slate-700">{departmentStaff.filter((s: any) => s.status === 'absent' || s.status === 'clocked-out' || s.status === 'Off Duty' || s.status === 'offline').length}</span>
                                                 <span className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mt-2">Clocked Out</span>
                                             </div>
                                         </div>
