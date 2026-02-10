@@ -14,6 +14,7 @@ import { UserOnboardingTour } from "@/components/UserOnboardingTour"
 
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
+import { Breadcrumbs } from "@/components/Breadcrumbs"
 
 export default function UserLayout({
     children,
@@ -395,21 +396,27 @@ export default function UserLayout({
                 </header>
 
                 {/* Desktop Header */}
-                <header className="hidden lg:flex bg-white border-b border-border px-4 lg:px-8 py-4 items-center justify-end gap-4 sticky top-0 z-30">
-                    {userRoles.includes('ADMIN') && (
-                        <Link href="/admin">
-                            <Button
-                                variant="outline"
-                                className="bg-white text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-bold text-xs uppercase tracking-wide h-9"
-                            >
-                                <LayoutDashboard className="w-4 h-4 mr-2" />
-                                ADMIN PORTAL
-                            </Button>
-                        </Link>
-                    )}
-                    <TimezoneSettings />
-                    <UserOnboardingTour mode="trigger" />
-                    <NotificationBell />
+                <header className="hidden lg:flex bg-white border-b border-border px-4 lg:px-8 py-4 items-center justify-between gap-4 sticky top-0 z-30">
+                    <div className="flex items-center">
+                        <Breadcrumbs />
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        {userRoles.includes('ADMIN') && (
+                            <Link href="/admin">
+                                <Button
+                                    variant="outline"
+                                    className="bg-white text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-bold text-xs uppercase tracking-wide h-9"
+                                >
+                                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                                    ADMIN PORTAL
+                                </Button>
+                            </Link>
+                        )}
+                        <TimezoneSettings />
+                        <UserOnboardingTour mode="trigger" />
+                        <NotificationBell />
+                    </div>
                 </header>
 
                 {/* Page Content */}

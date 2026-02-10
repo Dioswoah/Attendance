@@ -490,6 +490,47 @@ export default function UserPortal() {
         }
     }, [breakTotalMs, warningTriggered, limitTriggered, breakTime, userId])
 
+    // 4. Auto-Logout Notification Effect
+    useEffect(() => {
+        if (!userAttendanceList.length || !userId) return
+
+        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+
+        // Find the latest record from BEFORE today
+        const pastRecords = userAttendanceList.filter((r: any) => {
+            if (!r.clockIn) return false
+            const rDate = new Date(r.clockIn).toLocaleDateString("en-CA", { timeZone: userTimeZone })
+            return rDate < todayPHT
+        }).sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime())
+
+        if (pastRecords.length > 0) {
+            const lastSession = pastRecords[0]
+
+            // Check if it has a clockOut time
+            if (lastSession.clockOut) {
+                const cOut = new Date(lastSession.clockOut)
+
+                // Heuristic: If existing clockOut has 59 seconds, it was likely the auto-cleanup job
+                // (or a very precise/unlucky user). 
+                // Given the requirement, this is the best signal we have without schema changes.
+                if (cOut.getSeconds() === 59) {
+                    const key = `auto_logout_notified_${lastSession.id}`
+                    if (!sessionStorage.getItem(key)) {
+                        toast("You forgot to clock out yesterday", {
+                            description: "We've automatically clocked you out at 11:59 PM. Please amend the record if necessary.",
+                            action: {
+                                label: "Fix This",
+                                onClick: () => window.location.href = '/user/amend-records'
+                            },
+                            duration: 8000,
+                        })
+                        sessionStorage.setItem(key, "true")
+                    }
+                }
+            }
+        }
+    }, [userAttendanceList, userId, userTimeZone])
+
     const handleBreakAcknowledge = () => {
         if (!userId) {
             setShowBreakDialog(false)

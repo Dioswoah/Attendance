@@ -13,8 +13,6 @@ import {
     LogOut,
     Clock,
     History,
-    ChevronRight,
-    Flame,
     ShieldCheck,
     Loader2
 } from "lucide-react"
@@ -22,6 +20,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
+import { Breadcrumbs } from "@/components/Breadcrumbs"
 
 import { useSession } from "next-auth/react"
 
@@ -128,7 +127,7 @@ export default function AdminLayout({
             <div className="flex flex-col flex-1 sm:pl-64 min-h-screen min-w-0">
                 <header className="sticky top-0 z-40 flex h-16 items-center justify-between px-8 bg-white/80 backdrop-blur-md border-b border-border">
                     <div className="flex items-center gap-2">
-                        {/* Empty or can add breadcrumbs later */}
+                        <Breadcrumbs />
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="flex flex-col text-right">
