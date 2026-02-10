@@ -50,7 +50,7 @@ if (-not $SkipBuild) {
 
 Write-Host "Step 2: Running database migrations..." -ForegroundColor Yellow
 $CLOUD_SQL_CONN = "${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
-$CLOUD_RUN_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN"
+$CLOUD_RUN_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=10"
 
 # Check if migration job exists, create if not, then update and execute
 $jobExists = gcloud run jobs describe migrate-db --region $REGION --quiet 2>$null

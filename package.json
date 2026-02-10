@@ -42,7 +42,7 @@
         "nodemailer": "^7.0.12",
         "pg": "^8.17.2",
         "playwright": "^1.58.1",
-        "prisma": "^5.13.0",
+        "prisma": "^5.22.0",
         "react": "19.2.0",
         "react-day-picker": "^9.11.2",
         "react-dom": "19.2.0",
