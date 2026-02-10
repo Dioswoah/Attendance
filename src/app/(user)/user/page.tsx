@@ -915,7 +915,8 @@ export default function UserPortal() {
         }
     }
 
-    const getStaffStatusBadge = (status: string) => {
+    const getStaffStatusBadge = (status: string, isArchived?: boolean) => {
+        if (isArchived) return <Badge className="bg-slate-100 text-slate-400 border-slate-200 font-bold opacity-60">Archived</Badge>
         switch (status) {
             case "clocked-in":
                 return <Badge className="bg-green-100 text-green-700 hover:bg-green-200/50 border-0 font-bold">Clocked In</Badge>
@@ -967,7 +968,7 @@ export default function UserPortal() {
     }, [myTeamList, allAttendance, teamApprovedLeaves])
 
     // Sort logic for staff
-    const sortedStaff = (isUnassigned ? [] : myTeamList)
+    const sortedStaff = myTeamList
         .map((staff: any) => {
             // Find live status from allAttendance
             const attendanceRecord = allAttendance.find((a: any) => a.userId === staff.id)
@@ -986,7 +987,11 @@ export default function UserPortal() {
             return dept === filterDepartment
         })
         .sort((a: any, b: any) => {
-            // Priority Status Grouping: Clocked In / On Break > Others
+            // Priority 0: Active vs Archived (Archived always at bottom)
+            if (a.isArchived && !b.isArchived) return 1
+            if (!a.isArchived && b.isArchived) return -1
+
+            // Priority 1: Status Grouping (Clocked In / On Break > Others)
             const priorityStatuses = ["clocked-in", "on-break"]
             const aIsPriority = priorityStatuses.includes(a.status)
             const bIsPriority = priorityStatuses.includes(b.status)
@@ -994,7 +999,7 @@ export default function UserPortal() {
             if (aIsPriority && !bIsPriority) return -1
             if (!aIsPriority && bIsPriority) return 1
 
-            // Secondary sorting based on user selection
+            // Priority 2: Secondary sorting based on user selection
             switch (sortBy) {
                 case "name": return (a.name || "").localeCompare(b.name || "")
                 case "department":
@@ -1585,7 +1590,7 @@ export default function UserPortal() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
-                                                    {getStaffStatusBadge(staff.status)}
+                                                    {getStaffStatusBadge(staff.status, staff.isArchived)}
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge variant="outline" className="text-[10px] font-medium text-slate-500 border-slate-200 bg-white">

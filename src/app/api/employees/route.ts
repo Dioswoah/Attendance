@@ -4,7 +4,9 @@ import { prisma } from '@/lib/prisma'
 export async function GET() {
     try {
         const employees = await prisma.user.findMany({
-            where: { deletedAt: null },
+            where: {
+                deletedAt: null
+            },
             include: {
                 department: true,
                 manager: {
