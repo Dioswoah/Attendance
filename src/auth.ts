@@ -8,6 +8,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         strategy: "jwt",
         maxAge: 60 * 60, // 1 hour - force session refresh
     },
+    pages: {
+        error: '/unauthorized',
+    },
     callbacks: {
         async signIn({ user, account, profile }) {
             if (!user.email) return false;
