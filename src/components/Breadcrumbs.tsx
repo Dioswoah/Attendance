@@ -17,12 +17,19 @@ export function Breadcrumbs({ className }: { className?: string }) {
         // Special cases mapping
         const labels: Record<string, string> = {
             "admin": "Dashboard",
-            "user": "Portal",
+            "user": "Dashboard",
+            "employees": "Staff",
+            "departments": "Departments",
             "manual-entry": "Manual Entry",
+            "history": "Record",
             "manager-activity": "Manager Activity",
+            "reports": "Export",
+            "settings": "Settings",
+            "leaves": "Leave Requests",
             "amend-records": "Amend Records",
-            "force-signout": "Force Sign Out",
-            "leaves": "Leave Requests"
+            "activity": "Activity Logs",
+            "manager": "Manager Control",
+            "force-signout": "Force Sign Out"
         }
 
         // Return mapped label or capitalize first letter of each word
