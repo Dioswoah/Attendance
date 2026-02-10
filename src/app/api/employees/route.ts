@@ -30,11 +30,15 @@ export async function POST(req: Request) {
         const employee = await prisma.user.create({
             data: {
                 name: body.name,
-                email: body.email,
+                email: body.email.toLowerCase(),
                 departmentId: body.departmentId,
                 roles: body.roles || ['USER'],
                 managerId: body.managerId || null,
-                location: body.location || null
+                location: body.location || null,
+                // SYNC: Set default timezone based on chosen location
+                selectedTimezone: body.location === 'Philippines' ? 'Asia/Manila' :
+                    body.location === 'Australia' ? 'Australia/Sydney' : 'UTC',
+                useCurrentTimezone: false
             }
         })
         return NextResponse.json(employee)

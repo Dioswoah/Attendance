@@ -16,7 +16,17 @@ export async function PATCH(
         if (roles !== undefined) updateData.roles = roles
         if (managerId !== undefined) updateData.managerId = managerId === "unassigned" ? null : managerId
         if (isArchived !== undefined) updateData.isArchived = isArchived
-        if (location !== undefined) updateData.location = location
+        if (location !== undefined) {
+            updateData.location = location
+            // SYNC: Update timezone based on location for primary regions
+            if (location === 'Philippines') {
+                updateData.selectedTimezone = 'Asia/Manila'
+                updateData.useCurrentTimezone = false
+            } else if (location === 'Australia') {
+                updateData.selectedTimezone = 'Australia/Sydney'
+                updateData.useCurrentTimezone = false
+            }
+        }
 
         const updated = await prisma.user.update({
             where: { id },

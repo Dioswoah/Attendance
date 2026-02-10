@@ -98,13 +98,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 // This happens if:
                 // a) It's a completely new user.
                 // b) They existed before but somehow didn't have an Account row (rare).
+                // c) THE USER WAS PRE-CREATED BY AN ADMIN (Invite Flow).
                 if (!dbUser && user.email) {
                     dbUser = await prisma.user.findUnique({
                         where: { email: user.email }
                     });
 
                     if (dbUser) {
-                        console.log(`[Auth] User identified by Email: ${dbUser.email}. Linking new Google Account...`);
+                        console.log(`[Auth] User identified by Email: ${dbUser.email}. Syncing with existing record...`);
+
+                        // SYNC POINT: Update the existing DB user with Google's info
+                        // We update name and image if they are missing or different.
+                        dbUser = await prisma.user.update({
+                            where: { id: dbUser.id },
+                            data: {
+                                name: user.name || dbUser.name,
+                                image: user.image || dbUser.image,
+                                emailVerified: new Date(),
+                            }
+                        });
                     }
                 }
 
@@ -280,6 +292,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         (session.user as any).availabilityStatus = dbUser.availabilityStatus;
                         (session.user as any).useCurrentTimezone = dbUser.useCurrentTimezone ?? true;
                         (session.user as any).selectedTimezone = dbUser.selectedTimezone || "UTC";
+                        (session.user as any).location = dbUser.location;
                         (session.user as any).customStatusMessage = dbUser.customStatusMessage;
                         console.log('[Auth] Updated session roles to:', (session.user as any).roles)
                     }

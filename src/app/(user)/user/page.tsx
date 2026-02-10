@@ -896,6 +896,7 @@ export default function UserPortal() {
     })()
 
     const departmentName = (session.user as any).department || "Unassigned"
+    const isUnassigned = !userDepartmentId || userDepartmentId === ""
 
     // --- Dashboard Helpers ---
     const getStatusColor = () => {
@@ -935,8 +936,38 @@ export default function UserPortal() {
         return "bg-slate-300"
     }
 
+    // Staff Status Helper: Global Directory
+    const myTeamList = useMemo(() => {
+        // Return all employees for company-wide visibility
+        return employees
+    }, [employees])
+
+    const sortedTeamStatus = useMemo(() => {
+        return myTeamList.map((member: any) => {
+            // Find attendance record (today) from allAttendance (already fetched)
+            const record = allAttendance.find((a: any) => a.userId === member.id)
+
+            // Check if they are on APPROVED leave today
+            const onLeaveToday = teamApprovedLeaves.find((l: any) =>
+                l.userId === member.id &&
+                isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
+            )
+
+            let status = 'absent'
+            if (record?.status === 'clocked-in') status = 'present'
+            else if (record?.status === 'on-break') status = 'break'
+            else if (onLeaveToday) status = 'leave'
+            else if (record?.clockOut) status = 'offline'
+
+            return { ...member, status, record }
+        }).sort((a: any, b: any) => {
+            const order: any = { present: 0, break: 1, leave: 2, offline: 3, absent: 4 }
+            return order[a.status] - order[b.status]
+        })
+    }, [myTeamList, allAttendance, teamApprovedLeaves])
+
     // Sort logic for staff
-    const sortedStaff = employees
+    const sortedStaff = (isUnassigned ? [] : myTeamList)
         .map((staff: any) => {
             // Find live status from allAttendance
             const attendanceRecord = allAttendance.find((a: any) => a.userId === staff.id)
@@ -1097,48 +1128,6 @@ export default function UserPortal() {
 
         return events
     }
-
-    // Team Status Helper: My Team + Manager
-    const myTeamList = useMemo(() => {
-        const team = employees.filter((e: any) =>
-            (userDepartmentId && e.departmentId === userDepartmentId) ||
-            (userManagerId && e.id === userManagerId)
-        )
-        // Deduplicate in case manager is in team
-        const unique = new Map()
-        team.forEach((m: any) => unique.set(m.id, m))
-        // Ensure *I* am in the list too (usually part of dept, but good to ensure)
-        if (session?.user?.email) {
-            const me = employees.find((e: any) => e.email === session.user?.email)
-            if (me) unique.set(me.id, me)
-        }
-        return Array.from(unique.values())
-    }, [employees, userDepartmentId, userManagerId, session])
-
-    const sortedTeamStatus = useMemo(() => {
-        return myTeamList.map((member: any) => {
-            // Find attendance record (today) from allAttendance (already fetched)
-            const record = allAttendance.find((a: any) => a.userId === member.id)
-
-            // Check if they are on APPROVED leave today
-            const onLeaveToday = teamApprovedLeaves.find((l: any) =>
-                l.userId === member.id &&
-                isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
-            )
-
-            let status = 'absent'
-            if (record?.status === 'clocked-in') status = 'present'
-            else if (record?.status === 'on-break') status = 'break'
-            else if (onLeaveToday) status = 'leave'
-            else if (record?.clockOut) status = 'offline'
-
-            return { ...member, status, record }
-        }).sort((a: any, b: any) => {
-            const order: any = { present: 0, break: 1, leave: 2, offline: 3, absent: 4 }
-            return order[a.status] - order[b.status]
-        })
-    }, [myTeamList, allAttendance, teamApprovedLeaves])
-
 
     // --- Derived State for UI ---
 
@@ -1503,7 +1492,7 @@ export default function UserPortal() {
                                         Staff Overview
                                     </TabsTrigger>
                                     <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                        Team Calendar
+                                        Staff Calendar
                                     </TabsTrigger>
                                 </TabsList>
                             </div>
@@ -1575,7 +1564,7 @@ export default function UserPortal() {
                                 <TableBody>
                                     {sortedStaff.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm">
+                                            <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm italic font-medium">
                                                 No staff found matching your criteria
                                             </TableCell>
                                         </TableRow>
@@ -1619,14 +1608,23 @@ export default function UserPortal() {
                     <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
                         <Card className="xl:col-span-3 border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
                             <CardHeader className="border-b border-border p-6 bg-muted/40">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-2">
+                                                {userDepartment && (
+                                                    <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-black uppercase tracking-widest px-2 py-0.5">
+                                                        {userDepartment} Team
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </div>
                                         <TabsList className="bg-slate-100 p-1 rounded-xl h-9">
                                             <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
                                                 Staff Overview
                                             </TabsTrigger>
                                             <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                                Team Calendar
+                                                Staff Calendar
                                             </TabsTrigger>
                                         </TabsList>
                                     </div>
@@ -1707,24 +1705,35 @@ export default function UserPortal() {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-6 flex-1 flex flex-col justify-center">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-6 rounded-[2rem] bg-green-50/50 border border-green-100 flex flex-col items-center justify-center shadow-sm">
-                                            <span className="text-3xl font-black text-green-700">{sortedStaff.filter((s: any) => s.status === 'present' || s.status === 'clocked-in').length}</span>
-                                            <span className="text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mt-2">Clocked In</span>
+                                    {sortedStaff.length === 0 ? (
+                                        <div className="text-center py-12 px-4 space-y-3">
+                                            <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto border border-slate-100">
+                                                <Users className="w-6 h-6 text-slate-300" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-black uppercase tracking-widest text-slate-400">No Data Available</p>
+                                            </div>
                                         </div>
-                                        <div className="p-6 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex flex-col items-center justify-center shadow-sm">
-                                            <span className="text-3xl font-black text-amber-700">{sortedStaff.filter((s: any) => s.status === 'break' || s.status === 'on-break').length}</span>
-                                            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-[0.2em] mt-2">On Break</span>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-6 rounded-[2rem] bg-green-50/50 border border-green-100 flex flex-col items-center justify-center shadow-sm">
+                                                <span className="text-3xl font-black text-green-700">{sortedStaff.filter((s: any) => s.status === 'present' || s.status === 'clocked-in' || s.status === 'Working').length}</span>
+                                                <span className="text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mt-2">Clocked In</span>
+                                            </div>
+                                            <div className="p-6 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex flex-col items-center justify-center shadow-sm">
+                                                <span className="text-3xl font-black text-amber-700">{sortedStaff.filter((s: any) => s.status === 'break' || s.status === 'on-break' || s.status === 'On Break').length}</span>
+                                                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-[0.2em] mt-2">On Break</span>
+                                            </div>
+                                            <div className="p-6 rounded-[2rem] bg-blue-50/50 border border-blue-100 flex flex-col items-center justify-center shadow-sm">
+                                                <span className="text-3xl font-black text-blue-700">{sortedStaff.filter((s: any) => s.status === 'on-leave' || s.status === 'On Leave' || s.status === 'leave').length}</span>
+                                                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mt-2">On Leave</span>
+                                            </div>
+                                            <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 flex flex-col items-center justify-center shadow-sm">
+                                                <span className="text-3xl font-black text-slate-700">{sortedStaff.filter((s: any) => s.status === 'absent' || s.status === 'clocked-out' || s.status === 'Off Duty' || s.status === 'offline').length}</span>
+                                                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mt-2">Clocked Out</span>
+                                            </div>
                                         </div>
-                                        <div className="p-6 rounded-[2rem] bg-blue-50/50 border border-blue-100 flex flex-col items-center justify-center shadow-sm">
-                                            <span className="text-3xl font-black text-blue-700">{sortedStaff.filter((s: any) => s.status === 'on-leave').length}</span>
-                                            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mt-2">On Leave</span>
-                                        </div>
-                                        <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 flex flex-col items-center justify-center shadow-sm">
-                                            <span className="text-3xl font-black text-slate-700">{sortedStaff.filter((s: any) => s.status === 'absent' || s.status === 'clocked-out').length}</span>
-                                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mt-2">Clocked Out</span>
-                                        </div>
-                                    </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>

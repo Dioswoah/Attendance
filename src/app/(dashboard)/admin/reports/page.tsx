@@ -42,7 +42,6 @@ export default function ExportPage() {
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [selectedDept, setSelectedDept] = useState("all")
-    const [includeArchived, setIncludeArchived] = useState(false)
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
@@ -76,7 +75,6 @@ export default function ExportPage() {
     }
 
     const filteredStaffForDropdown = allStaff
-        .filter(s => (includeArchived ? true : !s.isArchived))
         .filter(s => {
             const selectedDeptData = departments.find(d => d.id === selectedDept)
             const normalizedSelectedName = selectedDeptData?.name?.toLowerCase().trim()
@@ -167,18 +165,16 @@ export default function ExportPage() {
             if (res.ok) {
                 const rawData = await res.json()
 
-                // Filter data based on selected staff and archive status
+                // Filter data based on selected staff
                 const data = rawData.filter((record: any) => {
                     // Check if user is in selected list (if selection is active)
                     if (selectedStaffIds.length > 0) {
                         return selectedStaffIds.includes(record.userId)
                     }
 
-                    // Otherwise, check archive status if no specific selection
+                    // Otherwise, only show active staff by default
                     const user = allStaff.find(s => s.id === record.userId)
-                    if (!includeArchived && user?.isArchived) return false
-
-                    return true
+                    return !user?.isArchived
                 })
 
                 // Sheet 1: Logs (Sorted)
@@ -357,21 +353,19 @@ export default function ExportPage() {
                                             <span className="text-sm font-bold text-foreground leading-none truncate">Select All Staff</span>
                                         </div>
                                     </div>
-                                    {includeArchived && (
-                                        <div
-                                            className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-amber-50/50"
-                                            onClick={toggleAllArchived}
-                                        >
-                                            <Checkbox
-                                                checked={allStaff.filter(s => s.isArchived).length > 0 && allStaff.filter(s => s.isArchived).every(s => selectedStaffIds.includes(s.id))}
-                                                onCheckedChange={toggleAllArchived}
-                                            />
-                                            <div className="flex flex-col min-w-0">
-                                                <span className="text-sm font-bold text-amber-700 leading-none truncate">All Archived Staff</span>
-                                                <span className="text-[10px] text-amber-600/70 truncate">Quick Select</span>
-                                            </div>
+                                    <div
+                                        className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-amber-50/50"
+                                        onClick={toggleAllArchived}
+                                    >
+                                        <Checkbox
+                                            checked={allStaff.filter(s => s.isArchived).length > 0 && allStaff.filter(s => s.isArchived).every(s => selectedStaffIds.includes(s.id))}
+                                            onCheckedChange={toggleAllArchived}
+                                        />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-sm font-bold text-amber-700 leading-none truncate">All Archived Staff</span>
+                                            <span className="text-[10px] text-amber-600/70 truncate">Quick Select</span>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                                 <div className="max-h-[300px] overflow-y-auto p-1">
                                     {filteredStaffForDropdown.length === 0 ? (
@@ -415,18 +409,7 @@ export default function ExportPage() {
                     </div>
 
 
-                    <div className="flex items-center justify-end">
-                        <div className="flex items-center space-x-2 bg-muted/30 p-2 rounded-lg border border-border">
-                            <Checkbox
-                                id="include-archived"
-                                checked={includeArchived}
-                                onCheckedChange={(c) => setIncludeArchived(!!c)}
-                            />
-                            <Label htmlFor="include-archived" className="text-xs font-medium cursor-pointer">
-                                Include Archived Staff
-                            </Label>
-                        </div>
-                    </div>
+
 
                     <div className="space-y-3">
                         <Label>Quick Presets</Label>

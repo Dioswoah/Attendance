@@ -197,7 +197,7 @@ export default function HistoryPage() {
         return `${h}h ${m}m ${s}s`
     }
 
-    const setQuickRange = (range: 'today' | '7days' | '30days' | 'month') => {
+    const setQuickRange = (range: 'today' | '7days' | '30days' | 'month' | 'cutoff1' | 'cutoff2') => {
         const end = new Date()
         const start = new Date()
 
@@ -207,6 +207,16 @@ export default function HistoryPage() {
         } else if (range === '7days') start.setDate(end.getDate() - 7)
         else if (range === '30days') start.setDate(end.getDate() - 30)
         else if (range === 'month') start.setDate(1)
+        else if (range === 'cutoff1') {
+            // 26th of last month to 10th of current month
+            start.setMonth(start.getMonth() - 1)
+            start.setDate(26)
+            end.setDate(10)
+        } else if (range === 'cutoff2') {
+            // 11th to 25th of current month
+            start.setDate(11)
+            end.setDate(25)
+        }
 
         setStartDate(format(start, "yyyy-MM-dd"))
         setEndDate(format(end, "yyyy-MM-dd"))
@@ -218,9 +228,9 @@ export default function HistoryPage() {
         end: parseISO(endDate)
     })
 
-    const employees = (selectedStaffIds.length > 0 || selectedDept !== 'all' || includeArchived
+    const employees = (selectedStaffIds.length > 0 || selectedDept !== 'all'
         ? allStaff
-            .filter(s => (includeArchived ? true : !s.isArchived))
+            .filter(s => !s.isArchived || selectedStaffIds.includes(s.id))
             .filter(s => (selectedStaffIds.length === 0 || selectedStaffIds.includes(s.id)))
             .filter(s => (selectedDept === 'all' || s.departmentId === selectedDept))
             .map(s => ({
@@ -248,7 +258,6 @@ export default function HistoryPage() {
     })
 
     const filteredStaffForDropdown = allStaff
-        .filter(s => (includeArchived ? true : !s.isArchived))
         .filter(s => {
             const matchesDept = selectedDept === 'all' || s.departmentId === selectedDept
             const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
@@ -441,21 +450,19 @@ export default function HistoryPage() {
                                                 <span className="text-sm font-bold text-foreground leading-none truncate">Select All Staff</span>
                                             </div>
                                         </div>
-                                        {includeArchived && (
-                                            <div
-                                                className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-amber-50/50"
-                                                onClick={toggleAllArchived}
-                                            >
-                                                <Checkbox
-                                                    checked={allStaff.filter(s => s.isArchived).length > 0 && allStaff.filter(s => s.isArchived).every(s => selectedStaffIds.includes(s.id))}
-                                                    onCheckedChange={toggleAllArchived}
-                                                />
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className="text-sm font-bold text-amber-700 leading-none truncate">All Archived Staff</span>
-                                                    <span className="text-[10px] text-amber-600/70 truncate">Quick Select</span>
-                                                </div>
+                                        <div
+                                            className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-amber-50/50"
+                                            onClick={toggleAllArchived}
+                                        >
+                                            <Checkbox
+                                                checked={allStaff.filter(s => s.isArchived).length > 0 && allStaff.filter(s => s.isArchived).every(s => selectedStaffIds.includes(s.id))}
+                                                onCheckedChange={toggleAllArchived}
+                                            />
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-sm font-bold text-amber-700 leading-none truncate">All Archived Staff</span>
+                                                <span className="text-[10px] text-amber-600/70 truncate">Quick Select</span>
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
                                     <div className="max-h-[300px] overflow-y-auto p-1">
                                         {filteredStaffForDropdown.length === 0 ? (
@@ -498,20 +505,7 @@ export default function HistoryPage() {
                             </Popover>
                         </div>
                     </div>
-                    <div className="flex items-end justify-end">
-                        <div className="flex items-center space-x-2 bg-muted/30 p-2 rounded-lg border border-border">
-                            <Checkbox
-                                id="include-archived"
-                                checked={includeArchived}
-                                onCheckedChange={(c) => setIncludeArchived(!!c)}
-                            />
-                            <Label htmlFor="include-archived" className="text-xs font-medium cursor-pointer">
-                                Include Archived Staff
-                            </Label>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-4 border-t border-border">
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-t border-border mt-4 pt-4">
                         <div className="flex flex-wrap gap-2">
                             {activeTab !== 'daily' && ['today', '7days', '30days', 'month'].map(r => (
                                 <Button
@@ -524,6 +518,29 @@ export default function HistoryPage() {
                                     {r === 'today' ? 'Today' : r === '7days' ? 'Last 7 Days' : r === '30days' ? 'Last 30 Days' : 'This Month'}
                                 </Button>
                             ))}
+                            {activeTab === 'summary' && (
+                                <>
+                                    <div className="w-px h-6 bg-border mx-1 hidden md:block self-center" />
+                                    <Button
+                                        onClick={() => setQuickRange('cutoff1')}
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs font-black bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 transition-all gap-1.5"
+                                    >
+                                        <Zap className="h-3 w-3" />
+                                        1st Cutoff (26th-10th)
+                                    </Button>
+                                    <Button
+                                        onClick={() => setQuickRange('cutoff2')}
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs font-black bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-all gap-1.5"
+                                    >
+                                        <ShieldCheck className="h-3 w-3" />
+                                        2nd Cutoff (11th-25th)
+                                    </Button>
+                                </>
+                            )}
                         </div>
                         <div className="flex gap-2">
                             <Button onClick={refreshData} disabled={refreshing} variant="outline" size="sm" className="h-9">

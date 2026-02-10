@@ -87,13 +87,16 @@ export function TimezoneSettings({ compact = false, showLabel = true }: Timezone
                 throw new Error('Failed to update timezone settings')
             }
 
-            // Update the session
+            const updatedUser = await response.json()
+
+            // Update the session with all fields returned from server (including synced location)
             await update({
                 ...session,
                 user: {
                     ...session?.user,
-                    useCurrentTimezone,
-                    selectedTimezone
+                    useCurrentTimezone: updatedUser.useCurrentTimezone,
+                    selectedTimezone: updatedUser.selectedTimezone,
+                    location: updatedUser.location
                 }
             })
 

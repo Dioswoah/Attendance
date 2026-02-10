@@ -11,8 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Clock, FileText, Loader2, Calendar, UserMinus, Pencil, Trash2, Archive, ArchiveRestore } from "lucide-react"
-import { format, subDays, isSameDay } from "date-fns"
+import { Plus, Clock, FileText, Loader2, Calendar, UserMinus, Pencil, Trash2, Archive, ArchiveRestore, Coffee, Edit3 } from "lucide-react"
+import { format, subDays, isSameDay, parseISO, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 
@@ -55,9 +55,13 @@ export default function AmendRecordsPage() {
     }, [])
 
     const [dateFilter, setDateFilter] = useState({
-        start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+        start: format(subDays(new Date(), 2), 'yyyy-MM-dd'),
         end: format(new Date(), 'yyyy-MM-dd')
     })
+    const [viewFilter, setViewFilter] = useState("all") // 'all', 'today', 'yesterday', 'before'
+
+    const [actualRecords, setActualRecords] = useState<any[]>([])
+    const [isLoadingRecords, setIsLoadingRecords] = useState(true)
 
     const filteredRequests = requests.filter(r => {
         const matchesArchive = showArchived ? r.isArchived : !r.isArchived
@@ -84,11 +88,8 @@ export default function AmendRecordsPage() {
         return true
     })
 
-    // Dynamic Date Options
-    const [dateOptions, setDateOptions] = useState<{ label: string, value: string }[]>([])
-
     // Form State
-    const [selectedDateOption, setSelectedDateOption] = useState("today")
+    const [selectedDateOption, setSelectedDateOption] = useState(format(new Date(), 'yyyy-MM-dd'))
     const [recordType, setRecordType] = useState("CLOCK_IN")
     const [time, setTime] = useState("")
     const [reason, setReason] = useState("")
@@ -97,24 +98,29 @@ export default function AmendRecordsPage() {
     const [attendanceHistory, setAttendanceHistory] = useState<any[]>([])
     const [referenceTime, setReferenceTime] = useState<string | null>(null)
 
-    useEffect(() => {
-        // Generate last 3 days
-        const today = new Date()
-        const opts = [
-            { label: `${format(today, 'MMM dd, yyyy')} (Today)`, value: format(today, 'yyyy-MM-dd') },
-            { label: `${format(subDays(today, 1), 'MMM dd, yyyy')} (Yesterday)`, value: format(subDays(today, 1), 'yyyy-MM-dd') },
-            { label: `${format(subDays(today, 2), 'MMM dd, yyyy')} (Day Before)`, value: format(subDays(today, 2), 'yyyy-MM-dd') },
-        ]
-        setDateOptions(opts)
-        setSelectedDateOption(opts[0].value) // Default to today
-    }, [])
 
     useEffect(() => {
         if (session?.user?.id) {
             fetchRequests()
             fetchAttendanceHistory()
+            fetchActualRecords()
         }
-    }, [session])
+    }, [session, dateFilter])
+
+    const fetchActualRecords = async () => {
+        if (!session?.user?.id) return
+        setIsLoadingRecords(true)
+        try {
+            const res = await fetch(`/api/attendance?userId=${session.user.id}&startDate=${dateFilter.start}&endDate=${dateFilter.end}`)
+            if (res.ok) {
+                setActualRecords(await res.json())
+            }
+        } catch (error) {
+            console.error(error)
+        } finally {
+            setIsLoadingRecords(false)
+        }
+    }
 
     useEffect(() => {
         updateReferenceTime()
@@ -323,7 +329,7 @@ export default function AmendRecordsPage() {
 
     const resetForm = () => {
         setEditingId(null)
-        if (dateOptions.length > 0) setSelectedDateOption(dateOptions[0].value)
+        setSelectedDateOption(format(new Date(), 'yyyy-MM-dd'))
         setRecordType("CLOCK_IN")
         setTime("")
         setReason("")
@@ -364,11 +370,6 @@ export default function AmendRecordsPage() {
                     setDialogOpen(open)
                     if (!open) resetForm()
                 }}>
-                    <DialogTrigger asChild>
-                        <Button id="tour-amend-new-btn" className="bg-red-600 hover:bg-red-700 text-white gap-2">
-                            <Plus className="w-4 h-4" /> New Request
-                        </Button>
-                    </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>{editingId ? "Edit Correction Request" : "Request Correction"}</DialogTitle>
@@ -377,54 +378,16 @@ export default function AmendRecordsPage() {
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-                            {!editingId && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Date</Label>
-                                        <Select value={selectedDateOption} onValueChange={setSelectedDateOption}>
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {dateOptions.map(opt => (
-                                                    <SelectItem key={opt.value} value={opt.value}>
-                                                        {opt.label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Action Type</Label>
-                                        <Select value={recordType} onValueChange={setRecordType}>
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="CLOCK_IN">Clock In</SelectItem>
-                                                <SelectItem value="CLOCK_OUT">Clock Out</SelectItem>
-                                                <SelectItem value="BREAK_START">Start Break</SelectItem>
-                                                <SelectItem value="BREAK_END">End Break</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                            <div className="bg-muted/40 p-3 rounded-lg border border-border/50 mb-6 space-y-1">
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-muted-foreground uppercase font-bold tracking-wider">Date</span>
+                                    <span className="font-semibold">{format(parseISO(selectedDateOption), 'MMMM dd, yyyy')}</span>
                                 </div>
-                            )}
-
-                            {editingId && (
-                                <div className="p-3 bg-muted/40 rounded-lg text-sm mb-4 border border-border/50">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Date</Label>
-                                            <p className="font-medium">{format(new Date(selectedDateOption), 'MMM dd, yyyy')}</p>
-                                        </div>
-                                        <div>
-                                            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Action Type</Label>
-                                            <p className="font-medium capitalize">{recordType.toLowerCase().replace('_', ' ')}</p>
-                                        </div>
-                                    </div>
+                                <div className="flex justify-between text-xs pt-1 border-t border-border/20">
+                                    <span className="text-muted-foreground uppercase font-bold tracking-wider">Correcting</span>
+                                    <span className="font-semibold text-red-600">{recordType.replace('_', ' ')}</span>
                                 </div>
-                            )}
+                            </div>
 
                             <div className="space-y-2">
                                 <div className="flex justify-between">
@@ -459,7 +422,223 @@ export default function AmendRecordsPage() {
                 </Dialog>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-8 mb-4 gap-4">
+            <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-red-600" />
+                        <h2 className="text-lg font-bold">Attendance Records</h2>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 bg-muted/50 p-1 rounded-lg border border-border/50">
+                        <Button
+                            variant={viewFilter === "all" ? "default" : "ghost"}
+                            size="sm"
+                            className={cn("h-7 text-[10px] font-bold uppercase tracking-wider px-3", viewFilter === "all" ? "bg-red-600 hover:bg-red-700" : "")}
+                            onClick={() => setViewFilter("all")}
+                        >
+                            Last 3 Days
+                        </Button>
+                        <Button
+                            variant={viewFilter === "today" ? "default" : "ghost"}
+                            size="sm"
+                            className={cn("h-7 text-[10px] font-bold uppercase tracking-wider px-3", viewFilter === "today" ? "bg-red-600 hover:bg-red-700" : "")}
+                            onClick={() => setViewFilter("today")}
+                        >
+                            Today
+                        </Button>
+                        <Button
+                            variant={viewFilter === "yesterday" ? "default" : "ghost"}
+                            size="sm"
+                            className={cn("h-7 text-[10px] font-bold uppercase tracking-wider px-3", viewFilter === "yesterday" ? "bg-red-600 hover:bg-red-700" : "")}
+                            onClick={() => setViewFilter("yesterday")}
+                        >
+                            Yesterday
+                        </Button>
+                        <Button
+                            variant={viewFilter === "before" ? "default" : "ghost"}
+                            size="sm"
+                            className={cn("h-7 text-[10px] font-bold uppercase tracking-wider px-3", viewFilter === "before" ? "bg-red-600 hover:bg-red-700" : "")}
+                            onClick={() => setViewFilter("before")}
+                        >
+                            Day Before
+                        </Button>
+                    </div>
+                </div>
+                <div className="rounded-md border border-border bg-white overflow-hidden shadow-sm">
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-muted/40 hover:bg-muted/40">
+                                <TableHead className="w-[150px] font-bold text-foreground">Date</TableHead>
+                                <TableHead className="w-[120px] font-bold text-foreground">Mode</TableHead>
+                                <TableHead className="font-bold text-foreground text-center">Clock In</TableHead>
+                                <TableHead className="font-bold text-foreground text-center">Clock Out</TableHead>
+                                <TableHead className="font-bold text-foreground text-center">Breaks</TableHead>
+                                <TableHead className="w-[150px] font-bold text-foreground text-right border-l border-border/50">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoadingRecords ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="h-24 text-center">
+                                        <div className="flex justify-center"><Loader2 className="animate-spin text-red-600" /></div>
+                                    </TableCell>
+                                </TableRow>
+                            ) : (() => {
+                                const allDays = eachDayOfInterval({
+                                    start: startOfDay(parseISO(dateFilter.start)),
+                                    end: endOfDay(parseISO(dateFilter.end))
+                                }).reverse()
+
+                                const filteredDays = allDays.filter(day => {
+                                    if (viewFilter === "all") return true
+                                    if (viewFilter === "today") return isSameDay(day, new Date())
+                                    if (viewFilter === "yesterday") return isSameDay(day, subDays(new Date(), 1))
+                                    if (viewFilter === "before") return isSameDay(day, subDays(new Date(), 2))
+                                    return true
+                                })
+
+                                return filteredDays.map((day) => {
+                                    const dateStr = format(day, 'yyyy-MM-dd')
+                                    const record = actualRecords.find(r => r.date === dateStr && r.mode !== 'LEAVE')
+
+                                    return (
+                                        <TableRow key={dateStr} className="hover:bg-muted/50 transition-colors">
+                                            <TableCell className="font-medium align-middle">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-semibold">{format(day, 'MMM dd, yyyy')}</span>
+                                                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
+                                                        {isSameDay(day, new Date()) ? "Today" :
+                                                            isSameDay(day, subDays(new Date(), 1)) ? "Yesterday" :
+                                                                format(day, 'EEEE')}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="align-middle">
+                                                {record ? (
+                                                    <Badge variant="outline" className="font-bold text-[10px] uppercase tracking-wide">
+                                                        {record.mode}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-[10px] text-muted-foreground italic">No Log</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-center align-middle font-mono text-sm">
+                                                <div className="flex items-center justify-center gap-1.5 group/in">
+                                                    <span>{record?.clockIn ? format(parseISO(record.clockIn), 'hh:mm a') : '---'}</span>
+                                                    {record?.clockIn && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedDateOption(dateStr);
+                                                                setRecordType("CLOCK_IN");
+                                                                setReferenceTime(`Current: ${format(parseISO(record.clockIn), 'hh:mm a')}`);
+                                                                setTime(format(parseISO(record.clockIn), 'HH:mm'));
+                                                                setDialogOpen(true);
+                                                            }}
+                                                            className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/in:opacity-100"
+                                                        >
+                                                            <Edit3 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-center align-middle font-mono text-sm text-muted-foreground">
+                                                <div className="flex items-center justify-center gap-1.5 group/out">
+                                                    <span>{record?.clockOut ? format(parseISO(record.clockOut), 'hh:mm a') : '---'}</span>
+                                                    {record?.clockOut && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedDateOption(dateStr);
+                                                                setRecordType("CLOCK_OUT");
+                                                                setReferenceTime(`Current: ${format(parseISO(record.clockOut), 'hh:mm a')}`);
+                                                                setTime(format(parseISO(record.clockOut), 'HH:mm'));
+                                                                setDialogOpen(true);
+                                                            }}
+                                                            className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/out:opacity-100"
+                                                        >
+                                                            <Edit3 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-center align-middle">
+                                                {record?.breaks && record.breaks.length > 0 ? (
+                                                    <div className="flex flex-col gap-1 items-center font-mono">
+                                                        {record.breaks.map((b: any, bi: number) => (
+                                                            <div key={b.id || bi} className="text-[10px] bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-100 flex flex-col gap-0.5 items-start">
+                                                                <div className="flex items-center gap-2 group/bstart w-full justify-between">
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="font-bold opacity-60">S:</span>
+                                                                        <span>{format(parseISO(b.startTime), 'hh:mm a')}</span>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedDateOption(dateStr);
+                                                                            setRecordType("BREAK_START");
+                                                                            setReferenceTime(`Current: ${format(parseISO(b.startTime), 'hh:mm a')}`);
+                                                                            setTime(format(parseISO(b.startTime), 'HH:mm'));
+                                                                            setDialogOpen(true);
+                                                                        }}
+                                                                        className="opacity-0 group-hover/bstart:opacity-100 hover:text-red-600 ml-1"
+                                                                    >
+                                                                        <Edit3 className="w-2.5 h-2.5" />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 group/bend w-full justify-between">
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="font-bold opacity-60">E:</span>
+                                                                        <span>{b.endTime ? format(parseISO(b.endTime), 'hh:mm a') : '--:--'}</span>
+                                                                    </div>
+                                                                    {b.endTime && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setSelectedDateOption(dateStr);
+                                                                                setRecordType("BREAK_END");
+                                                                                setReferenceTime(`Current: ${format(parseISO(b.endTime), 'hh:mm a')}`);
+                                                                                setTime(format(parseISO(b.endTime), 'HH:mm'));
+                                                                                setDialogOpen(true);
+                                                                            }}
+                                                                            className="opacity-0 group-hover/bend:opacity-100 hover:text-red-600 ml-1"
+                                                                        >
+                                                                            <Edit3 className="w-2.5 h-2.5" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground italic">None</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-right align-middle border-l border-border/50 bg-muted/5">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-[10px] uppercase tracking-widest h-7 px-2"
+                                                    onClick={() => {
+                                                        setSelectedDateOption(dateStr)
+                                                        // Identify default action based on record status
+                                                        if (!record) setRecordType("CLOCK_IN")
+                                                        else if (!record.clockOut) setRecordType("CLOCK_OUT")
+                                                        else setRecordType("CLOCK_IN")
+
+                                                        setReferenceTime(record ? "Multiple entries found. Use specific icons to amend exact times." : "No log found for this date.")
+                                                        setDialogOpen(true)
+                                                    }}
+                                                >
+                                                    Amend
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })
+                            })()}
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-12 mb-4 gap-4 pt-8 border-t border-dashed border-border">
                 <div id="tour-amend-log" className="flex items-center gap-2">
                     <FileText className="w-5 h-5 text-red-600" />
                     <h2 className="text-lg font-bold">Request Log</h2>

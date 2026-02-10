@@ -13,6 +13,7 @@ import { RisaChatbot } from "@/components/RisaChatbot"
 import { UserOnboardingTour } from "@/components/UserOnboardingTour"
 
 import { TimezoneSettings } from "@/components/TimezoneSettings"
+import { ScrollIndicator } from "@/components/ScrollIndicator"
 
 export default function UserLayout({
     children,
@@ -417,6 +418,7 @@ export default function UserLayout({
                 </main>
             </div>
             <RisaChatbot />
+            <ScrollIndicator variant="maroon" offset="bottom-24" />
             <UserOnboardingTour mode="logic" />
         </div >
     )

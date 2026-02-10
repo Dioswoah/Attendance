@@ -27,9 +27,12 @@ import {
     Flame,
     Zap,
     ShieldCheck,
-    MoreHorizontal
+    MoreHorizontal,
+    Check,
+    X
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
 import { format, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useSession } from "next-auth/react"
@@ -92,6 +95,8 @@ export default function ManualEntryPage() {
     // Editing States
     const [editingRecord, setEditingRecord] = useState<any | null>(null)
     const [editForm, setEditForm] = useState<any>({})
+    const [editingBreakId, setEditingBreakId] = useState<string | null>(null)
+    const [breakEditForm, setBreakEditForm] = useState<any>(null)
 
     useEffect(() => {
         fetchInitialData()
@@ -344,7 +349,8 @@ export default function ManualEntryPage() {
                         mode: detailedData.mode,
                         date: detailedData.date,
                         status: detailedData.status,
-                        breaks: detailedData.breaks || []
+                        breaks: detailedData.breaks || [],
+                        allSessions: detailedData.allSessions || []
                     })
                 } else {
                     setEditingRecord(rec)
@@ -471,6 +477,79 @@ export default function ManualEntryPage() {
             toast.error('An error occurred while deleting the record', {
                 position: 'top-right'
             })
+        } finally {
+            setProcessing(false)
+        }
+    }
+
+    const deleteBreakInline = async (breakId: string) => {
+        if (!confirm("Are you sure you want to delete this break session?")) return
+        setProcessing(true)
+        try {
+            const res = await fetch(`/api/breaks/${breakId}`, { method: 'DELETE' })
+            if (res.ok) {
+                toast.success('Break session deleted')
+                // Refetch detailed attendance to update the list
+                const attRes = await fetch(`/api/attendance/${editingRecord.id}`)
+                if (attRes.ok) {
+                    const detailedData = await attRes.json()
+                    setEditForm((prev: any) => ({
+                        ...prev,
+                        breaks: detailedData.breaks || [],
+                        allSessions: detailedData.allSessions || []
+                    }))
+                }
+            } else {
+                toast.error('Failed to delete break')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setProcessing(false)
+        }
+    }
+
+    const startEditingBreak = (br: any) => {
+        setEditingBreakId(br.id)
+        setBreakEditForm({
+            startTime: br.startTime,
+            endTime: br.endTime,
+            date: br.date
+        })
+    }
+
+    const cancelEditingBreak = () => {
+        setEditingBreakId(null)
+        setBreakEditForm(null)
+    }
+
+    const saveBreakInline = async (breakId: string) => {
+        setProcessing(true)
+        try {
+            const res = await fetch(`/api/breaks/${breakId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(breakEditForm)
+            })
+            if (res.ok) {
+                toast.success('Break session updated')
+                setEditingBreakId(null)
+                setBreakEditForm(null)
+                // Refetch
+                const attRes = await fetch(`/api/attendance/${editingRecord.id}`)
+                if (attRes.ok) {
+                    const detailedData = await attRes.json()
+                    setEditForm((prev: any) => ({
+                        ...prev,
+                        breaks: detailedData.breaks || [],
+                        allSessions: detailedData.allSessions || []
+                    }))
+                }
+            } else {
+                toast.error('Failed to update break')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
         } finally {
             setProcessing(false)
         }
@@ -937,8 +1016,14 @@ export default function ManualEntryPage() {
                 </div>
             )}
             {/* Edit Dialog */}
-            <Dialog open={!!editingRecord} onOpenChange={(open) => !open && setEditingRecord(null)}>
-                <DialogContent>
+            <Dialog open={!!editingRecord} onOpenChange={(open) => {
+                if (!open) {
+                    setEditingRecord(null);
+                    setEditingBreakId(null);
+                    setBreakEditForm(null);
+                }
+            }}>
+                <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle>Edit {activeTab.slice(0, -1)} Record</DialogTitle>
                         <DialogDescription>Modify entry for {editingRecord?.userName}</DialogDescription>
@@ -946,28 +1031,91 @@ export default function ManualEntryPage() {
                     <form onSubmit={handleEditSubmit} className="space-y-4 py-4">
                         {activeTab === 'attendance' && (
                             <>
-                                <div className="space-y-2">
-                                    <Label>Date</Label>
-                                    <Input type="date" value={editForm.date} onChange={e => setEditForm({ ...editForm, date: e.target.value })} />
+                                <div className="space-y-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100 mb-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Reference Date</Label>
+                                        <Badge variant="outline" className="text-[9px] font-black text-primary bg-white px-2 py-0.5 rounded-full border border-slate-200">EXISTING RECORD</Badge>
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1 ml-1">
+                                        <div className="p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm text-primary">
+                                            <CalendarIcon className="h-4 w-4" />
+                                        </div>
+                                        <p className="text-xl font-black tracking-tight text-slate-900">
+                                            {formatDate(editForm.date)}
+                                        </p>
+                                    </div>
+                                    <input type="hidden" value={editForm.date} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label>Clock In</Label>
+                                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Clock In</Label>
                                         <Input type="time" value={editForm.clockIn ? formatTime(editForm.clockIn) : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
+                                                const localDate = new Date(`${format(parseISO(editForm.date), 'yyyy-MM-dd')}T${e.target.value}:00`);
                                                 setEditForm({ ...editForm, clockIn: localDate.toISOString() });
                                             }} />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Clock Out</Label>
+                                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Clock Out</Label>
                                         <Input type="time" value={editForm.clockOut ? formatTime(editForm.clockOut) : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
+                                                const localDate = new Date(`${format(parseISO(editForm.date), 'yyyy-MM-dd')}T${e.target.value}:00`);
                                                 setEditForm({ ...editForm, clockOut: localDate.toISOString() });
                                             }} />
                                     </div>
                                 </div>
+
+                                {/* Daily Sessions Compilation */}
+                                {editForm.allSessions && editForm.allSessions.length > 0 && (
+                                    <div className="space-y-2 border-t pt-4">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                            <Zap className="h-3 w-3 text-orange-500" />
+                                            Daily Sessions Summary
+                                        </Label>
+                                        <div className="space-y-2 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                                            {editForm.allSessions.map((session: any, idx: number) => {
+                                                const isCurrent = session.id === editingRecord?.id;
+                                                return (
+                                                    <div
+                                                        key={session.id}
+                                                        className={cn(
+                                                            "flex flex-col gap-2 p-3 rounded-lg border transition-all",
+                                                            isCurrent ? "bg-white border-primary shadow-sm ring-1 ring-primary/20" : "bg-white/50 border-slate-200 opacity-60"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={cn(
+                                                                    "text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter",
+                                                                    isCurrent ? "bg-primary text-white" : "bg-slate-200 text-slate-600"
+                                                                )}>
+                                                                    Session #{idx + 1} {isCurrent && "(Current)"}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-slate-400 capitalize">{session.mode.toLowerCase()}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 text-xs font-mono font-bold">
+                                                                <span className="text-green-600">{formatTime(session.clockIn)}</span>
+                                                                <ArrowRight className="h-3 w-3 text-slate-300" />
+                                                                <span className="text-red-600">{formatTime(session.clockOut)}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {session.breaks && session.breaks.length > 0 && (
+                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                {session.breaks.map((b: any, bIdx: number) => (
+                                                                    <div key={b.id} className="bg-amber-50 text-[9px] font-bold text-amber-700 px-1.5 py-0.5 rounded border border-amber-100 flex items-center gap-1">
+                                                                        <Coffee className="h-2 w-2" />
+                                                                        {formatTime(b.startTime)} - {formatTime(b.endTime)}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Break Sessions Compilation */}
                                 {editForm.breaks && editForm.breaks.length > 0 && (
@@ -976,22 +1124,111 @@ export default function ManualEntryPage() {
                                             <Coffee className="h-4 w-4 text-yellow-600" />
                                             Break Sessions ({editForm.breaks.length})
                                         </Label>
-                                        <div className="space-y-2 max-h-[200px] overflow-y-auto bg-muted/30 rounded-lg p-3">
-                                            {editForm.breaks.map((breakSession: any, index: number) => (
-                                                <div key={breakSession.id || index} className="flex items-center justify-between bg-white p-2 rounded border border-border">
-                                                    <div className="flex items-center gap-2 text-sm">
-                                                        <span className="font-medium text-yellow-700">#{index + 1}</span>
-                                                        <span className="text-muted-foreground">{formatTime(breakSession.startTime)}</span>
-                                                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                                                        <span className="text-muted-foreground">{formatTime(breakSession.endTime)}</span>
+                                        <div className="space-y-2 max-h-[250px] overflow-y-auto bg-muted/30 rounded-xl p-3">
+                                            {editForm.breaks.map((breakSession: any, index: number) => {
+                                                const isEditingBreak = editingBreakId === breakSession.id;
+
+                                                return (
+                                                    <div key={breakSession.id || index} className={cn(
+                                                        "flex flex-col gap-2 bg-white p-3 rounded-xl border transition-all",
+                                                        isEditingBreak ? "border-amber-400 shadow-md ring-1 ring-amber-400/20" : "border-border"
+                                                    )}>
+                                                        {isEditingBreak ? (
+                                                            <div className="space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Editing Break #{index + 1}</span>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <Button
+                                                                            type="button"
+                                                                            onClick={() => saveBreakInline(breakSession.id)}
+                                                                            size="icon"
+                                                                            variant="ghost"
+                                                                            className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                                        >
+                                                                            <Check className="h-4 w-4" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            type="button"
+                                                                            onClick={cancelEditingBreak}
+                                                                            size="icon"
+                                                                            variant="ghost"
+                                                                            className="h-7 w-7 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                                                                        >
+                                                                            <X className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    <div className="space-y-1">
+                                                                        <Label className="text-[9px] uppercase font-bold text-muted-foreground ml-1">Start</Label>
+                                                                        <Input
+                                                                            type="time"
+                                                                            className="h-8 text-xs"
+                                                                            value={breakEditForm.startTime ? format(parseISO(breakEditForm.startTime), "HH:mm") : ""}
+                                                                            onChange={e => {
+                                                                                const datePart = breakEditForm.date?.includes('T') ? breakEditForm.date.split('T')[0] : breakEditForm.date;
+                                                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
+                                                                                setBreakEditForm({ ...breakEditForm, startTime: localDate.toISOString() });
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        <Label className="text-[9px] uppercase font-bold text-muted-foreground ml-1">End</Label>
+                                                                        <Input
+                                                                            type="time"
+                                                                            className="h-8 text-xs"
+                                                                            value={breakEditForm.endTime ? format(parseISO(breakEditForm.endTime), "HH:mm") : ""}
+                                                                            onChange={e => {
+                                                                                const datePart = breakEditForm.date?.includes('T') ? breakEditForm.date.split('T')[0] : breakEditForm.date;
+                                                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
+                                                                                setBreakEditForm({ ...breakEditForm, endTime: localDate.toISOString() });
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center justify-between group">
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-bold text-yellow-700 text-xs">#{index + 1}</span>
+                                                                        <div className="flex items-center gap-2 text-sm font-mono font-bold">
+                                                                            <span className="text-slate-600">{formatTime(breakSession.startTime)}</span>
+                                                                            <ArrowRight className="h-3 w-3 text-slate-300" />
+                                                                            <span className="text-slate-600">{formatTime(breakSession.endTime)}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span className="text-[10px] text-muted-foreground ml-5">
+                                                                        {breakSession.endTime && breakSession.startTime
+                                                                            ? `${((new Date(breakSession.endTime).getTime() - new Date(breakSession.startTime).getTime()) / (1000 * 60)).toFixed(0)} min duration`
+                                                                            : 'Session In-Progress'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => startEditingBreak(breakSession)}
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                                                                    >
+                                                                        <Edit2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={() => deleteBreakInline(breakSession.id)}
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {breakSession.endTime && breakSession.startTime
-                                                            ? `${((new Date(breakSession.endTime).getTime() - new Date(breakSession.startTime).getTime()) / (1000 * 60)).toFixed(0)} min`
-                                                            : 'Ongoing'}
-                                                    </span>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                         <p className="text-xs text-muted-foreground italic">
                                             ⚠️ Note: Modifying clock in/out times may affect break session validity. Ensure break sessions fall within the new timeframe.
@@ -1056,24 +1293,37 @@ export default function ManualEntryPage() {
                         )}
                         {activeTab === 'breaks' && (
                             <>
-                                <div className="space-y-2">
-                                    <Label>Date</Label>
-                                    <Input type="date" value={editForm.date} onChange={e => setEditForm({ ...editForm, date: e.target.value })} />
+                                <div className="space-y-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100 mb-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Break Date</Label>
+                                        <Badge variant="outline" className="text-[9px] font-black text-amber-600 bg-white px-2 py-0.5 rounded-full border border-slate-200">BREAK SESSION</Badge>
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1 ml-1">
+                                        <div className="p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm text-amber-500">
+                                            <Coffee className="h-4 w-4" />
+                                        </div>
+                                        <p className="text-xl font-black tracking-tight text-slate-900">
+                                            {formatDate(editForm.date)}
+                                        </p>
+                                    </div>
+                                    <input type="hidden" value={editForm.date} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label>Start Time</Label>
+                                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Start Time</Label>
                                         <Input type="time" value={editForm.startTime ? format(parseISO(editForm.startTime), "HH:mm") : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
+                                                const datePart = editForm.date.includes('T') ? editForm.date.split('T')[0] : editForm.date;
+                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
                                                 setEditForm({ ...editForm, startTime: localDate.toISOString() });
                                             }} />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>End Time</Label>
+                                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">End Time</Label>
                                         <Input type="time" value={editForm.endTime ? format(parseISO(editForm.endTime), "HH:mm") : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${editForm.date}T${e.target.value}:00`);
+                                                const datePart = editForm.date.includes('T') ? editForm.date.split('T')[0] : editForm.date;
+                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
                                                 setEditForm({ ...editForm, endTime: localDate.toISOString() });
                                             }} />
                                     </div>

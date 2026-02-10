@@ -36,16 +36,29 @@ export async function PATCH(req: NextRequest) {
         }
 
         // Update user preferences
+        const updateData: any = {
+            useCurrentTimezone,
+            selectedTimezone: selectedTimezone || "UTC"
+        }
+
+        // SYNC: Update location based on timezone selection
+        // This ensures the Admin Portal directory stays in sync with user's manual settings
+        if (!useCurrentTimezone && selectedTimezone) {
+            if (selectedTimezone === 'Asia/Manila') {
+                updateData.location = 'Philippines'
+            } else if (selectedTimezone.startsWith('Australia/')) {
+                updateData.location = 'Australia'
+            }
+        }
+
         const updatedUser = await prisma.user.update({
             where: { id: session.user.id },
-            data: {
-                useCurrentTimezone,
-                selectedTimezone: selectedTimezone || "UTC"
-            },
+            data: updateData,
             select: {
                 id: true,
                 useCurrentTimezone: true,
-                selectedTimezone: true
+                selectedTimezone: true,
+                location: true
             }
         })
 

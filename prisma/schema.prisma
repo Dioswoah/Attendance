@@ -2,47 +2,45 @@ generator client {
   provider = "prisma-client-js"
 }
 
-
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id                 String         @id @default(cuid())
-  name               String?
-  email              String         @unique
-  password           String?
-  image              String?
-  departmentId       String?
-  teamId             String?
-  managerId          String?
-  location           String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  deletedAt          DateTime?
-  emailVerified      DateTime?
-  roles              Role[]         @default([USER])
-  isArchived         Boolean        @default(false)
-  accounts           Account[]
-  attendance         Attendance[]
-  managedDepartments Department[]   @relation("DepartmentManager")
-  leaves             Leave[]
-  notifications      Notification[]
-  attendanceRequests AttendanceRequest[]
-  leaveRequests      LeaveRequest[]
-  sessions           Session[]
-  ledTeams           Team[]         @relation("TeamLeader")
-  department         Department?    @relation(fields: [departmentId], references: [id])
-  manager            User?          @relation("UserManager", fields: [managerId], references: [id])
-  managedUsers       User[]         @relation("UserManager")
-  team               Team?          @relation(fields: [teamId], references: [id])
-  chatSessions       ChatSession[]
-  availabilityStatus UserStatus    @default(AVAILABLE)
-  useCurrentTimezone Boolean       @default(true)
-  selectedTimezone   String?       @default("UTC")
+  id                  String              @id @default(cuid())
+  name                String?
+  email               String              @unique
+  password            String?
+  image               String?
+  departmentId        String?
+  teamId              String?
+  managerId           String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  emailVerified       DateTime?
+  roles               Role[]              @default([USER])
+  isArchived          Boolean             @default(false)
+  deletedAt           DateTime?
+  availabilityStatus  UserStatus          @default(AVAILABLE)
+  location            String?
   customStatusMessage String?
+  selectedTimezone    String?             @default("UTC")
+  useCurrentTimezone  Boolean             @default(true)
+  accounts            Account[]
+  attendance          Attendance[]
+  attendanceRequests  AttendanceRequest[]
+  chatSessions        ChatSession[]
+  managedDepartments  Department[]        @relation("DepartmentManager")
+  leaves              Leave[]
+  leaveRequests       LeaveRequest[]
+  notifications       Notification[]
+  sessions            Session[]
+  ledTeams            Team[]              @relation("TeamLeader")
+  department          Department?         @relation(fields: [departmentId], references: [id])
+  manager             User?               @relation("UserManager", fields: [managerId], references: [id])
+  managedUsers        User[]              @relation("UserManager")
+  team                Team?               @relation(fields: [teamId], references: [id])
 }
 
 model Account {
@@ -57,22 +55,22 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([provider, providerAccountId])
 }
 
 model Session {
-  sessionToken String   @unique
+  sessionToken String    @unique
   userId       String
   expires      DateTime
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
@@ -85,13 +83,13 @@ model VerificationToken {
 }
 
 model Department {
-  id        String   @id @default(cuid())
-  name      String   @unique
+  id        String    @id @default(cuid())
+  name      String    @unique
   managerId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  manager   User?    @relation("DepartmentManager", fields: [managerId], references: [id])
+  manager   User?     @relation("DepartmentManager", fields: [managerId], references: [id])
   teams     Team[]
   users     User[]
 }
@@ -137,14 +135,14 @@ model Leave {
   endDate       DateTime
   type          String
   reason        String?
-  status        String    @default("APPROVED") // Changed default to APPROVED since requests handle pending
+  status        String    @default("APPROVED")
   duration      String
   startTime     DateTime?
   endTime       DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
   declineReason String?
+  deletedAt     DateTime?
   isArchived    Boolean   @default(false)
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -165,7 +163,6 @@ model LeaveRequest {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
-  
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -181,24 +178,59 @@ model Break {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   title     String
   message   String
   type      String
-  read      Boolean  @default(false)
+  read      Boolean   @default(false)
   link      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  createdAt DateTime  @default(now())
   deletedAt DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime  @default(now()) @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SystemSettings {
   key       String   @id
   value     String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model AttendanceRequest {
+  id            String    @id @default(cuid())
+  userId        String
+  date          DateTime
+  type          String
+  time          DateTime
+  reason        String?
+  status        String    @default("PENDING")
+  declineReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  isArchived    Boolean   @default(false)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String?       @default("New Chat")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime    @default(now())
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 enum Role {
@@ -221,33 +253,6 @@ enum WorkMode {
   OTHER
 }
 
-model AttendanceRequest {
-  id            String    @id @default(cuid())
-  userId        String
-  date          DateTime
-  type          String    // CLOCK_IN, CLOCK_OUT, BREAK_START, BREAK_END
-  time          DateTime
-  reason        String?
-  status        String    @default("PENDING") // PENDING, APPROVED, DECLINED
-  declineReason String?
-  isArchived    Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model ChatSession {
-  id        String        @id @default(cuid())
-  userId    String
-  title     String?       @default("New Chat")
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  ChatMessage[]
-}
-
 enum UserStatus {
   AVAILABLE
   BUSY
@@ -255,13 +260,4 @@ enum UserStatus {
   BE_RIGHT_BACK
   APPEAR_AWAY
   APPEAR_OFFLINE
-}
-
-model ChatMessage {
-  id        String      @id @default(cuid())
-  sessionId String
-  role      String // "user" or "model"
-  content   String      
-  createdAt DateTime    @default(now())
-  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }

@@ -21,6 +21,7 @@ import {
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
+import { ScrollIndicator } from "@/components/ScrollIndicator"
 
 import { useSession } from "next-auth/react"
 
@@ -142,6 +143,7 @@ export default function AdminLayout({
                 <main className="flex-1 p-8 min-w-0">
                     {children}
                 </main>
+                <ScrollIndicator variant="maroon" />
             </div>
         </div>
     )

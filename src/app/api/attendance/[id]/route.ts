@@ -30,10 +30,55 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             return NextResponse.json({ error: "Attendance record not found" }, { status: 404 })
         }
 
+        // Find sibling sessions for the same user on the same day
+        const startOfDay = new Date(attendance.date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(attendance.date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const siblingSessions = await prisma.attendance.findMany({
+            where: {
+                userId: attendance.userId,
+                date: {
+                    gte: startOfDay,
+                    lte: endOfDay
+                },
+                id: { not: id },
+                deletedAt: null
+            },
+            include: {
+                breaks: {
+                    where: { deletedAt: null },
+                    orderBy: { startTime: 'asc' }
+                }
+            },
+            orderBy: { clockIn: 'asc' }
+        })
+
         return NextResponse.json({
             ...attendance,
             userName: attendance.user.name,
-            department: attendance.user.department?.name
+            department: attendance.user.department?.name,
+            allSessions: [
+                {
+                    id: attendance.id,
+                    clockIn: attendance.clockIn,
+                    clockOut: attendance.clockOut,
+                    mode: attendance.mode,
+                    breaks: attendance.breaks
+                },
+                ...siblingSessions.map(s => ({
+                    id: s.id,
+                    clockIn: s.clockIn,
+                    clockOut: s.clockOut,
+                    mode: s.mode,
+                    breaks: s.breaks
+                }))
+            ].sort((a, b) => {
+                if (!a.clockIn) return 1;
+                if (!b.clockIn) return -1;
+                return new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime();
+            })
         })
     } catch (error) {
         console.error('Error fetching attendance record:', error)
