@@ -209,6 +209,15 @@ export default function AmendRecordsPage() {
             // Construct DateTime for the "time"
             // We need to combine targetDate (YYYY-MM-DD) with time (HH:MM)
             const dateTimeStr = `${dateStr}T${time}:00${offset}`
+            const requestDate = new Date(dateTimeStr)
+
+            if (requestDate > new Date()) {
+                toast.error("Cannot set attendance time in the future", {
+                    description: "Please select a time that has already passed."
+                })
+                setIsSubmitting(false)
+                return
+            }
 
             const payload = {
                 userId: session.user.id,
