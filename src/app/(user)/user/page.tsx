@@ -1634,34 +1634,57 @@ export default function UserPortal() {
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        sortedStaff.map((staff: any) => (
-                                            <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
-                                                <TableCell className="pl-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
-                                                            <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
-                                                                {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
-                                                            </AvatarFallback>
-                                                        </Avatar>
-                                                        <div>
-                                                            <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
-                                                            <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
+                                        sortedStaff.map((staff: any) => {
+                                            const isOnline = staff.status === 'clocked-in' || staff.status === 'on-break'
+                                            // Ensure we check availabilityStatus existence, default to AVAILABLE if online
+                                            const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                            const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+
+                                            return (
+                                                <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
+                                                    <TableCell className="pl-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="relative">
+                                                                <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
+                                                                    <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
+                                                                        {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
+                                                                    </AvatarFallback>
+                                                                </Avatar>
+                                                                {/* Status Dot */}
+                                                                {statusConfigItem && (
+                                                                    <div className={`absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10`} title={statusConfigItem.label}>
+                                                                        <statusConfigItem.icon className={`h-3 w-3 ${statusConfigItem.color}`} />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
+                                                                    {/* Custom Status Message */}
+                                                                    {(isOnline && (staff.customStatusMessage || (statusConfigItem && statusConfigItem.label !== 'Active'))) && (
+                                                                        <span className="text-[10px] text-muted-foreground/80 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
+                                                                            {staff.customStatusMessage || statusConfigItem?.label}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {getStaffStatusBadge(staff.status)}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline" className="text-[10px] font-medium text-slate-500 border-slate-200 bg-white">
-                                                        {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-right pr-6 text-xs font-mono font-medium text-slate-500">
-                                                    {staff.lastActive ? new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }) : '--:--'}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {getStaffStatusBadge(staff.status)}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="text-[10px] font-medium text-slate-500 border-slate-200 bg-white">
+                                                            {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-right pr-6 text-xs font-mono font-medium text-slate-500">
+                                                        {staff.lastActive ? new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }) : '--:--'}
+                                                    </TableCell>
+                                                </TableRow>
+                                            )
+                                        })
                                     )}
                                 </TableBody>
                             </Table>
