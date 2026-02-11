@@ -74,16 +74,8 @@ export default function AmendRecordsPage() {
 
         if (reqDate < start || reqDate > end) return false
 
-        // Hide cascaded requests (Break/ClockOut) if the Root Clock In is still pending
-        if (r.status === 'PENDING' && ['BREAK_START', 'BREAK_END', 'CLOCK_OUT'].includes(r.type)) {
-            const reqDateStr = new Date(r.date).toLocaleDateString()
-            const hasPendingClockIn = requests.some(pr =>
-                pr.type === 'CLOCK_IN' &&
-                pr.status === 'PENDING' &&
-                new Date(pr.date).toLocaleDateString() === reqDateStr
-            )
-            if (hasPendingClockIn) return false
-        }
+        // Removed logic that hides cascaded requests if Root Clock In is pending
+        // This allows users to see all their pending requests even if the clock-in is not approved yet.
 
         return true
     })

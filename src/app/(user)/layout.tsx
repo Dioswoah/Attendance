@@ -49,23 +49,13 @@ export default function UserLayout({
             if (attnRes.ok) {
                 const reqs = await attnRes.json()
                 if (Array.isArray(reqs)) {
-                    // Count total pending requests instead of unique dates
-                    // Count total pending requests instead of unique dates
-                    // Also filter out cascaded requests to match the Amend Records view
+                    // Count total pending requests
                     const filteredReqs = reqs.filter((r: any) => {
                         if (r.status !== 'PENDING') return false
 
-                        // Hide cascaded requests if Root Clock In is pending
-                        if (['BREAK_START', 'BREAK_END', 'CLOCK_OUT'].includes(r.type)) {
-                            const reqDateStr = new Date(r.date).toLocaleDateString()
-                            const hasPendingClockIn = reqs.some((pr: any) =>
-                                pr.type === 'CLOCK_IN' &&
-                                pr.status === 'PENDING' &&
-                                new Date(pr.date).toLocaleDateString() === reqDateStr
-                            )
-                            if (hasPendingClockIn) return false
-                        }
+                        // Removed hidden logic for cascaded requests to match Amend Records page
                         return true
+
                     })
                     setPendingAmendCount(filteredReqs.length)
                 } else {
