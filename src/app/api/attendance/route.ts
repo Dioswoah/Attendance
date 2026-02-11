@@ -207,23 +207,34 @@ async function cleanupDuplicateBreaks() {
 }
 
 /**
- * Reset all users' availability status to APPEAR_OFFLINE at the start of each day.
- * This ensures everyone appears offline until they clock in.
+ * Self-healing: Ensure users with active sessions are not marked as APPEAR_OFFLINE.
+ * This fixes issues where availability might have been incorrectly reset.
+ * We only promote APPEAR_OFFLINE -> AVAILABLE. We do not overwrite DND/BUSY.
  */
-async function resetDailyAvailability() {
+async function syncAvailabilityWithAttendance() {
     try {
-        await prisma.user.updateMany({
-            where: {
-                deletedAt: null,
-                isArchived: false
-            },
-            data: {
-                availabilityStatus: 'APPEAR_OFFLINE'
-            }
+        // 1. Get all currently clocked-in users
+        const activeSessions = await prisma.attendance.findMany({
+            where: { clockOut: null },
+            select: { userId: true }
         })
-        console.log('Daily availability status reset completed')
+        const activeUserIds = activeSessions.map(s => s.userId)
+
+        if (activeUserIds.length > 0) {
+            // 2. Find which of these users are currently marked "APPEAR_OFFLINE"
+            // and bump them back to AVAILABLE.
+            await prisma.user.updateMany({
+                where: {
+                    id: { in: activeUserIds },
+                    availabilityStatus: 'APPEAR_OFFLINE'
+                },
+                data: {
+                    availabilityStatus: 'AVAILABLE'
+                }
+            })
+        }
     } catch (error) {
-        console.error('Failed to reset daily availability:', error)
+        console.error('Failed to sync availability:', error)
     }
 }
 
@@ -231,7 +242,7 @@ export async function GET(req: Request) {
     try {
         await cleanupOldSessions()
         await cleanupDuplicateBreaks()
-        await resetDailyAvailability()
+        await syncAvailabilityWithAttendance()
     } catch (e) {
         console.error("Cleanup failed:", e)
     }
