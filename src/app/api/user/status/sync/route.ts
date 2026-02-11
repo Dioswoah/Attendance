@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from "@/auth"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 export async function POST(req: Request) {
     try {
@@ -45,13 +46,15 @@ export async function POST(req: Request) {
         }
 
         // Update DB
-        await prisma.user.update({
+        const updatedUser = await prisma.user.update({
             where: { id: session.user.id },
             data: {
                 availabilityStatus: googleStatus as any,
                 customStatusMessage: customMessage || null
             }
         })
+
+        broadcastUpdate('staff')
 
         return NextResponse.json({
             status: googleStatus,

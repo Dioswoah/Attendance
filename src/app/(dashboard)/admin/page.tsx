@@ -88,18 +88,27 @@ export default function AdminDashboard() {
 
         fetchData()
 
-        // Socket.IO connection disabled to prevent 404 spam
-        // const socket = io({
-        //     path: '/api/socket/io',
-        // })
+        // Realtime Updates via SSE
+        let eventSource: EventSource | null = null;
+        if (typeof EventSource !== 'undefined') {
+            eventSource = new EventSource('/api/stream');
+            eventSource.onmessage = (event) => {
+                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
+                try {
+                    const payload = JSON.parse(event.data);
+                    // Refresh if attendance, leaves, or STAFF status changes
+                    if (['attendance', 'leaves', 'staff'].includes(payload.type)) {
+                        fetchData();
+                    }
+                } catch (e) {
+                    // Silently fail parse
+                }
+            };
+        }
 
-        // socket.on("update-data", () => {
-        //     fetchData()
-        // })
-
-        // return () => {
-        //     socket.disconnect()
-        // }
+        return () => {
+            if (eventSource) eventSource.close();
+        }
     }, [])
 
     // Live Clock State

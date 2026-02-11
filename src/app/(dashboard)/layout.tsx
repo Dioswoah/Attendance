@@ -46,6 +46,35 @@ export default function AdminLayout({
         }
     }, [status, session, router])
 
+    // Poll Google Status to keep DB in sync (even for admins)
+    useEffect(() => {
+        if (!session?.user?.id) return
+
+        const syncStatus = async () => {
+            try {
+                // Use POST as per our route definition
+                await fetch('/api/user/status/sync', { method: 'POST' })
+            } catch (e) {
+                // Silent fail
+            }
+        }
+
+        // Initial Sync
+        syncStatus()
+
+        // Poll every 60 seconds
+        const interval = setInterval(syncStatus, 60000)
+
+        // Also sync on window focus (user comes back to tab)
+        const onFocus = () => syncStatus()
+        window.addEventListener('focus', onFocus)
+
+        return () => {
+            clearInterval(interval)
+            window.removeEventListener('focus', onFocus)
+        }
+    }, [session?.user?.id])
+
     if (isChecking) {
         return (
             <div className="min-h-screen w-full flex flex-col items-center justify-center bg-muted/20 gap-4">
