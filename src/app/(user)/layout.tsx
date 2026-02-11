@@ -67,6 +67,35 @@ export default function UserLayout({
         }
     }
 
+    // Poll Google Status to keep DB in sync
+    useEffect(() => {
+        if (!session?.user?.id) return
+
+        const syncStatus = async () => {
+            try {
+                // Use POST as per our route definition
+                await fetch('/api/user/status/sync', { method: 'POST' })
+            } catch (e) {
+                // Silent fail
+            }
+        }
+
+        // Initial Sync
+        syncStatus()
+
+        // Poll every 60 seconds
+        const interval = setInterval(syncStatus, 60000)
+
+        // Also sync on window focus (user comes back to tab)
+        const onFocus = () => syncStatus()
+        window.addEventListener('focus', onFocus)
+
+        return () => {
+            clearInterval(interval)
+            window.removeEventListener('focus', onFocus)
+        }
+    }, [session?.user?.id])
+
     useEffect(() => {
         fetchCounts()
 
