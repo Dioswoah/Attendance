@@ -1,5 +1,6 @@
 # PowerShell script to run database migrations on Google Cloud Run Jobs
 $ErrorActionPreference = "Stop"
+Set-Location "$PSScriptRoot/.."
 
 # Function to read .env file
 function Get-EnvVar {

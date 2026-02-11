@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Set-Location "$PSScriptRoot/.."
 
 # Function to read .env file
 function Get-EnvVar {

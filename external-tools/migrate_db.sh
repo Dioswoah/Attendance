@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# Setup a fresh database on Cloud SQL
-# This script will push the schema and seed the database
-
+# Create a Cloud Run Job for database migration
 # Load environment variables
+cd "$(dirname "$0")/.."
 if [ -f .env ]; then
     echo "Loading configuration from .env..."
     export $(cat .env | grep -v '^#' | xargs)
@@ -14,18 +13,22 @@ fi
 
 CLOUD_RUN_DATABASE_URL="postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
 
-echo "Creating/Updating migration job for fresh setup..."
-gcloud run jobs create setup-fresh-db \
+gcloud run jobs create migrate-db \
   --image gcr.io/${PROJECT_ID}/${SERVICE_NAME} \
   --region ${REGION} \
   --set-env-vars NODE_ENV=production \
   --set-env-vars DATABASE_URL="${CLOUD_RUN_DATABASE_URL}" \
   --set-cloudsql-instances ${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE} \
-  --command npm \
-  --args run,db:setup \
-  --quiet
+  --command npx \
+  --args prisma,migrate,deploy
 
-echo "Executing setup job (push + seed)..."
-gcloud run jobs execute setup-fresh-db --region ${REGION} --wait
+# Execute the job
+gcloud run jobs execute migrate-db --region ${REGION} --wait
 
-echo "Database fresh setup complete!"
+# Run seed
+gcloud run jobs update migrate-db \
+  --command npx \
+  --args prisma,db,seed \
+  --region ${REGION}
+
+gcloud run jobs execute migrate-db --region ${REGION} --wait

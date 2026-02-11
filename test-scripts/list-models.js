@@ -4,7 +4,7 @@ const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKe
 
 // Check environment variable loading
 const path = require('path');
-const envPath = path.resolve(__dirname, '.env');
+const envPath = path.resolve(__dirname, '..', '.env');
 const dotenv = require('dotenv');
 dotenv.config({ path: envPath });
 

@@ -1,3 +1,4 @@
+Set-Location "$PSScriptRoot/.."
 $SERVICE_NAME = "attendance-app"
 $logs = gcloud logging read "resource.labels.service_name=$SERVICE_NAME" --limit 500 --format="json" | ConvertFrom-Json
 foreach ($log in $logs) {

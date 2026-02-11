@@ -1,8 +1,9 @@
+Set-Location "$PSScriptRoot/.."
 # Check if Proxy is running
 $proxyProcess = Get-Process cloud-sql-proxy -ErrorAction SilentlyContinue
 if (-not $proxyProcess) {
     Write-Host "Starting Cloud SQL Proxy in a new window..."
-    Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", "& '.\start_proxy.ps1'"
+    Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", "& '$PSScriptRoot\start_proxy.ps1'"
     Write-Host "Waiting 5 seconds for proxy to initialize..."
     Start-Sleep -Seconds 5
 } else {

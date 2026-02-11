@@ -21,3 +21,14 @@ dist
 build
 prisma.config.ts
 docker-compose.yml
+
+# Project specific folders to exclude (Clean Deployment)
+documentation/
+logs/
+test-results/
+test-scripts/
+external-tools/
+.gemini/
+.agent/
+reports/
+tmp/

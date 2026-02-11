@@ -3,6 +3,7 @@
 # Deploy the Cloud Run Service
 # Deploy the Cloud Run Service
 # Load environment variables
+cd "$(dirname "$0")/.."
 if [ -f .env ]; then
     echo "Loading configuration from .env..."
     export $(cat .env | grep -v '^#' | xargs)

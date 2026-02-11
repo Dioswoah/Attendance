@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Update the Cloud Run Job to use 'prisma db push' since there are no migration files
+cd "$(dirname "$0")/.."
 echo "Updating migration job to use 'db push'..."
 gcloud run jobs update migrate-db \
   --command npx \

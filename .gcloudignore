@@ -1,0 +1,25 @@
+.gcloudignore
+.git
+.gitignore
+node_modules/
+.next/
+documentation/
+logs/
+test-results/
+test-scripts/
+external-tools/
+.gemini/
+.agent/
+reports/
+tmp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.bak
+.env.*
+Dockerfile
+docker-compose.yml
+# But we NEED Dockerfile to be uploaded!
+!Dockerfile

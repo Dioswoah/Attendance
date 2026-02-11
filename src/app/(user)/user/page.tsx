@@ -1007,15 +1007,37 @@ export default function UserPortal() {
         })
     }, [myTeamList, allAttendance, teamApprovedLeaves])
 
+    // Pending Clock-In memo for display optimization
+    const pendingClockInForDisplay = useMemo(() => {
+        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+        return myAttendanceRequests.find((req: any) => {
+            if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
+            const reqDate = new Date(req.time || req.date)
+            return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
+        })
+    }, [myAttendanceRequests, userTimeZone])
+
     // Sort logic for staff
     const sortedStaff = myTeamList
         .map((staff: any) => {
-            // Find live status from allAttendance
+            // Find live status from all Attendance (Server truth)
             const attendanceRecord = allAttendance.find((a: any) => a.userId === staff.id)
+
+            // OPTIMISTIC OVERRIDE: If this is the current user, use the portal's calculated optimistic status.
+            // This ensures manual clock-in amendments show the user as "Clocked In" immediately in this view.
+            const isMe = staff.id === userId
+            const liveStatus = isMe ? optimisticStatus : (attendanceRecord ? attendanceRecord.status : 'clocked-out')
+
+            // OPTIMISTIC LAST ACTIVE: Also show the pending time if applicable for display consistency
+            let lastActive = attendanceRecord ? attendanceRecord.clockIn : null
+            if (isMe && pendingClockInForDisplay && (liveStatus === 'clocked-in' || liveStatus === 'on-break')) {
+                lastActive = pendingClockInForDisplay.time || pendingClockInForDisplay.date
+            }
+
             return {
                 ...staff,
-                status: attendanceRecord ? attendanceRecord.status : 'clocked-out', // Default to offline
-                lastActive: attendanceRecord ? attendanceRecord.clockIn : null,
+                status: liveStatus,
+                lastActive: lastActive,
                 returnDate: attendanceRecord ? attendanceRecord.returnDate : null
             }
         })
@@ -1280,12 +1302,6 @@ export default function UserPortal() {
     const breakEnd = () => handleAction('end-break')
     const handleLeaveSubmit = requestLeave
 
-    const pendingClockInForDisplay = myAttendanceRequests.find((req: any) => {
-        if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
-        const reqDate = new Date(req.time || req.date)
-        const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
-        return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
-    })
 
     return (
         <div className="space-y-8 w-full">
