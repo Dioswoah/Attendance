@@ -12,7 +12,6 @@ export async function POST(req: Request) {
 
         const token = (session as any).accessToken
         if (!token) {
-            // No token (maybe logged in with credentials?), can't sync.
             return NextResponse.json({ error: "No Google Access Token" }, { status: 400 })
         }
 
@@ -20,25 +19,41 @@ export async function POST(req: Request) {
         let customMessage = '';
 
         try {
-            const chatRes = await fetch('https://chat.googleapis.com/v1/users/me/presence', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            // Check Google Calendar for current status (Busy/OOO)
+            // Chat Presence API is not public, so we infer from Calendar Events.
+            const now = new Date().toISOString()
+            const timeMin = new Date().toISOString()
+            const timeMax = new Date(Date.now() + 60000).toISOString() // 1 minute window
 
-            if (chatRes.ok) {
-                const chatData = await chatRes.json();
+            const calRes = await fetch(
+                `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
 
-                // Map Google Status -> App Status
-                if (chatData.presence === 'DO_NOT_DISTURB') googleStatus = 'DO_NOT_DISTURB';
-                else if (chatData.presence === 'AWAY') googleStatus = 'APPEAR_AWAY';
-                else if (chatData.presence === 'OFFLINE') googleStatus = 'APPEAR_OFFLINE';
-                else googleStatus = 'AVAILABLE';
+            if (calRes.ok) {
+                const calData = await calRes.json();
+                const events = calData.items || [];
 
-                if (chatData.customStatus?.status) {
-                    customMessage = chatData.customStatus.status;
+                // Find priority event: OutOfOffice > Busy
+                const activeEvent = events.find((e: any) => e.transparency === 'opaque' || e.eventType === 'outOfOffice');
+
+                if (activeEvent) {
+                    if (activeEvent.eventType === 'outOfOffice') {
+                        googleStatus = 'APPEAR_AWAY';
+                        customMessage = activeEvent.summary || 'Out of Office';
+                    } else if (activeEvent.transparency === 'opaque') {
+                        // Busy means DND/In Meeting
+                        googleStatus = 'DO_NOT_DISTURB';
+                        customMessage = activeEvent.summary || 'Busy';
+                    }
+                } else {
+                    // No event = Available
+                    googleStatus = 'AVAILABLE';
                 }
             } else {
-                console.error("[Sync] Google Chat API Failed:", await chatRes.text())
-                return NextResponse.json({ status: 'unchanged', error: 'Google API Error' })
+                console.error("[Sync] Calendar API Failed:", await calRes.text())
+                // Fail silently for now to avoid breaking UI if scope missing
+                return NextResponse.json({ status: 'unchanged', error: 'Calendar API Error' })
             }
         } catch (e) {
             console.error("[Sync] Network Error:", e)
