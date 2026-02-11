@@ -9,7 +9,7 @@ export default {
             allowDangerousEmailAccountLinking: true,
             authorization: {
                 params: {
-                    scope: 'openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/contacts.presence.readonly',
+                    scope: 'openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/chat.users.readstate',
                     access_type: 'offline',
                     prompt: 'select_account',
                 }

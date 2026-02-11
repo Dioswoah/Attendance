@@ -144,50 +144,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     let customMessage = '';
 
                     try {
-                        // Priority 1: People API (Matches User Request structure)
-                        // Requires 'contacts.presence.readonly' scope
-                        const peopleRes = await fetch('https://people.googleapis.com/v1/people/me?personFields=presence', {
+                        const chatRes = await fetch('https://chat.googleapis.com/v1/users/me/presence', {
                             headers: { 'Authorization': `Bearer ${account.access_token}` }
                         });
 
-                        if (peopleRes.ok) {
-                            const peopleData = await peopleRes.json();
-                            console.log('[Auth] Login Sync - People Presence:', peopleData);
+                        if (chatRes.ok) {
+                            const chatData = await chatRes.json();
+                            console.log('[Auth] Login Sync - Chat Presence:', chatData);
 
-                            const presence = peopleData.presence;
-                            if (presence) {
-                                // Map State
-                                switch (presence.state) {
-                                    case 'ACTIVE': initialStatus = 'AVAILABLE'; break;
-                                    case 'DND': initialStatus = 'DO_NOT_DISTURB'; break;
-                                    case 'AWAY': initialStatus = 'APPEAR_AWAY'; break; // "Set as Away"
-                                    default: initialStatus = 'AVAILABLE';
-                                }
+                            if (chatData.presence === 'DO_NOT_DISTURB') initialStatus = 'DO_NOT_DISTURB';
+                            else if (chatData.presence === 'AWAY') initialStatus = 'APPEAR_AWAY';
+                            else if (chatData.presence === 'OFFLINE') initialStatus = 'APPEAR_OFFLINE';
+                            else initialStatus = 'AVAILABLE';
 
-                                // Check for Custom Status
-                                if (presence.status && presence.status.statusMessage) {
-                                    customMessage = presence.status.statusMessage;
-                                }
-                            }
-                        } else {
-                            // Priority 2: Fallback to Chat API
-                            console.log('[Auth] People API failed, falling back to Chat API...');
-                            const chatRes = await fetch('https://chat.googleapis.com/v1/users/me/presence', {
-                                headers: { 'Authorization': `Bearer ${account.access_token}` }
-                            });
-
-                            if (chatRes.ok) {
-                                const chatData = await chatRes.json();
-                                console.log('[Auth] Login Sync - Chat Presence:', chatData);
-
-                                if (chatData.presence === 'DO_NOT_DISTURB') initialStatus = 'DO_NOT_DISTURB';
-                                else if (chatData.presence === 'AWAY') initialStatus = 'APPEAR_AWAY';
-                                else if (chatData.presence === 'OFFLINE') initialStatus = 'APPEAR_OFFLINE';
-                                else initialStatus = 'AVAILABLE';
-
-                                if (chatData.customStatus?.status) {
-                                    customMessage = chatData.customStatus.status;
-                                }
+                            if (chatData.customStatus?.status) {
+                                customMessage = chatData.customStatus.status;
                             }
                         }
                     } catch (e) {
