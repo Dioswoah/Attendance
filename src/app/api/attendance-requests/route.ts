@@ -32,14 +32,32 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { userId, date, type, time, reason } = body
+        const { userId, type, time, reason } = body
+
+        // Fetch User to determine timezone for proper date normalization
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { manager: true }
+        }) as any
+
+        if (!user) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 })
+        }
+
+        const timeZone = user.selectedTimezone || 'Asia/Manila'
+        const eventTime = new Date(time)
+
+        // Determine the "Logical Date" based on the Event's Local Time
+        // This ensures Feb 11 5 AM Manila is recorded as Feb 11, not Feb 10 (UTC)
+        const localDateStr = eventTime.toLocaleDateString('en-CA', { timeZone }) // YYYY-MM-DD
+        const normalizedDate = new Date(`${localDateStr}T00:00:00Z`)
 
         const request = await prisma.attendanceRequest.create({
             data: {
                 userId,
-                date: new Date(date),
+                date: normalizedDate,
                 type,
-                time: new Date(time),
+                time: eventTime,
                 reason,
                 status: 'PENDING'
             }
@@ -47,16 +65,11 @@ export async function POST(req: Request) {
 
         // PROVISIONAL ATTENDANCE:
         // If this is a CLOCK_IN request, we create a provisional Attendance record (if none exists).
-        // This allows the user to continue working (Start Break, etc.) without a "domino effect" of cascading requests.
-        // If this request is later DECLINED, the provisional record should be removed (handled in approval logic).
         if (type === 'CLOCK_IN') {
-            const targetDate = new Date(date)
-            targetDate.setUTCHours(0, 0, 0, 0)
-
             const existing = await prisma.attendance.findFirst({
                 where: {
                     userId,
-                    date: targetDate
+                    date: normalizedDate
                 }
             })
 
@@ -64,21 +77,15 @@ export async function POST(req: Request) {
                 await prisma.attendance.create({
                     data: {
                         userId,
-                        date: targetDate,
-                        clockIn: new Date(time),
+                        date: normalizedDate,
+                        clockIn: eventTime,
                         status: 'PRESENT',
-                        mode: 'OFFICE', // Default, or infer?
+                        mode: 'OFFICE',
                         notes: `PROVISIONAL_REQUEST:${request.id}`
                     }
                 })
             }
         }
-
-        // Notify Manager
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            include: { manager: true }
-        }) as any
 
         const session = await auth() as any
 
@@ -87,7 +94,7 @@ export async function POST(req: Request) {
                 data: {
                     userId: user.managerId,
                     title: "Attendance Correction Request",
-                    message: `${user.name} requesting correction for ${type} on ${new Date(date).toLocaleDateString()}`,
+                    message: `${user.name} requesting correction for ${type} on ${localDateStr}`,
                     type: "LEAVE_REQUEST",
                     link: "/user/manager"
                 }
@@ -102,9 +109,9 @@ export async function POST(req: Request) {
                     userEmail: user.email,
                     userAccessToken: session.accessToken,
                     leaveType: `Correction: ${type}`,
-                    startDate: new Date(date).toLocaleDateString(),
-                    endDate: new Date(date).toLocaleDateString(),
-                    duration: new Date(time).toLocaleTimeString(),
+                    startDate: localDateStr,
+                    endDate: localDateStr,
+                    duration: eventTime.toLocaleTimeString(),
                     reason: reason,
                     leaveId: request.id
                 })

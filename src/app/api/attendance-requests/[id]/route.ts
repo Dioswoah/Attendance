@@ -25,16 +25,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const isUserEditing = session.user.id === request.userId && !isAdmin && !isManager
 
         // Update Request
+        const timeZone = request.user.selectedTimezone || 'Asia/Manila'
+        const newTime = body.time ? new Date(body.time) : new Date(request.time)
+        const localDateStr = newTime.toLocaleDateString('en-CA', { timeZone })
+        const normalizedDate = new Date(`${localDateStr}T00:00:00Z`)
+
         const updatedRequest = await prisma.attendanceRequest.update({
             where: { id },
             data: {
                 status: isUserEditing ? "PENDING" : (body.status || request.status),
                 declineReason: isUserEditing ? null : (body.declineReason || request.declineReason),
-                // Allow editing if body provides them
-                time: body.time ? new Date(body.time) : undefined,
+                time: body.time ? newTime : undefined,
                 type: body.type !== undefined ? body.type : request.type,
                 reason: body.reason !== undefined ? body.reason : request.reason,
-                date: body.date ? new Date(body.date) : undefined,
+                date: normalizedDate,
                 // @ts-ignore
                 isArchived: body.isArchived !== undefined ? body.isArchived : request.isArchived,
             }
