@@ -138,22 +138,57 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     });
                 }
 
-                // 4. Force initial sync with Google Chat Presence on Login
-                // Instead of blindly forcing 'AVAILABLE', we try to fetch the real status immediately
+                // 4. Force initial sync with Google Presence (People API) on Login
                 if (dbUser && account?.access_token) {
                     let initialStatus = 'AVAILABLE';
+                    let customMessage = '';
+
                     try {
-                        const chatRes = await fetch('https://chat.googleapis.com/v1/users/me/presence', {
+                        // Priority 1: People API (Matches User Request structure)
+                        // Requires 'contacts.presence.readonly' scope
+                        const peopleRes = await fetch('https://people.googleapis.com/v1/people/me?personFields=presence', {
                             headers: { 'Authorization': `Bearer ${account.access_token}` }
                         });
 
-                        if (chatRes.ok) {
-                            const chatData = await chatRes.json();
-                            console.log('[Auth] Login Sync - Chat Presence:', chatData);
+                        if (peopleRes.ok) {
+                            const peopleData = await peopleRes.json();
+                            console.log('[Auth] Login Sync - People Presence:', peopleData);
 
-                            if (chatData.presence === 'DO_NOT_DISTURB') initialStatus = 'DO_NOT_DISTURB';
-                            else if (chatData.presence === 'AWAY' || chatData.presence === 'OFFLINE') initialStatus = 'APPEAR_OFFLINE';
-                            else initialStatus = 'AVAILABLE';
+                            const presence = peopleData.presence;
+                            if (presence) {
+                                // Map State
+                                switch (presence.state) {
+                                    case 'ACTIVE': initialStatus = 'AVAILABLE'; break;
+                                    case 'DND': initialStatus = 'DO_NOT_DISTURB'; break;
+                                    case 'AWAY': initialStatus = 'APPEAR_AWAY'; break; // "Set as Away"
+                                    default: initialStatus = 'AVAILABLE';
+                                }
+
+                                // Check for Custom Status
+                                if (presence.status && presence.status.statusMessage) {
+                                    customMessage = presence.status.statusMessage;
+                                }
+                            }
+                        } else {
+                            // Priority 2: Fallback to Chat API
+                            console.log('[Auth] People API failed, falling back to Chat API...');
+                            const chatRes = await fetch('https://chat.googleapis.com/v1/users/me/presence', {
+                                headers: { 'Authorization': `Bearer ${account.access_token}` }
+                            });
+
+                            if (chatRes.ok) {
+                                const chatData = await chatRes.json();
+                                console.log('[Auth] Login Sync - Chat Presence:', chatData);
+
+                                if (chatData.presence === 'DO_NOT_DISTURB') initialStatus = 'DO_NOT_DISTURB';
+                                else if (chatData.presence === 'AWAY') initialStatus = 'APPEAR_AWAY';
+                                else if (chatData.presence === 'OFFLINE') initialStatus = 'APPEAR_OFFLINE';
+                                else initialStatus = 'AVAILABLE';
+
+                                if (chatData.customStatus?.status) {
+                                    customMessage = chatData.customStatus.status;
+                                }
+                            }
                         }
                     } catch (e) {
                         console.error('[Auth] Failed to sync status on login:', e);
@@ -161,7 +196,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
                     await prisma.user.update({
                         where: { id: dbUser.id },
-                        data: { availabilityStatus: initialStatus as any }
+                        data: {
+                            availabilityStatus: initialStatus as any,
+                            customStatusMessage: customMessage || null
+                        }
                     });
                 }
 

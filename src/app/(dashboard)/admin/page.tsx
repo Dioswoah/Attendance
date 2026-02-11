@@ -420,7 +420,7 @@ export default function AdminDashboard() {
 
                                                             return (
                                                                 <span className="text-[10px] text-muted-foreground/60 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
-                                                                    {statusLabel}
+                                                                    {emp.customStatusMessage || statusLabel}
                                                                 </span>
                                                             )
                                                         })()}
