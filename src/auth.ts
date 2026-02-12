@@ -6,7 +6,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig,
     session: {
         strategy: "jwt",
-        maxAge: 60 * 60, // 1 hour - force session refresh
+        maxAge: 30 * 24 * 60 * 60, // 30 days - Remember Me (Standard Practice)
     },
     pages: {
         error: '/unauthorized',
