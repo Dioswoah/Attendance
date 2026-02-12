@@ -150,13 +150,54 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {
+        // 1. Fetch the request to know its type
+        const request = await prisma.attendanceRequest.findUnique({
+            where: { id }
+        })
+
+        if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+        // 2. Perform soft delete on the request
         await prisma.attendanceRequest.update({
             where: { id },
             data: { deletedAt: new Date() }
         })
+
+        // 3. PROVISIONAL CLEANUP (ON DELETE):
+        // If this request created a provisional attendance record, we MUST clean it up
+        // to avoid "ruined data integrity" as the user described.
+        const provisional = await prisma.attendance.findFirst({
+            where: {
+                userId: request.userId,
+                notes: `PROVISIONAL_REQUEST:${id}`
+            }
+        })
+
+        if (provisional) {
+            // Check if there's other meaningful data in this record
+            // If it only has the clock-in from the request and no clock-out, delete the whole record.
+            // If it has a clock-out, keep the record but null the clock-in (making it "blank" as requested).
+            if (provisional.clockOut) {
+                const updateData: any = { notes: null }
+                if (request.type === 'CLOCK_IN') updateData.clockIn = null
+                if (request.type === 'BREAK_START') updateData.breakStart = null
+                // ... handle other types if necessary
+
+                await prisma.attendance.update({
+                    where: { id: provisional.id },
+                    data: updateData
+                })
+            } else {
+                await prisma.attendance.delete({
+                    where: { id: provisional.id }
+                })
+            }
+        }
+
         broadcastUpdate('attendance', { id, deleted: true })
         return NextResponse.json({ success: true })
     } catch (e) {
+        console.error("Delete request error:", e)
         return NextResponse.json({ error: "Failed to delete" }, { status: 500 })
     }
 }

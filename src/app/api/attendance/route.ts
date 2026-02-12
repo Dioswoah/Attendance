@@ -344,7 +344,7 @@ export async function GET(req: Request) {
             ]
         }
 
-        const [attendance, leaves, allFutureLeaves] = await Promise.all([
+        const [attendance, leaves, allFutureLeaves, pendingRequests] = await Promise.all([
             prisma.attendance.findMany({
                 where: whereClause,
                 include: {
@@ -379,29 +379,54 @@ export async function GET(req: Request) {
                     startDate: true,
                     endDate: true
                 }
-            }) : Promise.resolve([])
+            }) : Promise.resolve([]),
+            prisma.attendanceRequest.findMany({
+                where: {
+                    status: 'PENDING',
+                    deletedAt: null,
+                    ...(userId && { userId }),
+                    ...(whereClause.date && { date: whereClause.date })
+                },
+                select: {
+                    id: true,
+                    userId: true,
+                    date: true,
+                    type: true,
+                    status: true
+                }
+            })
         ])
 
         // Transform Helpers
-        const transformRecord = (a: any) => ({
-            id: a.id,
-            userId: a.userId,
-            userName: a.user?.name || 'Unknown',
-            userImage: a.user?.image,
-            department: a.user?.department?.name || 'Unassigned',
-            date: a.date.toISOString().split('T')[0],
-            clockIn: a.clockIn?.toISOString(),
-            clockOut: a.clockOut?.toISOString(),
-            mode: a.mode,
-            status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
-            breakStart: a.breakStart?.toISOString(),
-            breakEnd: a.breakEnd?.toISOString(),
-            breaks: a.breaks?.map((b: any) => ({
-                id: b.id,
-                startTime: b.startTime.toISOString(),
-                endTime: b.endTime?.toISOString()
-            })) || []
-        })
+        const transformRecord = (a: any) => {
+            const dateStr = a.date instanceof Date ? a.date.toISOString().split('T')[0] : String(a.date).split('T')[0]
+            const pendingForThisDay = pendingRequests.filter(pr => {
+                const prDate = pr.date instanceof Date ? pr.date.toISOString().split('T')[0] : String(pr.date).split('T')[0]
+                return pr.userId === a.userId && prDate === dateStr
+            })
+
+            return {
+                id: a.id,
+                userId: a.userId,
+                userName: a.user?.name || 'Unknown',
+                userImage: a.user?.image,
+                department: a.user?.department?.name || 'Unassigned',
+                date: dateStr,
+                clockIn: a.clockIn?.toISOString(),
+                clockOut: a.clockOut?.toISOString(),
+                mode: a.mode,
+                status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
+                breakStart: a.breakStart?.toISOString(),
+                breakEnd: a.breakEnd?.toISOString(),
+                notes: a.notes,
+                pendingRequests: pendingForThisDay,
+                breaks: a.breaks?.map((b: any) => ({
+                    id: b.id,
+                    startTime: b.startTime.toISOString(),
+                    endTime: b.endTime?.toISOString()
+                })) || []
+            }
+        }
 
         const transformLeave = (l: any) => {
             // Calculate Return Date if it's a leave record
@@ -418,7 +443,7 @@ export async function GET(req: Request) {
                     const nextWorkDayStr = nextWorkDay.toISOString().split('T')[0]
 
                     // Find a leave that starts on this next work day
-                    const nextLeave = allFutureLeaves.find((fl: any) =>
+                    const nextLeave = (allFutureLeaves as any[]).find((fl: any) =>
                         fl.userId === l.userId &&
                         fl.startDate.toISOString().split('T')[0] === nextWorkDayStr
                     )

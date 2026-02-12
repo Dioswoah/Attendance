@@ -191,6 +191,33 @@ export default function ExportPage() {
                     const clockInData = record.clockIn ? prepareTimeForExport(record.clockIn, reportTimezone) : null
                     const clockOutData = record.clockOut ? prepareTimeForExport(record.clockOut, reportTimezone) : null
 
+                    // Generate Comments for Data Integrity
+                    const comments: string[] = []
+
+                    // 1. Check for Pending Requests
+                    if (record.pendingRequests && record.pendingRequests.length > 0) {
+                        record.pendingRequests.forEach((pr: any) => {
+                            comments.push(`PENDING: ${pr.type.replace('_', ' ')}`)
+                        })
+                    }
+
+                    // 2. Check for missing data (Blank data as requested)
+                    if (!record.clockIn && record.clockOut) {
+                        comments.push("MISSING CLOCK IN")
+                    }
+                    if (record.clockIn && !record.clockOut) {
+                        // Only flag as missing if it's not today or if it's an old record
+                        const today = new Date().toISOString().split('T')[0]
+                        if (record.date < today) {
+                            comments.push("MISSING CLOCK OUT")
+                        }
+                    }
+
+                    // 3. Include notes if they are not the provisional tag
+                    if (record.notes && !record.notes.startsWith('PROVISIONAL_REQUEST:')) {
+                        comments.push(`NOTE: ${record.notes}`)
+                    }
+
                     return {
                         'Employee': record.userName,
                         'Department': record.department,
@@ -204,6 +231,7 @@ export default function ExportPage() {
                         'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
                         'Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2)),
                         'Work Location': record.mode,
+                        'Comments': comments.join('; '),
                         'Report Timezone': reportTimezone
                     }
                 })
