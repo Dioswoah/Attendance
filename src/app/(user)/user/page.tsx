@@ -1538,16 +1538,16 @@ export default function UserPortal() {
                     <CardContent className="p-6">
                         <div className="flex flex-col gap-8">
                             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                                <div className="text-center p-6 rounded-xl bg-[#FDFBF7] border border-[#F2EFE9] overflow-hidden min-w-0 flex-1">
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Current Time</p>
-                                    <p className="text-xl lg:text-3xl font-mono font-medium text-foreground whitespace-nowrap tabular-nums tracking-tight">
+                                <div className="text-center p-4 sm:p-6 rounded-xl bg-[#FDFBF7] border border-[#F2EFE9] overflow-hidden min-w-0 flex-1">
+                                    <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Current Time</p>
+                                    <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-mono font-medium text-foreground whitespace-nowrap tabular-nums tracking-tight">
                                         {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: userTimeZone }) : "--:--:--"}
                                     </p>
                                 </div>
                                 {(optimisticStatus === 'clocked-in' || optimisticStatus === 'on-break') && (
-                                    <div className="text-center p-6 rounded-xl bg-[#EFF6F2] border border-[#E0EBE3] overflow-hidden">
-                                        <p className="text-xs font-bold text-[#006E3F] uppercase tracking-widest mb-3">clocked in at</p>
-                                        <p className="text-2xl lg:text-3xl font-bold text-[#00522F] whitespace-nowrap tabular-nums">
+                                    <div className="text-center p-4 sm:p-6 rounded-xl bg-[#EFF6F2] border border-[#E0EBE3] overflow-hidden min-w-0 flex-1">
+                                        <p className="text-[10px] sm:text-xs font-bold text-[#006E3F] uppercase tracking-widest mb-3">clocked in at</p>
+                                        <p className="text-xl sm:text-2xl md:text-3xl lg:text-3xl font-bold text-[#00522F] whitespace-nowrap tabular-nums">
                                             {pendingClockInForDisplay
                                                 ? formatTime(new Date(pendingClockInForDisplay.time || pendingClockInForDisplay.date))
                                                 : currentAttendance?.clockIn ? formatTime(new Date(currentAttendance.clockIn)) : "--:--"
@@ -1556,9 +1556,9 @@ export default function UserPortal() {
                                     </div>
                                 )}
                                 {optimisticStatus === 'on-break' && (
-                                    <div className="text-center p-6 rounded-xl bg-[#FEF9F0] border border-[#F5EAD9] overflow-hidden">
-                                        <p className="text-xs font-bold text-[#9A7033] uppercase tracking-widest mb-3">Break Started</p>
-                                        <p className="text-2xl lg:text-3xl font-bold text-[#765424] whitespace-nowrap tabular-nums">
+                                    <div className="text-center p-4 sm:p-6 rounded-xl bg-[#FEF9F0] border border-[#F5EAD9] overflow-hidden min-w-0 flex-1">
+                                        <p className="text-[10px] sm:text-xs font-bold text-[#9A7033] uppercase tracking-widest mb-3">Break Started</p>
+                                        <p className="text-xl sm:text-2xl md:text-3xl lg:text-3xl font-bold text-[#765424] whitespace-nowrap tabular-nums">
                                             {(() => {
                                                 if (currentAttendance?.breakStart) return formatTime(new Date(currentAttendance.breakStart))
                                                 const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
@@ -1638,7 +1638,7 @@ export default function UserPortal() {
                         </div>
                     </CardHeader>
                     <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
-                        <div className="p-6 h-[225px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                        <div className="p-6 flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                             {activityFeed.length === 0 ? (
                                 <div className="text-center py-12 px-6">
                                     <History className="w-8 h-8 text-slate-200 mx-auto mb-2" />
@@ -1665,8 +1665,8 @@ export default function UserPortal() {
                                                         <div className="w-1 h-1 bg-white rounded-full opacity-50" />
                                                     </div>
                                                     <div className="flex flex-col">
-                                                        <span className={cn("text-xs font-bold", labelClass)}>{event.label}</span>
-                                                        <span className="text-[10px] font-medium text-slate-400 font-mono">{timeString}</span>
+                                                        <span className={cn("text-sm font-bold", labelClass)}>{event.label}</span>
+                                                        <span className="text-xs font-medium text-slate-400 font-mono">{timeString}</span>
                                                     </div>
                                                 </div>
                                             )
