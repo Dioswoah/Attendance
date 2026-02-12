@@ -32,3 +32,6 @@ external-tools/
 .agent/
 reports/
 tmp/
+logs/
+test-scripts/
+test-results/
