@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users } from "lucide-react"
+import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users, Edit } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -50,6 +50,8 @@ export default function UserPortal() {
     const [onboardingLocation, setOnboardingLocation] = useState("")
     const [onboardingManager, setOnboardingManager] = useState("")
     const [onboardingDepartment, setOnboardingDepartment] = useState("")
+    const [onboardingShiftStart, setOnboardingShiftStart] = useState("09:00")
+    const [onboardingShiftEnd, setOnboardingShiftEnd] = useState("17:00")
 
     // Role & Leave Management State
     const [userRoles, setUserRoles] = useState<string[]>([])
@@ -118,6 +120,53 @@ export default function UserPortal() {
         fetchProfile()
     }, [status])
 
+    // Detect Timezone Changes and Prompt Work Hours Confirmation
+    useEffect(() => {
+        if (userTimeZone && previousTimezone && userTimeZone !== previousTimezone) {
+            // Timezone has changed - prompt user to confirm work hours
+            setTempWorkHoursStart(userProfile?.shiftStartTime || "09:00")
+            setTempWorkHoursEnd(userProfile?.shiftEndTime || "17:00")
+            setShowTimezoneWorkHoursDialog(true)
+        }
+
+        // Update previous timezone
+        if (userTimeZone && !previousTimezone) {
+            setPreviousTimezone(userTimeZone)
+        }
+    }, [userTimeZone])
+
+    // Initialize scheduled times with user's default work hours
+    useEffect(() => {
+        if (userProfile?.shiftStartTime && userProfile?.shiftEndTime) {
+            setScheduledStart(userProfile.shiftStartTime)
+            setScheduledEnd(userProfile.shiftEndTime)
+        }
+    }, [userProfile])
+
+    const handleTimezoneWorkHoursConfirm = async () => {
+        try {
+            const res = await fetch('/api/user/me', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shiftStartTime: tempWorkHoursStart,
+                    shiftEndTime: tempWorkHoursEnd
+                })
+            })
+
+            if (res.ok) {
+                const updated = await res.json()
+                setUserProfile(updated)
+                setPreviousTimezone(userTimeZone)
+                setShowTimezoneWorkHoursDialog(false)
+                toast.success("Work hours updated for new timezone")
+            }
+        } catch (error) {
+            console.error("Failed to update work hours", error)
+            toast.error("Failed to update work hours")
+        }
+    }
+
     const handleOnboardingSubmit = async () => {
         if (!onboardingLocation) return
 
@@ -128,7 +177,9 @@ export default function UserPortal() {
                 body: JSON.stringify({
                     location: onboardingLocation,
                     managerId: onboardingManager || 'unassigned',
-                    departmentId: onboardingDepartment || null
+                    departmentId: onboardingDepartment || null,
+                    shiftStartTime: onboardingShiftStart,
+                    shiftEndTime: onboardingShiftEnd
                 })
             })
             if (res.ok) {
@@ -149,10 +200,45 @@ export default function UserPortal() {
         }
     }
 
+    const handleSaveScheduledHours = async () => {
+        if (!scheduledStart || !scheduledEnd) {
+            toast.error("Please set both start and end times")
+            return
+        }
+
+        try {
+            const res = await fetch('/api/user/me', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shiftStartTime: scheduledStart,
+                    shiftEndTime: scheduledEnd
+                })
+            })
+
+            if (res.ok) {
+                const updated = await res.json()
+                setUserProfile(updated)
+                setShowScheduleInput(false)
+                toast.success("Work hours updated successfully")
+            } else {
+                toast.error("Failed to update work hours")
+            }
+        } catch (error) {
+            console.error("Failed to save scheduled hours", error)
+            toast.error("Failed to update work hours")
+        }
+    }
+
     // Decline Dialog State
     const [isDeclineOpen, setIsDeclineOpen] = useState(false)
     const [declineReason, setDeclineReason] = useState("")
     const [selectedLeaveId, setSelectedLeaveId] = useState<string | null>(null)
+
+    // Scheduled Times for Today
+    const [scheduledStart, setScheduledStart] = useState("")
+    const [scheduledEnd, setScheduledEnd] = useState("")
+    const [showScheduleInput, setShowScheduleInput] = useState(false)
 
     // User's Own Leave Requests
     const [myLeaveRequests, setMyLeaveRequests] = useState<any[]>([])
@@ -181,6 +267,12 @@ export default function UserPortal() {
     // Custom Clock In State
     const [customClockInTime, setCustomClockInTime] = useState("")
     const [customReason, setCustomReason] = useState("")
+
+    // Timezone Change Detection
+    const [previousTimezone, setPreviousTimezone] = useState<string | null>(null)
+    const [showTimezoneWorkHoursDialog, setShowTimezoneWorkHoursDialog] = useState(false)
+    const [tempWorkHoursStart, setTempWorkHoursStart] = useState("")
+    const [tempWorkHoursEnd, setTempWorkHoursEnd] = useState("")
 
     // --- OPTIMISTIC STATUS CALCULATION ---
     const optimisticStatus = useMemo(() => {
@@ -705,10 +797,33 @@ export default function UserPortal() {
             // Normal Clock In
             const clockInISO = new Date().toISOString()
 
+            // Prepare scheduled times if provided
+            let scheduledStartISO = null
+            let scheduledEndISO = null
+
+            if (scheduledStart && scheduledEnd) {
+                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+                const offset = (() => {
+                    try {
+                        const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
+                        return part?.value.replace('GMT', '') || '+00:00'
+                    } catch { return '+00:00' }
+                })()
+
+                scheduledStartISO = new Date(`${todayStr}T${scheduledStart}:00${offset}`).toISOString()
+                scheduledEndISO = new Date(`${todayStr}T${scheduledEnd}:00${offset}`).toISOString()
+            }
+
             const res = await fetch('/api/attendance', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: session.user.id, mode, clockIn: clockInISO })
+                body: JSON.stringify({
+                    userId: session.user.id,
+                    mode,
+                    clockIn: clockInISO,
+                    scheduledStart: scheduledStartISO,
+                    scheduledEnd: scheduledEndISO
+                })
             })
             if (res.ok) {
                 setShowLocationDialog(false)
@@ -747,7 +862,27 @@ export default function UserPortal() {
                 return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
             })
 
-            if (isSimulated) {
+            // Domino Effect Prevention: 
+            // If we have a REAL session (even a provisional one) and the statuses match, 
+            // we should allow a direct PATCH instead of forcing another request.
+            if (isSimulated && currentAttendance?.clockIn && !currentAttendance.clockOut) {
+                // If it's just an amendment for an existing record, we can patch.
+                // But only if we are physically trying to transition from the current server state.
+                // example: server thinks I'm 'clocked-in', I want to 'start-break'.
+                // If I have a pending CLOCK_IN amendment, I can still start a break on the live session.
+                if (action === 'start-break' && realStatus === 'clocked-in') {
+                    // This is safe to patch
+                } else if (action === 'end-break' && realStatus === 'on-break') {
+                    // This is safe as well
+                } else if (action === 'clock-out' && (realStatus === 'clocked-in' || realStatus === 'on-break')) {
+                    // Safe to clock out
+                } else {
+                    // Still force simulation if the gap is too large (e.g. server thinks I'm clocked out but I want to start a break)
+                    // Continue with simulated request...
+                }
+            }
+
+            if (isSimulated && !(currentAttendance?.clockIn && !currentAttendance.clockOut)) {
                 // Submit as Amendment Request
                 let reqType = ''
                 if (action === 'start-break') reqType = 'BREAK_START'
@@ -1332,11 +1467,80 @@ export default function UserPortal() {
                 {/* Time Tracker */}
                 <Card id="tour-time-tracker" className="xl:col-span-2 border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
                     <CardHeader className="pb-4 border-b border-border">
-                        <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                            <Clock className="w-5 h-5 text-primary" />
-                            Time Tracker
-                        </CardTitle>
-                        <CardDescription className="text-sm text-muted-foreground">Manage your attendance for today</CardDescription>
+                        <div className="flex items-start justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                                    <Clock className="w-5 h-5 text-primary" />
+                                    Time Tracker
+                                </CardTitle>
+                                <CardDescription className="text-sm text-muted-foreground">Manage your attendance for today</CardDescription>
+                            </div>
+                            {userProfile?.shiftStartTime && userProfile?.shiftEndTime && (
+                                <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Work Hours</p>
+                                        <p className="text-sm font-mono font-bold text-slate-900">
+                                            {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setShowScheduleInput(!showScheduleInput)}
+                                        className="h-8 w-8 p-0 hover:bg-slate-200"
+                                    >
+                                        <Edit className="w-4 h-4 text-slate-600" />
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Set Today's Work Schedule - Collapsible Section */}
+                        {showScheduleInput && (
+                            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-bold text-[#8B2323]">Set Today's Work Schedule</p>
+                                        <p className="text-xs text-red-700 mt-0.5">Adjust your work hours for today only</p>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setShowScheduleInput(false)}
+                                        className="h-7 w-7 p-0 hover:bg-red-100"
+                                    >
+                                        <X className="w-4 h-4 text-red-600" />
+                                    </Button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-semibold text-[#8B2323]">Scheduled Start</Label>
+                                        <Input
+                                            type="time"
+                                            value={scheduledStart}
+                                            onChange={(e) => setScheduledStart(e.target.value)}
+                                            className="h-10 font-mono font-semibold border-red-300 focus:border-[#8B2323]"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-semibold text-[#8B2323]">Scheduled End</Label>
+                                        <Input
+                                            type="time"
+                                            value={scheduledEnd}
+                                            onChange={(e) => setScheduledEnd(e.target.value)}
+                                            className="h-10 font-mono font-semibold border-red-300 focus:border-[#8B2323]"
+                                        />
+                                    </div>
+                                </div>
+                                <Button
+                                    onClick={handleSaveScheduledHours}
+                                    className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-wider"
+                                >
+                                    <Check className="w-4 h-4 mr-2" />
+                                    Update Work Hours
+                                </Button>
+                            </div>
+                        )}
                     </CardHeader>
                     <CardContent className="p-6">
                         <div className="flex flex-col gap-8">
@@ -1372,6 +1576,54 @@ export default function UserPortal() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Scheduled Work Times Section */}
+                            {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
+                                <div className="border-t border-slate-100 pt-6">
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => setShowScheduleInput(!showScheduleInput)}
+                                        className="w-full justify-between text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 h-auto py-3 px-4 rounded-lg"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="w-4 h-4" />
+                                            <span>Set Today's Work Schedule</span>
+                                        </div>
+                                        <ChevronDown className={cn("w-4 h-4 transition-transform", showScheduleInput && "rotate-180")} />
+                                    </Button>
+
+                                    {showScheduleInput && (
+                                        <div className="mt-4 p-4 bg-slate-50 rounded-xl space-y-4">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Scheduled Start</Label>
+                                                    <Input
+                                                        type="time"
+                                                        value={scheduledStart}
+                                                        onChange={(e) => setScheduledStart(e.target.value)}
+                                                        placeholder={userProfile?.shiftStartTime || "09:00"}
+                                                        className="h-11 bg-white border-slate-200 rounded-lg font-mono font-semibold text-base"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Scheduled End</Label>
+                                                    <Input
+                                                        type="time"
+                                                        value={scheduledEnd}
+                                                        onChange={(e) => setScheduledEnd(e.target.value)}
+                                                        placeholder="17:00"
+                                                        className="h-11 bg-white border-slate-200 rounded-lg font-mono font-semibold text-base"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-slate-500 italic">
+                                                Optional: Set your planned work hours to track tardiness and early departures
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div id="tour-action-buttons" className="flex flex-wrap gap-4 items-center">
                                 {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
                                     <div className="flex items-center shadow-lg shadow-green-900/10 rounded-xl transition-all active:scale-95 bg-[#009B5A] hover:bg-[#00874e] group">
@@ -2130,6 +2382,31 @@ export default function UserPortal() {
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-sm font-bold">Your Work Hours</Label>
+                                <p className="text-xs text-muted-foreground">Set your default work schedule</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">Start Time</Label>
+                                        <Input
+                                            type="time"
+                                            value={onboardingShiftStart}
+                                            onChange={(e) => setOnboardingShiftStart(e.target.value)}
+                                            className="h-11 font-mono font-semibold"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">End Time</Label>
+                                        <Input
+                                            type="time"
+                                            value={onboardingShiftEnd}
+                                            onChange={(e) => setOnboardingShiftEnd(e.target.value)}
+                                            className="h-11 font-mono font-semibold"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="flex flex-col gap-3">
@@ -2155,6 +2432,88 @@ export default function UserPortal() {
                     </div>
                 </DialogContent>
             </Dialog >
+
+            {/* Timezone Change - Work Hours Confirmation Dialog */}
+            <Dialog open={showTimezoneWorkHoursDialog} onOpenChange={setShowTimezoneWorkHoursDialog}>
+                <DialogContent className="max-w-md rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                        <Globe className="h-12 w-12 text-white/30 mx-auto mb-4" />
+                        <DialogTitle className="text-2xl font-bold text-white uppercase tracking-tight relative z-10">
+                            Timezone Changed
+                        </DialogTitle>
+                        <DialogDescription className="text-white/80 font-medium text-sm mt-2 relative z-10">
+                            Please confirm your work hours for the new timezone
+                        </DialogDescription>
+                    </div>
+
+                    <div className="p-8 space-y-6 bg-white">
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                    <p className="text-sm font-semibold text-blue-900 mb-1">
+                                        Your timezone has changed to: <span className="font-mono">{userTimeZone}</span>
+                                    </p>
+                                    <p className="text-xs text-blue-700">
+                                        Please verify your work hours are correct for this timezone. Your current hours may need adjustment.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <Label className="text-sm font-bold mb-2 block">Your Work Hours</Label>
+                                <p className="text-xs text-muted-foreground mb-3">
+                                    Adjust these times to match your work schedule in <span className="font-semibold">{userTimeZone}</span>
+                                </p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">Start Time</Label>
+                                        <Input
+                                            type="time"
+                                            value={tempWorkHoursStart}
+                                            onChange={(e) => setTempWorkHoursStart(e.target.value)}
+                                            className="h-11 font-mono font-semibold text-base border-2 focus:border-blue-500"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs">End Time</Label>
+                                        <Input
+                                            type="time"
+                                            value={tempWorkHoursEnd}
+                                            onChange={(e) => setTempWorkHoursEnd(e.target.value)}
+                                            className="h-11 font-mono font-semibold text-base border-2 focus:border-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                            <Button
+                                onClick={handleTimezoneWorkHoursConfirm}
+                                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase tracking-widest text-xs rounded-xl shadow-lg"
+                            >
+                                <Check className="w-4 h-4 mr-2" />
+                                Confirm Work Hours
+                            </Button>
+
+                            <Button
+                                variant="ghost"
+                                onClick={() => {
+                                    setPreviousTimezone(userTimeZone)
+                                    setShowTimezoneWorkHoursDialog(false)
+                                }}
+                                className="w-full text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-slate-900"
+                            >
+                                Keep Current Hours
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Day Detail Dialog (for calendar clicks) */}
             <Dialog open={!!selectedDayDetail} onOpenChange={() => setSelectedDayDetail(null)}>

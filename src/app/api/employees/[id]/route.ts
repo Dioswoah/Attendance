@@ -8,13 +8,28 @@ export async function PATCH(
     try {
         const { id } = await params
         const body = await req.json()
-        const { name, email, departmentId, roles, managerId, isArchived, location } = body
+        console.log(`Updating employee ${id} with body:`, JSON.stringify(body, null, 2))
+
+        const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime } = body
         const updateData: any = {}
         if (name !== undefined) updateData.name = name
         if (email !== undefined) updateData.email = email
-        if (departmentId !== undefined) updateData.departmentId = departmentId === "unassigned" ? null : departmentId
-        if (roles !== undefined) updateData.roles = roles
-        if (managerId !== undefined) updateData.managerId = managerId === "unassigned" ? null : managerId
+
+        // Use relation updates instead of scalars as the client seems out of sync
+        if (departmentId !== undefined) {
+            const val = (departmentId && departmentId !== "unassigned") ? departmentId : null
+            updateData.department = val ? { connect: { id: val } } : { disconnect: true }
+        }
+
+        if (roles !== undefined && Array.isArray(roles)) {
+            updateData.roles = { set: roles }
+        }
+
+        if (managerId !== undefined) {
+            const val = (managerId && managerId !== "unassigned") ? managerId : null
+            updateData.manager = val ? { connect: { id: val } } : { disconnect: true }
+        }
+
         if (isArchived !== undefined) updateData.isArchived = isArchived
         if (location !== undefined) {
             updateData.location = location
@@ -27,6 +42,9 @@ export async function PATCH(
                 updateData.useCurrentTimezone = false
             }
         }
+        if (shiftStartTime !== undefined) updateData.shiftStartTime = shiftStartTime
+
+        console.log("Applying Prisma update with data:", JSON.stringify(updateData, null, 2))
 
         const updated = await prisma.user.update({
             where: { id },
@@ -35,8 +53,8 @@ export async function PATCH(
 
         return NextResponse.json(updated)
     } catch (error) {
-        console.error("Update employee error:", error)
-        return NextResponse.json({ error: 'Failed to update employee' }, { status: 500 })
+        console.error("Update employee error details:", error)
+        return NextResponse.json({ error: 'Failed to update employee: ' + (error instanceof Error ? error.message : 'Unknown error') }, { status: 500 })
     }
 }
 

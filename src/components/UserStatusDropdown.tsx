@@ -19,10 +19,10 @@ export type UserStatus = 'AVAILABLE' | 'BUSY' | 'DO_NOT_DISTURB' | 'BE_RIGHT_BAC
 
 export const statusConfig: Record<UserStatus, { label: string, icon: any, color: string }> = {
     AVAILABLE: { label: 'Active', icon: CheckCircle2, color: 'text-emerald-500' },
-    DO_NOT_DISTURB: { label: 'Do not disturb', icon: MinusCircle, color: 'text-rose-500' },
+    DO_NOT_DISTURB: { label: 'In a Meeting', icon: MinusCircle, color: 'text-rose-500' },
     BE_RIGHT_BACK: { label: 'Be right back', icon: Clock, color: 'text-amber-500' },
     APPEAR_AWAY: { label: 'Set as away', icon: Clock, color: 'text-amber-500' },
-    APPEAR_OFFLINE: { label: 'Appear offline', icon: XCircle, color: 'text-slate-400' },
+    APPEAR_OFFLINE: { label: 'Offline', icon: XCircle, color: 'text-slate-400' },
     // BUSY removed as per user request to match Google's simple options
     BUSY: { label: 'Busy', icon: Circle, color: 'text-red-500 fill-red-500' }, // Kept for type compatibility but hidden in UI
 }

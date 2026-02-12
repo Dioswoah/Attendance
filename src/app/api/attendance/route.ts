@@ -255,8 +255,15 @@ export async function GET(req: Request) {
     const endDateStr = searchParams.get('endDate')
     const departmentId = searchParams.get('departmentId')
     const managerId = searchParams.get('managerId')
+    const userIdsStr = searchParams.get('userIds')
 
     let whereClause: any = { deletedAt: null }
+
+    if (userIdsStr) {
+        whereClause.userId = { in: userIdsStr.split(',') }
+    } else if (userId) {
+        whereClause.userId = userId
+    }
 
     if (startDateStr && endDateStr) {
         const start = new Date(startDateStr)
@@ -303,7 +310,11 @@ export async function GET(req: Request) {
     try {
         // Prepare Leave Query
         let leaveWhere: any = { status: 'APPROVED', deletedAt: null }
-        if (userId) leaveWhere.userId = userId
+        if (userIdsStr) {
+            leaveWhere.userId = { in: userIdsStr.split(',') }
+        } else if (userId) {
+            leaveWhere.userId = userId
+        }
         if (departmentId && departmentId !== 'all') {
             const dept = await prisma.department.findUnique({ where: { id: departmentId } })
             if (dept) {
@@ -414,12 +425,15 @@ export async function GET(req: Request) {
                 date: dateStr,
                 clockIn: a.clockIn?.toISOString(),
                 clockOut: a.clockOut?.toISOString(),
+                scheduledStart: a.scheduledStart?.toISOString(),
+                scheduledEnd: a.scheduledEnd?.toISOString(),
                 mode: a.mode,
                 status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
                 breakStart: a.breakStart?.toISOString(),
                 breakEnd: a.breakEnd?.toISOString(),
                 notes: a.notes,
                 pendingRequests: pendingForThisDay,
+                shiftStartTime: a.user?.shiftStartTime || a.user?.department?.shiftStartTime || '09:00',
                 breaks: a.breaks?.map((b: any) => ({
                     id: b.id,
                     startTime: b.startTime.toISOString(),
@@ -545,12 +559,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'You are already clocked in. Please clock out first.' }, { status: 400 })
         }
 
+        // Extract scheduled times from request body
+        const { scheduledStart, scheduledEnd } = body
+
         const attendance = await prisma.attendance.create({
             data: {
                 userId,
                 date: targetDate,
                 clockIn: clockIn ? new Date(clockIn) : new Date(),
                 clockOut: clockOut ? new Date(clockOut) : null,
+                scheduledStart: scheduledStart ? new Date(scheduledStart) : null,
+                scheduledEnd: scheduledEnd ? new Date(scheduledEnd) : null,
                 mode: mode || 'OFFICE',
                 status: 'PRESENT'
             }

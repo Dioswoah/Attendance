@@ -18,7 +18,7 @@ export async function PATCH(req: Request) {
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
-    const { location, managerId, departmentId } = body
+    const { location, managerId, departmentId, shiftStartTime, shiftEndTime } = body
 
     const updateData: any = {}
     if (location !== undefined) {
@@ -34,6 +34,8 @@ export async function PATCH(req: Request) {
     }
     if (managerId !== undefined) updateData.managerId = managerId === "unassigned" ? null : managerId
     if (departmentId !== undefined) updateData.departmentId = departmentId === "unassigned" ? null : departmentId
+    if (shiftStartTime !== undefined) updateData.shiftStartTime = shiftStartTime
+    if (shiftEndTime !== undefined) updateData.shiftEndTime = shiftEndTime
 
     const updated = await prisma.user.update({
         where: { id: session.user.id },

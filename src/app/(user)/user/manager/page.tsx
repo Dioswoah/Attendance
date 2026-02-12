@@ -18,12 +18,15 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2 } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek, subDays } from "date-fns"
 import { cn } from "@/lib/utils"
+import { StaffPerformanceCard } from "@/components/performance/StaffPerformanceCard"
+import { calculateTardiness, calculateUserPerformanceMetrics } from "@/lib/performance-utils"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell } from 'recharts'
 
 interface Request {
     id: string
@@ -76,6 +79,15 @@ export default function ManagerControlPage() {
     const [reportEndDate, setReportEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
     const [isGeneratingReport, setIsGeneratingReport] = useState(false)
+    const [performanceRange, setPerformanceRange] = useState("7") // Days
+    const [performanceData, setPerformanceData] = useState<any[]>([])
+    const [rawPerformanceData, setRawPerformanceData] = useState<any[]>([])
+    const [isFetchingPerformance, setIsFetchingPerformance] = useState(false)
+    const [perfStartDate, setPerfStartDate] = useState(format(subDays(new Date(), 7), "yyyy-MM-dd"))
+    const [perfEndDate, setPerfEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+
+    // View Mode State (Card vs Table)
+    const [viewMode, setViewMode] = useState<'card' | 'table'>('card')
 
     useEffect(() => {
         if (session?.user?.id) {
@@ -145,10 +157,23 @@ export default function ManagerControlPage() {
             if (approvedRes.ok) setApprovedLeaves(await approvedRes.json()) // Only leaves affect calendar for now, or maybe approved attendance requests should trigger re-fetch of attendance data
 
             let allEmployees = []
+            let managedDeptIds: string[] = []
+
+            // Fetch manager's departments first to broaden staff scope
+            if (departmentsRes.ok) {
+                const allDepts = await departmentsRes.json()
+                const myDepts = allDepts.filter((dept: any) => dept.managerId === session.user?.id)
+                setManagerDepartments(myDepts)
+                managedDeptIds = myDepts.map((d: any) => d.id)
+            }
+
             if (employeesRes.ok) {
                 allEmployees = await employeesRes.json()
-                // Filter for my managed staff
-                const myStaff = allEmployees.filter((emp: any) => emp.managerId === session.user?.id)
+                // Filter for my managed staff: either direct reports OR staff in managed departments
+                const myStaff = allEmployees.filter((emp: any) =>
+                    emp.managerId === session.user?.id ||
+                    (emp.departmentId && managedDeptIds.includes(emp.departmentId))
+                )
                 setMyTeam(myStaff)
             }
 
@@ -157,14 +182,7 @@ export default function ManagerControlPage() {
                 setTodaysAttendance(attData)
             }
 
-            // Fetch manager's departments
-            if (departmentsRes.ok) {
-                const allDepts = await departmentsRes.json()
-                // Filter departments where this user is the manager
-                const myDepts = allDepts.filter((dept: any) => dept.managerId === session.user?.id)
-                setManagerDepartments(myDepts)
-            }
-
+            fetchPerformanceData()
             // Initial monthly fetch
             fetchMonthlyAttendance()
 
@@ -172,6 +190,91 @@ export default function ManagerControlPage() {
             // Error
         } finally {
             setIsLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        if (session?.user?.id && myTeam.length > 0) {
+            fetchPerformanceData()
+        }
+    }, [perfStartDate, perfEndDate, selectedDepartment, myTeam.length, session?.user?.id])
+
+    const fetchPerformanceData = async () => {
+        if (!session?.user?.id || myTeam.length === 0) return
+        setIsFetchingPerformance(true)
+        try {
+            const start = new Date(perfStartDate)
+            start.setUTCHours(0, 0, 0, 0)
+            const end = new Date(perfEndDate)
+            end.setUTCHours(23, 59, 59, 999)
+
+            // Filter team by selected department
+            const filteredTeam = selectedDepartment === 'all'
+                ? myTeam
+                : myTeam.filter(emp => emp.departmentId === selectedDepartment)
+
+            if (filteredTeam.length === 0) {
+                setPerformanceData([])
+                return
+            }
+
+            const staffIds = filteredTeam.map(e => e.id)
+            const query = new URLSearchParams({
+                userIds: staffIds.join(','),
+                startDate: start.toISOString(),
+                endDate: end.toISOString(),
+                includeAll: 'true'
+            })
+
+            const res = await fetch(`/api/attendance?${query.toString()}`)
+            if (res.ok) {
+                const data = await res.json()
+                setRawPerformanceData(data)
+
+                // Aggregate by date
+                const days = eachDayOfInterval({ start, end })
+                const chartData = days.map(day => {
+                    const dateStr = format(day, "yyyy-MM-dd")
+                    const dayAtt = data.filter((a: any) => a.date === dateStr)
+
+                    // Logic: Use shiftStartTime if available for that record
+                    const presentCount = dayAtt.filter((a: any) => a.status !== 'on-leave').length
+
+                    // Calculate tardiness using individual user work hours
+                    const lateCount = dayAtt.filter((a: any) => {
+                        if (!a.clockIn || a.status === 'on-leave') return false
+
+                        // Find the user for this attendance record
+                        const user = filteredTeam.find(u => u.id === a.userId)
+                        if (!user) return false
+
+                        // Use scheduled time from attendance or user's default shift time
+                        const expectedStart = a.scheduledStart || user.shiftStartTime || "09:00"
+                        const clockInDate = new Date(a.clockIn)
+
+                        const [sHour, sMin] = expectedStart.split(':').map(Number)
+                        const actualTime = clockInDate.getHours() * 60 + clockInDate.getMinutes()
+                        const expectedTime = sHour * 60 + sMin
+
+                        // 5 minute grace period
+                        return actualTime > (expectedTime + 5)
+                    }).length
+
+                    return {
+                        date: format(day, "MMM dd"),
+                        fullDate: dateStr,
+                        basePresent: presentCount,
+                        present: presentCount - lateCount, // "Net" present (on-time)
+                        late: lateCount,
+                        absent: filteredTeam.length - presentCount
+                    }
+                })
+                setPerformanceData(chartData)
+            }
+        } catch (error) {
+            console.error("Performance fetch error:", error)
+        } finally {
+            setIsFetchingPerformance(false)
         }
     }
 
@@ -273,7 +376,7 @@ export default function ManagerControlPage() {
     // Filter Team Members
     const filteredTeam = useMemo(() => {
         if (selectedDepartment === "all") return myTeam
-        return myTeam.filter(member => member.department?.name === selectedDepartment)
+        return myTeam.filter(member => member.departmentId === selectedDepartment)
     }, [myTeam, selectedDepartment])
 
     // Filter Approved Leaves
@@ -281,7 +384,7 @@ export default function ManagerControlPage() {
         if (selectedDepartment === "all") return approvedLeaves
         return approvedLeaves.filter(leave => {
             const member = myTeam.find(m => m.id === leave.userId)
-            return member?.department?.name === selectedDepartment
+            return member?.departmentId === selectedDepartment
         })
     }, [approvedLeaves, myTeam, selectedDepartment])
 
@@ -290,20 +393,22 @@ export default function ManagerControlPage() {
         if (selectedDepartment === "all") return monthlyAttendance
         return monthlyAttendance.filter(att => {
             const member = myTeam.find(m => m.id === att.userId)
-            return member?.department?.name === selectedDepartment
+            return member?.departmentId === selectedDepartment
         })
     }, [monthlyAttendance, myTeam, selectedDepartment])
 
     // Filter Pending Requests
     const filteredRequests = pendingRequests.filter(r => {
         const matchesSearch = r.userName.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesDepartment = selectedDepartment === "all" || r.department === selectedDepartment
+        const member = myTeam.find(m => m.id === r.userId)
+        const matchesDepartment = selectedDepartment === "all" || member?.departmentId === selectedDepartment
         return matchesSearch && matchesDepartment
     })
 
     // Filter Request History
     const filteredHistory = requestHistory.filter(r => {
-        const matchesDepartment = selectedDepartment === "all" || r.department === selectedDepartment
+        const member = myTeam.find(m => m.id === r.userId)
+        const matchesDepartment = selectedDepartment === "all" || member?.departmentId === selectedDepartment
         return matchesDepartment
     })
 
@@ -437,7 +542,7 @@ export default function ManagerControlPage() {
                         <p className="text-muted-foreground mt-1">Review requests and monitor team availability</p>
                     </div>
                     <TabsList className="h-12 bg-white border border-border p-1 w-full md:w-auto shadow-sm gap-1 rounded-xl">
-                        <TabsTrigger id="tour-manager-tab-requests" value="requests" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                        <TabsTrigger id="tour-manager-tab-requests" value="requests" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
                             Pending Requests
                             {pendingRequests.length > 0 && (
                                 <span className="ml-2 bg-white/20 text-current px-1.5 py-0.5 rounded-full text-[10px] font-bold">
@@ -445,14 +550,17 @@ export default function ManagerControlPage() {
                                 </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-history" value="history" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
-                            Request History
+                        <TabsTrigger id="tour-manager-tab-history" value="history" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                            History
                         </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-calendar" value="calendar" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
-                            Team Calendar
+                        <TabsTrigger id="tour-manager-tab-calendar" value="calendar" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                            Calendar
                         </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-reports" value="reports" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
-                            Team Reports
+                        <TabsTrigger id="tour-manager-tab-performance" value="performance" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all flex items-center gap-2">
+                            Performance
+                        </TabsTrigger>
+                        <TabsTrigger id="tour-manager-tab-reports" value="reports" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                            Reports
                         </TabsTrigger>
                     </TabsList>
                 </div>
@@ -490,6 +598,25 @@ export default function ManagerControlPage() {
                                     className="pl-9 bg-muted/30 border-border"
                                 />
                             </div>
+                            {/* View Toggle Buttons */}
+                            <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg">
+                                <Button
+                                    variant={viewMode === 'card' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    onClick={() => setViewMode('card')}
+                                    className="h-7 px-2"
+                                >
+                                    <LayoutGrid className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                    variant={viewMode === 'table' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    onClick={() => setViewMode('table')}
+                                    className="h-7 px-2"
+                                >
+                                    <Users className="w-4 h-4" />
+                                </Button>
+                            </div>
                         </div>
                     </div>
 
@@ -504,7 +631,8 @@ export default function ManagerControlPage() {
                                     <p className="text-muted-foreground">No pending leave requests at this time.</p>
                                 </CardContent>
                             </Card>
-                        ) : (
+                        ) : viewMode === 'card' ? (
+                            // Card View
                             filteredRequests.map(request => (
                                 <Card key={request.id} className="group hover:shadow-md transition-all border-border bg-white overflow-hidden">
                                     <div className="flex flex-col lg:flex-row">
@@ -578,6 +706,86 @@ export default function ManagerControlPage() {
                                     </div>
                                 </Card>
                             ))
+                        ) : (
+                            // Table View
+                            <Card className="border-border bg-white overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                            <tr>
+                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Staff</th>
+                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Type</th>
+                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Date/Time</th>
+                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Reason</th>
+                                                <th className="text-right p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {filteredRequests.map(request => (
+                                                <tr key={request.id} className="hover:bg-slate-50/50 transition-colors">
+                                                    <td className="p-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+                                                                <AvatarFallback className="bg-slate-900 text-white font-bold text-sm">{request.userName.charAt(0)}</AvatarFallback>
+                                                            </Avatar>
+                                                            <div>
+                                                                <p className="font-semibold text-sm text-foreground">{request.userName}</p>
+                                                                <p className="text-xs text-muted-foreground">{request.department || 'Team Member'}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <Badge variant="outline" className="font-medium">
+                                                            {request.type.toLowerCase().replace('_', ' ')}
+                                                        </Badge>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <div className="text-sm">
+                                                            <p className="font-medium text-foreground">
+                                                                {format(parseISO(request.startDate), 'MMM dd, yyyy')}
+                                                            </p>
+                                                            {request.kind === 'ATTENDANCE' && request.time && (
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    {format(new Date(request.time), 'hh:mm a')}
+                                                                </p>
+                                                            )}
+                                                            {request.startDate !== request.endDate && (
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    to {format(parseISO(request.endDate), 'MMM dd')}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <p className="text-sm text-slate-600 italic line-clamp-2 max-w-md">
+                                                            "{request.reason}"
+                                                        </p>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <Button
+                                                                onClick={() => handleAction(request, "approve")}
+                                                                size="sm"
+                                                                className="bg-green-600 hover:bg-green-700 text-white h-8"
+                                                            >
+                                                                <Check className="w-3 h-3 mr-1" /> Approve
+                                                            </Button>
+                                                            <Button
+                                                                onClick={() => handleAction(request, "deny")}
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8"
+                                                            >
+                                                                <X className="w-3 h-3 mr-1" /> Deny
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Card>
                         )}
                     </div>
                 </TabsContent>
@@ -733,9 +941,9 @@ export default function ManagerControlPage() {
                                                     <SelectValue placeholder="All Departments" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="all">All Departments</SelectItem>
+                                                    <SelectItem value="all">All Managed Departments</SelectItem>
                                                     {managerDepartments.map(dept => (
-                                                        <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                                                        <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
@@ -898,6 +1106,170 @@ export default function ManagerControlPage() {
                     </div>
                 </TabsContent>
 
+                {/* --- PERFORMANCE TAB --- */}
+                <TabsContent value="performance" className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <Card className="border border-border shadow-sm bg-white overflow-hidden rounded-2xl">
+                        <CardHeader className="border-b border-border bg-muted/10 p-6">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <TrendingUp className="w-6 h-6 text-primary" />
+                                    <div>
+                                        <CardTitle>Department Performance</CardTitle>
+                                        <CardDescription>Monitor attendance trends and punctuality</CardDescription>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-4">
+                                    <div className="flex items-center gap-2 bg-white border border-border px-3 py-1.5 rounded-lg shadow-sm">
+                                        <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] uppercase text-muted-foreground font-black">From</Label>
+                                            <Input
+                                                type="date"
+                                                value={perfStartDate}
+                                                onChange={e => setPerfStartDate(e.target.value)}
+                                                className="h-7 w-[120px] p-1 text-xs border-none focus-visible:ring-0"
+                                            />
+                                        </div>
+                                        <div className="w-px h-4 bg-border" />
+                                        <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] uppercase text-muted-foreground font-black">To</Label>
+                                            <Input
+                                                type="date"
+                                                value={perfEndDate}
+                                                onChange={e => setPerfEndDate(e.target.value)}
+                                                className="h-7 w-[120px] p-1 text-xs border-none focus-visible:ring-0"
+                                            />
+                                        </div>
+                                    </div>
+                                    <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                        <SelectTrigger className="w-[180px] h-9 bg-white">
+                                            <SelectValue placeholder="All Departments" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Managed Depts</SelectItem>
+                                            {managerDepartments.map(d => (
+                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-8">
+                            {isFetchingPerformance ? (
+                                <div className="h-[400px] flex flex-col items-center justify-center space-y-4">
+                                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground animate-pulse">Analyzing Data...</p>
+                                </div>
+                            ) : performanceData.length > 0 ? (
+                                <div className="space-y-8">
+                                    <div className="h-[350px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={performanceData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                <XAxis
+                                                    dataKey="date"
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                    tick={{ fontSize: 10, fontWeight: 600, fill: '#64748b' }}
+                                                />
+                                                <YAxis
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                    tick={{ fontSize: 10, fontWeight: 600, fill: '#64748b' }}
+                                                />
+                                                <Tooltip
+                                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                                />
+                                                <Legend iconType="circle" />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="present"
+                                                    name="On-Time"
+                                                    stroke="#10b981"
+                                                    strokeWidth={3}
+                                                    dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                                                    activeDot={{ r: 6, strokeWidth: 0 }}
+                                                />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="late"
+                                                    name="Late Punctuality"
+                                                    stroke="#f59e0b"
+                                                    strokeWidth={3}
+                                                    dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                                                    activeDot={{ r: 6, strokeWidth: 0 }}
+                                                />
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="absent"
+                                                    name="Absent"
+                                                    stroke="#ef4444"
+                                                    strokeWidth={3}
+                                                    dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                                                    activeDot={{ r: 6, strokeWidth: 0 }}
+                                                />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
+                                            <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Avg. Presence</p>
+                                            <div className="flex items-end gap-2">
+                                                <h3 className="text-2xl font-black text-emerald-900">
+                                                    {performanceData.length > 0 ? Math.round((performanceData.reduce((acc, d) => acc + d.basePresent, 0) / (performanceData.length * (filteredTeam.length || 1))) * 100) : 0}%
+                                                </h3>
+                                                <span className="text-xs font-bold text-emerald-600 mb-1">Stability</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100">
+                                            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">Tardiness Rate</p>
+                                            <div className="flex items-end gap-2">
+                                                <h3 className="text-2xl font-black text-amber-900">
+                                                    {performanceData.reduce((acc, d) => acc + d.basePresent, 0) > 0 ? Math.round((performanceData.reduce((acc, d) => acc + d.late, 0) / (performanceData.reduce((acc, d) => acc + d.basePresent, 0) || 1)) * 100) : 0}%
+                                                </h3>
+                                                <span className="text-xs font-bold text-amber-600 mb-1">Incidence</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 rounded-2xl bg-red-50 border border-red-100">
+                                            <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider mb-1">Missed Shifts</p>
+                                            <div className="flex items-end gap-2">
+                                                <h3 className="text-2xl font-black text-red-900">
+                                                    {performanceData.reduce((acc, d) => acc + d.absent, 0)}
+                                                </h3>
+                                                <span className="text-xs font-bold text-red-600 mb-1">Total count</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Individual Staff Cards */}
+                                    <div className="pt-8 border-t border-border">
+                                        <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+                                            <Users className="h-4 w-4 text-primary" />
+                                            Individual Performance Breakdown
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                            {filteredTeam.map(member => (
+                                                <StaffPerformanceCard
+                                                    key={member.id}
+                                                    user={member}
+                                                    attendanceRecords={rawPerformanceData.filter((a: any) => a.userId === member.id)}
+                                                    dateRange={{ start: perfStartDate, end: perfEndDate }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="h-[400px] flex flex-col items-center justify-center text-muted-foreground opacity-50 space-y-2">
+                                    <TrendingUp className="w-12 h-12" />
+                                    <p className="font-bold">No performance data available for this range</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
                 {/* --- REPORTS TAB --- */}
                 <TabsContent value="reports" className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                     <Card className="border border-border shadow-sm bg-white overflow-hidden rounded-2xl">
@@ -942,32 +1314,48 @@ export default function ManagerControlPage() {
 
                                     <div className="space-y-2">
                                         <Label className="text-sm font-bold flex items-center gap-2">
-                                            <Users className="w-4 h-4 text-primary" />
-                                            Team Filtering
+                                            <Building2 className="w-4 h-4 text-primary" />
+                                            Target Department
                                         </Label>
-                                        <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                                            <p className="text-xs text-muted-foreground">
-                                                The report will automatically include all **{filteredTeam.length}** staff members in your current filtered view (Department: {selectedDepartment}).
-                                            </p>
-                                        </div>
+                                        <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                            <SelectTrigger className="bg-muted/30 border-border">
+                                                <SelectValue placeholder="All Managed Departments" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Managed Departments</SelectItem>
+                                                {managerDepartments.map(d => (
+                                                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            Reports are generated dynamically based on your filters. Higher staff counts and wider date ranges may take a few seconds to process.
+                                        </p>
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col justify-end gap-4 p-6 bg-primary/5 rounded-2xl border border-primary/10">
+                                <div className="flex flex-col justify-end gap-4 p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-inner">
                                     <div className="space-y-2 mb-4">
-                                        <h4 className="font-bold text-sm text-primary uppercase tracking-wider">Report Details</h4>
-                                        <ul className="text-xs space-y-2 text-muted-foreground">
+                                        <h4 className="font-bold text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-4">Output Payload</h4>
+                                        <ul className="text-xs space-y-3 text-slate-600 font-medium">
                                             <li className="flex items-center gap-2">
-                                                <Check className="w-3 h-3 text-green-500" /> Complete Master Ledger (XLSX)
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                Detailed Master Ledger (Log-by-log)
                                             </li>
                                             <li className="flex items-center gap-2">
-                                                <Check className="w-3 h-3 text-green-500" /> Clocked times, total hours & leaves
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                Team Summary (Aggregation by Staff)
                                             </li>
                                             <li className="flex items-center gap-2">
-                                                <Check className="w-3 h-3 text-green-500" /> Pending correction request flags
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                Smart Commenting (Flags & Notes)
                                             </li>
                                             <li className="flex items-center gap-2">
-                                                <Check className="w-3 h-3 text-green-500" /> Automatic Tardiness/Missing log detection
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                Tardiness/Punctuality Monitoring
                                             </li>
                                         </ul>
                                     </div>
@@ -995,7 +1383,7 @@ export default function ManagerControlPage() {
                                                 // Prepare Workbook
                                                 const wb = XLSX.utils.book_new()
 
-                                                // Log Data Sheet
+                                                // 1. Detailed Ledger Sheet
                                                 const logData = data.map((record: any) => {
                                                     const clockInData = record.clockIn ? prepareTimeForExport(record.clockIn, reportTimezone) : null
                                                     const clockOutData = record.clockOut ? prepareTimeForExport(record.clockOut, reportTimezone) : null
@@ -1004,44 +1392,78 @@ export default function ManagerControlPage() {
                                                     if (record.pendingRequests?.length > 0) {
                                                         record.pendingRequests.forEach((pr: any) => comments.push(`PENDING: ${pr.type}`))
                                                     }
-                                                    if (!record.clockIn && record.clockOut) comments.push("MISSING CLOCK IN")
-                                                    if (record.clockIn && !record.clockOut && record.date < format(new Date(), 'yyyy-MM-dd')) comments.push("MISSING CLOCK OUT")
+                                                    if (!record.clockIn && record.clockOut) comments.push("CRITICAL: MISSING CLOCK IN")
+                                                    if (record.clockIn && !record.clockOut && record.date < format(new Date(), 'yyyy-MM-dd')) comments.push("CRITICAL: MISSING CLOCK OUT")
+
+                                                    // Tardiness check (dynamic)
+                                                    const user = filteredTeam.find((u: any) => u.id === record.userId)
+                                                    const shiftStart = record.scheduledStart || user?.shiftStartTime || "09:00"
+                                                    const shiftEnd = record.scheduledEnd || user?.shiftEndTime || "17:00"
+
+                                                    if (record.clockIn && record.status !== 'on-leave') {
+                                                        const tardiness = calculateTardiness(record, user || { shiftStartTime: "09:00" })
+                                                        if (tardiness > 5) {
+                                                            comments.push(`LATE: ${tardiness} min (Expected: ${shiftStart})`)
+                                                        }
+                                                    }
+
                                                     if (record.notes) comments.push(`NOTE: ${record.notes}`)
 
                                                     return {
-                                                        'Employee': record.userName,
+                                                        'Staff Member': record.userName,
                                                         'Department': record.department,
                                                         'Date': record.date,
-                                                        'Clock In (TZ)': clockInData ? formatWithTimezone(record.clockIn, reportTimezone, 'time') : '-',
-                                                        'Clock Out (TZ)': clockOutData ? formatWithTimezone(record.clockOut, reportTimezone, 'time') : '-',
+                                                        'Scheduled Shift': `${shiftStart} - ${shiftEnd}`,
+                                                        'Clock In': clockInData ? formatWithTimezone(record.clockIn, reportTimezone, 'time') : '-',
+                                                        'Clock Out': clockOutData ? formatWithTimezone(record.clockOut, reportTimezone, 'time') : '-',
                                                         'Mode': record.mode,
-                                                        'Status': record.status,
-                                                        'Comments': comments.join('; '),
-                                                        'Timezone': reportTimezone
+                                                        'Status': record.status.toUpperCase(),
+                                                        'Tardiness (min)': calculateTardiness(record, user || { shiftStartTime: "09:00" }),
+                                                        'Flags/Comments': comments.join(' | '),
+                                                        'Session Timezone': reportTimezone
                                                     }
                                                 })
 
                                                 const ws = XLSX.utils.json_to_sheet(logData)
+                                                // Column Widths
+                                                ws['!cols'] = [
+                                                    { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 20 },
+                                                    { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 15 },
+                                                    { wch: 50 }, { wch: 25 }
+                                                ]
                                                 XLSX.utils.book_append_sheet(wb, ws, "Attendance Ledger")
 
-                                                // Generate Summary Sheet
+                                                // 2. Team Summary Sheet
                                                 const summary = filteredTeam.map(member => {
                                                     const memberLogs = data.filter((d: any) => d.userId === member.id)
-                                                    const daysPresent = memberLogs.filter((d: any) => d.mode !== 'LEAVE').length
-                                                    const daysLeave = memberLogs.filter((d: any) => d.mode === 'LEAVE').length
+                                                    // Pass member directly, assuming calculateUserPerformanceMetrics handles default shift times if missing on member
+                                                    const metrics = calculateUserPerformanceMetrics(memberLogs, member)
 
                                                     return {
                                                         'Name': member.name,
-                                                        'Department': member.department?.name || '-',
-                                                        'Total Days (Range)': memberLogs.length,
-                                                        'Days Worked': daysPresent,
-                                                        'Days on Leave': daysLeave
+                                                        'Department': (typeof member.department === 'object' ? (member.department as any)?.name : member.department) || '-',
+                                                        'Default Shift': `${member.shiftStartTime || "09:00"} - ${member.shiftEndTime || "17:00"}`,
+                                                        'Scope From': reportStartDate,
+                                                        'Scope To': reportEndDate,
+                                                        'Total Entries': metrics.totalDays,
+                                                        'Late Arrivals': metrics.lateDays,
+                                                        'Avg Tardiness (min)': metrics.avgTardiness,
+                                                        'Avg Early Dep (min)': metrics.avgEarlyDeparture,
+                                                        'Total Hours': metrics.totalHoursWorked,
+                                                        'Hours Variance': metrics.hoursVariance,
+                                                        'Punctuality %': metrics.punctualityRate + '%'
                                                     }
                                                 })
                                                 const wsSummary = XLSX.utils.json_to_sheet(summary)
-                                                XLSX.utils.book_append_sheet(wb, wsSummary, "Team Summary")
+                                                wsSummary['!cols'] = [
+                                                    { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 15 },
+                                                    { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 15 }
+                                                ]
+                                                XLSX.utils.book_append_sheet(wb, wsSummary, "Team Summary Matrix")
 
-                                                XLSX.writeFile(wb, `Team_Attendance_Report_${reportStartDate}_to_${reportEndDate}.xlsx`)
+                                                const deptName = selectedDepartment === 'all' ? 'All_Depts' : (managerDepartments.find(d => d.id === selectedDepartment)?.name || 'Dept');
+                                                const filename = `Team_Report_${deptName.replace(/\s+/g, '_')}_${reportStartDate}-to-${reportEndDate}.xlsx`
+                                                XLSX.writeFile(wb, filename)
                                             } catch (error) {
                                                 console.error(error)
                                                 alert("Error generating report")
@@ -1049,17 +1471,18 @@ export default function ManagerControlPage() {
                                                 setIsGeneratingReport(false)
                                             }
                                         }}
-                                        className="w-full h-12 text-base font-bold shadow-xl"
+                                        className="w-full h-12 text-sm font-black shadow-xl bg-slate-900 hover:bg-slate-800 text-white rounded-xl uppercase tracking-widest border-b-4 border-slate-700 active:border-b-0 active:translate-y-1 transition-all"
                                         disabled={isGeneratingReport}
                                     >
                                         {isGeneratingReport ? (
-                                            <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generating...</>
+                                            <><Loader2 className="w-5 h-5 mr-3 animate-spin" /> Compiling Report...</>
                                         ) : (
-                                            <><Download className="w-5 h-5 mr-2" /> Export Team Ledger</>
+                                            <><Download className="w-5 h-5 mr-3" /> Download Team Ledger</>
                                         )}
                                     </Button>
-                                    <p className="text-[10px] text-center text-primary/60 font-medium">
-                                        Data is exported in XLSX format compatible with Microsoft Excel and Google Sheets.
+                                    <p className="text-[10px] text-center text-slate-500 font-medium leading-relaxed">
+                                        Times are based on your active timezone ({reportTimezone}).<br />
+                                        To change this, please use the <strong>Timezone</strong> selector in the navigation top bar.
                                     </p>
                                 </div>
                             </div>

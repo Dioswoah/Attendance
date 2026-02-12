@@ -5,8 +5,7 @@ export async function GET() {
     try {
         const employees = await prisma.user.findMany({
             where: {
-                deletedAt: null,
-                isArchived: false
+                deletedAt: null
             },
             include: {
                 department: true,
@@ -30,17 +29,19 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
+        const { name, email, departmentId, roles, managerId, location, shiftStartTime } = body
         const employee = await prisma.user.create({
             data: {
-                name: body.name,
-                email: body.email.toLowerCase(),
-                departmentId: body.departmentId,
-                roles: body.roles || ['USER'],
-                managerId: body.managerId || null,
-                location: body.location || null,
+                name,
+                email: email.toLowerCase(),
+                roles: roles || ['USER'],
+                location: location || null,
+                shiftStartTime: shiftStartTime || "09:00",
+                department: departmentId ? { connect: { id: departmentId } } : undefined,
+                manager: managerId ? { connect: { id: managerId } } : undefined,
                 // SYNC: Set default timezone based on chosen location
-                selectedTimezone: body.location === 'Philippines' ? 'Asia/Manila' :
-                    body.location === 'Australia' ? 'Australia/Sydney' : 'UTC',
+                selectedTimezone: location === 'Philippines' ? 'Asia/Manila' :
+                    location === 'Australia' ? 'Australia/Sydney' : 'UTC',
                 useCurrentTimezone: false
             }
         })

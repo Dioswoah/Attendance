@@ -25,6 +25,7 @@ export default function UserLayout({
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
     const [pendingLeaveCount, setPendingLeaveCount] = useState(0)
     const [pendingAmendCount, setPendingAmendCount] = useState(0)
+    const [managerPendingCount, setManagerPendingCount] = useState(0)
     const pathname = usePathname()
     const { data: session, status } = useSession()
 
@@ -60,6 +61,32 @@ export default function UserLayout({
                     setPendingAmendCount(filteredReqs.length)
                 } else {
                     setPendingAmendCount(0)
+                }
+            }
+
+            // Fetch Manager Pending Requests (if user is manager/admin)
+            if (isManagerOrAdmin) {
+                try {
+                    const [managerLeavesRes, managerAttnRes] = await Promise.all([
+                        fetch(`/api/leaves?managerId=${session.user.id}&status=PENDING`),
+                        fetch(`/api/attendance-requests?managerId=${session.user.id}&status=PENDING`)
+                    ])
+
+                    let totalManagerPending = 0
+
+                    if (managerLeavesRes.ok) {
+                        const leaves = await managerLeavesRes.json()
+                        totalManagerPending += Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING').length : 0
+                    }
+
+                    if (managerAttnRes.ok) {
+                        const reqs = await managerAttnRes.json()
+                        totalManagerPending += Array.isArray(reqs) ? reqs.filter((r: any) => r.status === 'PENDING').length : 0
+                    }
+
+                    setManagerPendingCount(totalManagerPending)
+                } catch (error) {
+                    console.error("Failed to fetch manager pending counts", error)
                 }
             }
         } catch (error) {
@@ -128,7 +155,7 @@ export default function UserLayout({
         { name: "Leave Requests", href: "/user/leaves", icon: CalendarDays, badge: pendingLeaveCount },
         { name: "Amend Records", href: "/user/amend-records", icon: Edit, badge: pendingAmendCount },
         { name: "Activity Logs", href: "/user/activity", icon: FileText },
-        ...(isManagerOrAdmin ? [{ name: "Manager Control", href: "/user/manager", icon: Users }] : []),
+        ...(isManagerOrAdmin ? [{ name: "Manager Control", href: "/user/manager", icon: Users, badge: managerPendingCount }] : []),
     ]
 
     // Wait for session to load to prevent hydration errors

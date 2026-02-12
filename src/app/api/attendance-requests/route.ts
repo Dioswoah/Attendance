@@ -10,6 +10,8 @@ export async function GET(req: Request) {
     const userId = searchParams.get('userId')
     const managerId = searchParams.get('managerId')
     const status = searchParams.get('status')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
 
     try {
         const requests = await prisma.attendanceRequest.findMany({
@@ -17,6 +19,12 @@ export async function GET(req: Request) {
                 ...(userId && { userId }),
                 ...(managerId && { user: { managerId } }),
                 ...(status && { status }),
+                ...(startDate && endDate && {
+                    date: {
+                        gte: new Date(startDate),
+                        lte: new Date(endDate)
+                    }
+                }),
                 deletedAt: null
             },
             include: { user: true },

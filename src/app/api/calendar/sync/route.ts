@@ -32,44 +32,45 @@ export async function POST(req: Request) {
 
         const timezone = user?.selectedTimezone || 'UTC'
 
-        // 1. Try to get Real-time Google Chat Presence (The "Gmail Dot")
-        let appStatus = 'AVAILABLE';
-        let foundPresence = false;
-
+        // 1. Get Chat Presence
+        let chatPresence: string | null = null;
         try {
             const chatRes = await fetch('https://chat.googleapis.com/v1/users/me/presence', {
                 headers: { 'Authorization': `Bearer ${session.accessToken}` },
                 cache: 'no-store'
             });
-
             if (chatRes.ok) {
                 const chatData = await chatRes.json();
-
-                if (chatData.presence === 'DO_NOT_DISTURB') {
-                    appStatus = 'DO_NOT_DISTURB';
-                    foundPresence = true;
-                } else if (chatData.presence === 'AWAY' || chatData.presence === 'OFFLINE') {
-                    appStatus = 'APPEAR_OFFLINE';
-                    foundPresence = true;
-                } else if (chatData.presence === 'ONLINE') {
-                    appStatus = 'AVAILABLE';
-                    foundPresence = true;
-                }
+                chatPresence = chatData.presence;
             }
         } catch (e) {
-            // Squelch errors for stability
+            console.error('[Sync] Chat presence fetch error:', e);
         }
 
+        // 2. Get Calendar Events (for "In a Meeting" detection)
+        const calendarLocation = await getCurrentWorkingLocation(session.accessToken, timezone);
+        const isCalBusy = calendarLocation?.label === 'In a Meeting' || calendarLocation?.summary === 'Focus Time';
 
-        if (!foundPresence) {
-            console.log('[Sync] No presence data found.');
-            // If we failed to get presence, we should NOT fall back to Calendar per user request.
-            // We return success: false so the frontend doesn't update (avoiding spam/flicker)
-            return NextResponse.json({
-                success: false,
-                message: "Could not fetch Google Status"
-            });
+        // 3. Determine Final App Status
+        let appStatus: 'AVAILABLE' | 'DO_NOT_DISTURB' | 'APPEAR_OFFLINE' = 'APPEAR_OFFLINE';
+
+        if (chatPresence === 'ONLINE') {
+            // User is active in Google. But wait, what if they are in a meeting?
+            // Usually if they are ONLINE, they are available unless they explicitly set DND.
+            // If they have a calendar event and it's marking them as "In a Meeting", let's prioritize that.
+            if (isCalBusy) {
+                appStatus = 'DO_NOT_DISTURB';
+            } else {
+                appStatus = 'AVAILABLE';
+            }
+        } else if (chatPresence === 'DO_NOT_DISTURB' || isCalBusy) {
+            appStatus = 'DO_NOT_DISTURB';
+        } else {
+            // AWAY, OFFLINE, or No Presence -> Offline
+            appStatus = 'APPEAR_OFFLINE';
         }
+
+        console.log(`[Sync] Derived Status: ${appStatus} (Chat: ${chatPresence}, Cal: ${calendarLocation?.label})`);
 
         // Update user status in the app
         await prisma.user.update({

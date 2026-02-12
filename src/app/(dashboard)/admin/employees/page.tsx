@@ -27,6 +27,7 @@ export default function EmployeesPage() {
     const [newRoles, setNewRoles] = useState<string[]>(["USER"])
     const [newManagerId, setNewManagerId] = useState("")
     const [newLocation, setNewLocation] = useState("")
+    const [newShiftStart, setNewShiftStart] = useState("09:00")
     const [isAddOpen, setIsAddOpen] = useState(false)
 
     // Edit state
@@ -37,6 +38,7 @@ export default function EmployeesPage() {
     const [editRoles, setEditRoles] = useState<string[]>([])
     const [editManagerId, setEditManagerId] = useState("")
     const [editLocation, setEditLocation] = useState("")
+    const [editShiftStart, setEditShiftStart] = useState("09:00")
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -96,6 +98,7 @@ export default function EmployeesPage() {
 
     const handleAddEmployee = async (e: React.FormEvent) => {
         e.preventDefault()
+        setIsSaving(true)
         try {
             const res = await fetch('/api/employees', {
                 method: 'POST',
@@ -103,13 +106,15 @@ export default function EmployeesPage() {
                 body: JSON.stringify({
                     name: newName,
                     email: newEmail,
-                    departmentId: newDeptId,
+                    departmentId: newDeptId || null,
                     roles: newRoles,
-                    managerId: newManagerId || null,
-                    location: newLocation
+                    managerId: newManagerId && newManagerId !== "unassigned" ? newManagerId : null,
+                    location: newLocation,
+                    shiftStartTime: newShiftStart
                 })
             })
             if (res.ok) {
+                toast.success("Staff member created successfully")
                 setIsAddOpen(false)
                 setNewName("")
                 setNewEmail("")
@@ -117,10 +122,17 @@ export default function EmployeesPage() {
                 setNewRoles(["USER"])
                 setNewManagerId("")
                 setNewLocation("")
+                setNewShiftStart("09:00")
                 fetchData()
+            } else {
+                const data = await res.json()
+                toast.error(data.error || "Failed to create staff member")
             }
         } catch (error) {
+            toast.error("An unexpected error occurred")
             console.error("Failed to add employee")
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -133,6 +145,7 @@ export default function EmployeesPage() {
         setEditRoles(emp.roles || (emp.role ? [emp.role] : ["USER"]))
         setEditManagerId(emp.managerId || "")
         setEditLocation(emp.location || "")
+        setEditShiftStart(emp.shiftStartTime || "09:00")
         setIsEditOpen(true)
     }
 
@@ -147,18 +160,24 @@ export default function EmployeesPage() {
                 body: JSON.stringify({
                     name: editName,
                     email: editEmail,
-                    departmentId: editDeptId === "unassigned" ? null : editDeptId,
+                    departmentId: (editDeptId && editDeptId !== "unassigned") ? editDeptId : null,
                     roles: editRoles,
-                    managerId: editManagerId && editManagerId !== "unassigned" ? editManagerId : null,
-                    location: editLocation
+                    managerId: (editManagerId && editManagerId !== "unassigned") ? editManagerId : null,
+                    location: editLocation,
+                    shiftStartTime: editShiftStart
                 })
             })
             if (res.ok) {
+                toast.success("Staff member updated successfully")
                 setIsEditOpen(false)
                 fetchData()
+            } else {
+                const data = await res.json()
+                toast.error(data.error || "Failed to update staff member")
             }
         } catch (error) {
-            // Error handled
+            toast.error("An unexpected error occurred")
+            console.error("Error updating staff member:", error)
         } finally {
             setIsSaving(false)
         }
@@ -383,6 +402,16 @@ export default function EmployeesPage() {
                                         <SelectItem value="Australia">Australia</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Shift Start Time</Label>
+                                <Input
+                                    type="time"
+                                    value={newShiftStart}
+                                    onChange={e => setNewShiftStart(e.target.value)}
+                                    required
+                                />
+                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for attendance late calculations</p>
                             </div>
                             <div className="space-y-2">
                                 <Label>Roles</Label>
@@ -769,6 +798,16 @@ export default function EmployeesPage() {
                                     <SelectItem value="Australia">Australia</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Shift Start Time</Label>
+                            <Input
+                                type="time"
+                                value={editShiftStart}
+                                onChange={e => setEditShiftStart(e.target.value)}
+                                required
+                            />
+                            <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for attendance late calculations</p>
                         </div>
                         <div className="space-y-2">
                             <Label>Roles</Label>

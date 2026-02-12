@@ -27,6 +27,8 @@ model User {
   customStatusMessage String?
   selectedTimezone    String?             @default("UTC")
   useCurrentTimezone  Boolean             @default(true)
+  shiftStartTime      String?             @default("09:00")
+  shiftEndTime        String?             @default("17:00")
   accounts            Account[]
   attendance          Attendance[]
   attendanceRequests  AttendanceRequest[]
@@ -37,6 +39,7 @@ model User {
   notifications       Notification[]
   sessions            Session[]
   ledTeams            Team[]              @relation("TeamLeader")
+  workHoursChanges    WorkHoursChangeLog[]
   department          Department?         @relation(fields: [departmentId], references: [id])
   manager             User?               @relation("UserManager", fields: [managerId], references: [id])
   managedUsers        User[]              @relation("UserManager")
@@ -83,15 +86,16 @@ model VerificationToken {
 }
 
 model Department {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  managerId String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  manager   User?     @relation("DepartmentManager", fields: [managerId], references: [id])
-  teams     Team[]
-  users     User[]
+  id             String    @id @default(cuid())
+  name           String    @unique
+  managerId      String?
+  shiftStartTime String?   @default("09:00")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  manager        User?     @relation("DepartmentManager", fields: [managerId], references: [id])
+  teams          Team[]
+  users          User[]
 }
 
 model Team {
@@ -119,11 +123,13 @@ model Attendance {
   mode       WorkMode         @default(OFFICE)
   duration   Int?
   notes      String?
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  deletedAt  DateTime?
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  breaks     Break[]
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  breaks         Break[]
 
   @@index([userId, date])
 }
@@ -260,4 +266,21 @@ enum UserStatus {
   BE_RIGHT_BACK
   APPEAR_AWAY
   APPEAR_OFFLINE
+}
+
+model WorkHoursChangeLog {
+  id              String   @id @default(cuid())
+  userId          String
+  attendanceId    String?
+  date            DateTime
+  oldStart        String?
+  oldEnd          String?
+  newStart        String
+  newEnd          String
+  reason          String?
+  changedAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([attendanceId])
 }

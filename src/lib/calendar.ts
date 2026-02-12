@@ -81,8 +81,8 @@ export function mapStatusToWorkingLocation(
     } else if (status === 'DO_NOT_DISTURB') {
         return {
             type: 'customLocation',
-            label: 'Do Not Disturb',
-            summary: '🔕 Do Not Disturb',
+            label: 'In a Meeting',
+            summary: '📅 In a Meeting',
         };
     }
 
@@ -108,7 +108,7 @@ export function mapWorkingLocationToStatus(location: any): { status: string; cus
         const label = props.customLocation?.label || '';
 
         if (label === 'On Break') return { status: 'BE_RIGHT_BACK' };
-        if (label === 'Do Not Disturb') return { status: 'DO_NOT_DISTURB' };
+        if (label === 'In a Meeting' || label === 'Do Not Disturb') return { status: 'DO_NOT_DISTURB' };
         if (label === 'Offline') return { status: 'APPEAR_OFFLINE' };
         if (label === 'Working') return { status: 'AVAILABLE' }; // Generic working
 
@@ -431,7 +431,7 @@ export async function getCurrentWorkingLocation(
         if (focusEvent) {
             return {
                 type: 'customLocation',
-                label: 'Do Not Disturb',
+                label: 'In a Meeting',
                 summary: 'Focus Time'
             };
         }
@@ -442,7 +442,7 @@ export async function getCurrentWorkingLocation(
         if (busyEvent) {
             return {
                 type: 'customLocation',
-                label: 'Do Not Disturb',
+                label: 'In a Meeting',
                 summary: busyEvent.summary || 'Busy'
             };
         }
