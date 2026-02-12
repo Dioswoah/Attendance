@@ -10,7 +10,6 @@ test-scripts/
 external-tools/
 .gemini/
 .agent/
-reports/
 tmp/
 *.log
 npm-debug.log*
