@@ -30,8 +30,4 @@ test-scripts/
 external-tools/
 .gemini/
 .agent/
-reports/
 tmp/
-logs/
-test-scripts/
-test-results/

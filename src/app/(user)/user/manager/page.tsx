@@ -18,7 +18,9 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2, Filter } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download } from "lucide-react"
+import * as XLSX from 'xlsx'
+import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -70,6 +72,10 @@ export default function ManagerControlPage() {
     const [selectedDayDetail, setSelectedDayDetail] = useState<Date | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [reportStartDate, setReportStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [reportEndDate, setReportEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
+    const [isGeneratingReport, setIsGeneratingReport] = useState(false)
 
     useEffect(() => {
         if (session?.user?.id) {
@@ -83,6 +89,15 @@ export default function ManagerControlPage() {
             fetchMonthlyAttendance()
         }
     }, [currentMonth, session])
+
+    useEffect(() => {
+        if (session?.user) {
+            const tz = (session.user as any).useCurrentTimezone
+                ? getBrowserTimezone()
+                : (session.user as any).selectedTimezone || "Asia/Manila"
+            setReportTimezone(tz)
+        }
+    }, [session])
 
     const fetchInitialData = async () => {
         if (!session?.user?.id) return
@@ -435,6 +450,9 @@ export default function ManagerControlPage() {
                         </TabsTrigger>
                         <TabsTrigger id="tour-manager-tab-calendar" value="calendar" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
                             Team Calendar
+                        </TabsTrigger>
+                        <TabsTrigger id="tour-manager-tab-reports" value="reports" className="h-10 px-6 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                            Team Reports
                         </TabsTrigger>
                     </TabsList>
                 </div>
@@ -812,6 +830,175 @@ export default function ManagerControlPage() {
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* --- REPORTS TAB --- */}
+                        <TabsContent value="reports" className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <Card className="border border-border shadow-sm bg-white overflow-hidden rounded-2xl">
+                                <CardHeader className="border-b border-border bg-muted/10 p-6">
+                                    <div className="flex items-center gap-3">
+                                        <Download className="w-6 h-6 text-primary" />
+                                        <div>
+                                            <CardTitle>Team Attendance Reports</CardTitle>
+                                            <CardDescription>Generate and download attendance data for your team members</CardDescription>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl">
+                                        <div className="space-y-6">
+                                            <div className="space-y-2">
+                                                <Label className="text-sm font-bold flex items-center gap-2">
+                                                    <CalendarIcon className="w-4 h-4 text-primary" />
+                                                    Date Range
+                                                </Label>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1.5">
+                                                        <p className="text-[10px] font-bold text-muted-foreground uppercase">From</p>
+                                                        <Input
+                                                            type="date"
+                                                            value={reportStartDate}
+                                                            onChange={e => setReportStartDate(e.target.value)}
+                                                            className="bg-muted/30 border-border"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <p className="text-[10px] font-bold text-muted-foreground uppercase">To</p>
+                                                        <Input
+                                                            type="date"
+                                                            value={reportEndDate}
+                                                            onChange={e => setReportEndDate(e.target.value)}
+                                                            className="bg-muted/30 border-border"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label className="text-sm font-bold flex items-center gap-2">
+                                                    <Users className="w-4 h-4 text-primary" />
+                                                    Team Filtering
+                                                </Label>
+                                                <div className="p-4 bg-muted/30 rounded-xl border border-border">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        The report will automatically include all **{filteredTeam.length}** staff members in your current filtered view (Department: {selectedDepartment}).
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col justify-end gap-4 p-6 bg-primary/5 rounded-2xl border border-primary/10">
+                                            <div className="space-y-2 mb-4">
+                                                <h4 className="font-bold text-sm text-primary uppercase tracking-wider">Report Details</h4>
+                                                <ul className="text-xs space-y-2 text-muted-foreground">
+                                                    <li className="flex items-center gap-2">
+                                                        <Check className="w-3 h-3 text-green-500" /> Complete Master Ledger (XLSX)
+                                                    </li>
+                                                    <li className="flex items-center gap-2">
+                                                        <Check className="w-3 h-3 text-green-500" /> Clocked times, total hours & leaves
+                                                    </li>
+                                                    <li className="flex items-center gap-2">
+                                                        <Check className="w-3 h-3 text-green-500" /> Pending correction request flags
+                                                    </li>
+                                                    <li className="flex items-center gap-2">
+                                                        <Check className="w-3 h-3 text-green-500" /> Automatic Tardiness/Missing log detection
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <Button
+                                                onClick={async () => {
+                                                    setIsGeneratingReport(true)
+                                                    try {
+                                                        const staffIds = filteredTeam.map(s => s.id)
+                                                        if (staffIds.length === 0) {
+                                                            alert("No staff members found in the current filter.")
+                                                            return
+                                                        }
+
+                                                        const params = new URLSearchParams({
+                                                            startDate: reportStartDate,
+                                                            endDate: reportEndDate,
+                                                            userIds: staffIds.join(','),
+                                                            includeAll: 'true'
+                                                        })
+
+                                                        const res = await fetch(`/api/attendance?${params.toString()}`)
+                                                        if (!res.ok) throw new Error("Failed to fetch report data")
+                                                        const data = await res.json()
+
+                                                        // Prepare Workbook
+                                                        const wb = XLSX.utils.book_new()
+
+                                                        // Log Data Sheet
+                                                        const logData = data.map((record: any) => {
+                                                            const clockInData = record.clockIn ? prepareTimeForExport(record.clockIn, reportTimezone) : null
+                                                            const clockOutData = record.clockOut ? prepareTimeForExport(record.clockOut, reportTimezone) : null
+
+                                                            const comments: string[] = []
+                                                            if (record.pendingRequests?.length > 0) {
+                                                                record.pendingRequests.forEach((pr: any) => comments.push(`PENDING: ${pr.type}`))
+                                                            }
+                                                            if (!record.clockIn && record.clockOut) comments.push("MISSING CLOCK IN")
+                                                            if (record.clockIn && !record.clockOut && record.date < format(new Date(), 'yyyy-MM-dd')) comments.push("MISSING CLOCK OUT")
+                                                            if (record.notes) comments.push(`NOTE: ${record.notes}`)
+
+                                                            return {
+                                                                'Employee': record.userName,
+                                                                'Department': record.department,
+                                                                'Date': record.date,
+                                                                'Clock In (TZ)': clockInData ? formatWithTimezone(record.clockIn, reportTimezone, 'time') : '-',
+                                                                'Clock Out (TZ)': clockOutData ? formatWithTimezone(record.clockOut, reportTimezone, 'time') : '-',
+                                                                'Mode': record.mode,
+                                                                'Status': record.status,
+                                                                'Comments': comments.join('; '),
+                                                                'Timezone': reportTimezone
+                                                            }
+                                                        })
+
+                                                        const ws = XLSX.utils.json_to_sheet(logData)
+                                                        XLSX.utils.book_append_sheet(wb, ws, "Attendance Ledger")
+
+                                                        // Generate Summary Sheet
+                                                        const summary = filteredTeam.map(member => {
+                                                            const memberLogs = data.filter((d: any) => d.userId === member.id)
+                                                            const daysPresent = memberLogs.filter((d: any) => d.mode !== 'LEAVE').length
+                                                            const daysLeave = memberLogs.filter((d: any) => d.mode === 'LEAVE').length
+
+                                                            return {
+                                                                'Name': member.name,
+                                                                'Department': member.department?.name || '-',
+                                                                'Total Days (Range)': memberLogs.length,
+                                                                'Days Worked': daysPresent,
+                                                                'Days on Leave': daysLeave
+                                                            }
+                                                        })
+                                                        const wsSummary = XLSX.utils.json_to_sheet(summary)
+                                                        XLSX.utils.book_append_sheet(wb, wsSummary, "Team Summary")
+
+                                                        XLSX.writeFile(wb, `Team_Attendance_Report_${reportStartDate}_to_${reportEndDate}.xlsx`)
+                                                    } catch (error) {
+                                                        console.error(error)
+                                                        alert("Error generating report")
+                                                    } finally {
+                                                        setIsGeneratingReport(false)
+                                                    }
+                                                }}
+                                                className="w-full h-12 text-base font-bold shadow-xl"
+                                                disabled={isGeneratingReport}
+                                            >
+                                                {isGeneratingReport ? (
+                                                    <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Generating...</>
+                                                ) : (
+                                                    <><Download className="w-5 h-5 mr-2" /> Export Team Ledger</>
+                                                )}
+                                            </Button>
+                                            <p className="text-[10px] text-center text-primary/60 font-medium">
+                                                Data is exported in XLSX format compatible with Microsoft Excel and Google Sheets.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
 
                         {/* Side Panel: Team Status Today */}
                         <div className="space-y-6">
