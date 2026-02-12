@@ -35,19 +35,24 @@ export async function POST(req: Request) {
                 const events = calData.items || [];
 
                 // Find priority event: OutOfOffice > Busy
-                const activeEvent = events.find((e: any) => e.transparency === 'opaque' || e.eventType === 'outOfOffice');
+                // Default transparency is 'opaque' (Busy) if not specified
+                const activeEvent = events.find((e: any) => {
+                    if (e.status === 'cancelled') return false;
+                    const isOOO = e.eventType === 'outOfOffice';
+                    const isBusy = !e.transparency || e.transparency === 'opaque';
+                    return isOOO || isBusy;
+                });
 
                 if (activeEvent) {
                     if (activeEvent.eventType === 'outOfOffice') {
                         googleStatus = 'APPEAR_AWAY';
                         customMessage = activeEvent.summary || 'Out of Office';
-                    } else if (activeEvent.transparency === 'opaque') {
+                    } else {
                         // Busy means DND/In Meeting
                         googleStatus = 'DO_NOT_DISTURB';
                         customMessage = activeEvent.summary || 'Busy';
                     }
                 } else {
-                    // No event = Available
                     googleStatus = 'AVAILABLE';
                 }
             } else {
