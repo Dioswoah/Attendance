@@ -43,6 +43,7 @@ export async function PATCH(
             }
         }
         if (shiftStartTime !== undefined) updateData.shiftStartTime = shiftStartTime
+        if (body.shiftEndTime !== undefined) updateData.shiftEndTime = body.shiftEndTime
 
         console.log("Applying Prisma update with data:", JSON.stringify(updateData, null, 2))
 

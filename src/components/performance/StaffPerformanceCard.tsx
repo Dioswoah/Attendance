@@ -23,9 +23,10 @@ interface StaffPerformanceCardProps {
     }
     attendanceRecords: any[]
     dateRange: { start: string, end: string }
+    onEditWorkHours?: (user: any) => void
 }
 
-export function StaffPerformanceCard({ user, attendanceRecords, dateRange }: StaffPerformanceCardProps) {
+export function StaffPerformanceCard({ user, attendanceRecords, dateRange, onEditWorkHours }: StaffPerformanceCardProps) {
     // Calculate individual metrics using our centralized utility
     const metrics = calculateUserPerformanceMetrics(attendanceRecords, user)
 
@@ -47,9 +48,18 @@ export function StaffPerformanceCard({ user, attendanceRecords, dateRange }: Sta
                         </div>
                     </div>
                     <div className="flex flex-col items-end">
-                        <Badge variant="outline" className="font-mono text-[10px] bg-white border-slate-200 text-slate-600 mb-1">
-                            {user.shiftStartTime || "09:00"} - {user.shiftEndTime || "17:00"}
-                        </Badge>
+                        <div
+                            className="group flex items-center gap-2 cursor-pointer hover:bg-slate-100 active:bg-slate-200 px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-slate-200"
+                            onClick={() => onEditWorkHours?.(user)}
+                            role="button"
+                            tabIndex={0}
+                            title="Edit Work Hours"
+                        >
+                            <Badge variant="outline" className="font-mono text-[10px] bg-white border-slate-200 text-slate-600 mb-0 group-hover:border-slate-300 pointer-events-none">
+                                {user.shiftStartTime || "09:00"} - {user.shiftEndTime || "17:00"}
+                            </Badge>
+                            {onEditWorkHours && <Clock className="w-3.5 h-3.5 text-slate-400 group-hover:text-primary transition-colors" />}
+                        </div>
                     </div>
                 </div>
             </CardHeader>

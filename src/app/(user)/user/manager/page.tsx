@@ -18,7 +18,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2 } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -86,8 +86,14 @@ export default function ManagerControlPage() {
     const [perfStartDate, setPerfStartDate] = useState(format(subDays(new Date(), 7), "yyyy-MM-dd"))
     const [perfEndDate, setPerfEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
 
+    // Work Hours Edit State
+    const [editingMember, setEditingMember] = useState<any>(null)
+    const [editShiftStart, setEditShiftStart] = useState("09:00")
+    const [editShiftEnd, setEditShiftEnd] = useState("17:00")
+
     // View Mode State (Card vs Table)
     const [viewMode, setViewMode] = useState<'card' | 'table'>('card')
+    const [perfViewMode, setPerfViewMode] = useState<'card' | 'table'>('card')
 
     useEffect(() => {
         if (session?.user?.id) {
@@ -372,6 +378,42 @@ export default function ManagerControlPage() {
         }
     }
 
+    const openEditWorkHours = (member: any) => {
+        setEditingMember(member)
+        setEditShiftStart(member.shiftStartTime || "09:00")
+        setEditShiftEnd(member.shiftEndTime || "17:00")
+    }
+
+    const handleSaveWorkHours = async () => {
+        if (!editingMember) return
+        setIsSubmitting(true)
+        try {
+            const res = await fetch(`/api/employees/${editingMember.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shiftStartTime: editShiftStart,
+                    shiftEndTime: editShiftEnd
+                })
+            })
+
+            if (res.ok) {
+                // Update local state
+                const updated = await res.json()
+                setMyTeam(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m))
+                setEditingMember(null)
+                // Optionally refresh performance data
+                fetchPerformanceData()
+            } else {
+                alert("Failed to update work hours")
+            }
+        } catch (error) {
+            console.error("Failed to update work hours", error)
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     // --- Filter Data First (Before Using in Functions) ---
     // Filter Team Members
     const filteredTeam = useMemo(() => {
@@ -541,8 +583,8 @@ export default function ManagerControlPage() {
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Manager Control</h1>
                         <p className="text-muted-foreground mt-1">Review requests and monitor team availability</p>
                     </div>
-                    <TabsList className="h-12 bg-white border border-border p-1 w-full md:w-auto shadow-sm gap-1 rounded-xl">
-                        <TabsTrigger id="tour-manager-tab-requests" value="requests" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                    <TabsList className="h-12 bg-white border border-border p-1 w-full md:w-auto shadow-sm gap-1 rounded-xl overflow-x-auto justify-start md:justify-center scrollbar-hide">
+                        <TabsTrigger id="tour-manager-tab-requests" value="requests" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
                             Pending Requests
                             {pendingRequests.length > 0 && (
                                 <span className="ml-2 bg-white/20 text-current px-1.5 py-0.5 rounded-full text-[10px] font-bold">
@@ -550,16 +592,16 @@ export default function ManagerControlPage() {
                                 </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-history" value="history" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                        <TabsTrigger id="tour-manager-tab-history" value="history" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
                             History
                         </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-calendar" value="calendar" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                        <TabsTrigger id="tour-manager-tab-calendar" value="calendar" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
                             Calendar
                         </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-performance" value="performance" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all flex items-center gap-2">
+                        <TabsTrigger id="tour-manager-tab-performance" value="performance" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all flex items-center gap-2 min-w-fit flex-shrink-0">
                             Performance
                         </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-reports" value="reports" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all">
+                        <TabsTrigger id="tour-manager-tab-reports" value="reports" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
                             Reports
                         </TabsTrigger>
                     </TabsList>
@@ -569,7 +611,7 @@ export default function ManagerControlPage() {
                 <TabsContent value="requests" className="space-y-6 animate-in slide-in-from-left-4 duration-300">
                     <div id="tour-manager-pending" className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm gap-4">
                         <div className="flex items-center gap-2">
-                            <AlertCircle className="w-5 h-5 text-yellow-600" />
+                            <ListChecks className="w-5 h-5 text-yellow-600" />
                             <h2 className="font-semibold text-foreground">Pending Approvals</h2>
                         </div>
                         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -614,7 +656,7 @@ export default function ManagerControlPage() {
                                     onClick={() => setViewMode('table')}
                                     className="h-7 px-2"
                                 >
-                                    <Users className="w-4 h-4" />
+                                    <List className="w-4 h-4" />
                                 </Button>
                             </div>
                         </div>
@@ -959,82 +1001,84 @@ export default function ManagerControlPage() {
                                     </div>
                                 </div>
                             </CardHeader>
-                            <CardContent className="p-0">
-                                <div className="grid grid-cols-7 border-b border-border bg-slate-50">
-                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                                        <div key={day} className="py-2 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                            {day}
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="grid grid-cols-7 auto-rows-fr">
-                                    {calendarDays.map((day, i) => {
-                                        const events = getEventsForDay(day)
-                                        const isCurrentMonth = isSameMonth(day, currentMonth)
-                                        const isTodayDate = isToday(day)
-
-                                        return (
-                                            <div
-                                                key={day.toISOString()}
-                                                onClick={() => setSelectedDayDetail(day)}
-                                                className={cn(
-                                                    "min-h-[120px] p-2 border-b border-r border-border transition-all hover:bg-muted/50 cursor-pointer active:scale-[0.98] relative",
-                                                    !isSameMonth(day, currentMonth) && "opacity-40 bg-muted/5",
-                                                    isToday(day) && "bg-blue-50/20"
-                                                )}
-                                            >
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className={cn(
-                                                        "text-xs font-bold h-6 w-6 flex items-center justify-center rounded-full transition-colors",
-                                                        isToday(day) ? "bg-primary text-white shadow-sm" : "text-muted-foreground group-hover:text-foreground"
-                                                    )}>
-                                                        {format(day, 'd')}
-                                                    </span>
-                                                    {isToday(day) && (
-                                                        <Badge variant="outline" className="text-[9px] px-1 h-4 bg-primary/10 text-primary border-primary/20 font-bold uppercase tracking-wider">Today</Badge>
-                                                    )}
-                                                </div>
-
-                                                <div className="space-y-1 overflow-hidden">
-                                                    {/* Prioritize Holiday */}
-                                                    {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')] && (
-                                                        <div className="text-[10px] bg-red-50 text-red-600 px-1.5 py-1 rounded border border-red-100 truncate font-bold flex items-center gap-1">
-                                                            <div className="w-1 h-1 rounded-full bg-red-600" />
-                                                            {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')]}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Show up to 2 personnel events */}
-                                                    {events.filter(e => e.type !== 'holiday').slice(0, 2).map((event: any, idx: number) => (
-                                                        <div
-                                                            key={idx}
-                                                            className={cn(
-                                                                "text-[10px] px-1.5 py-1 rounded border truncate font-medium flex items-center gap-1",
-                                                                event.type === 'leave' ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                                            )}
-                                                        >
-                                                            <div className={cn("w-1 h-1 rounded-full", event.type === 'leave' ? "bg-blue-600" : "bg-emerald-600")} />
-                                                            {event.data.userName.split(' ')[0]}
-                                                            {event.type === 'leave' && <span className="opacity-60 text-[8px]">({event.data.type === 'ANNUAL' ? 'AL' : 'SL'})</span>}
-                                                        </div>
-                                                    ))}
-
-                                                    {/* +N More logic */}
-                                                    {events.filter(e => e.type !== 'holiday').length > 2 && (
-                                                        <div className="text-[10px] font-bold text-muted-foreground flex items-center justify-center py-1 bg-muted/30 rounded-md border border-dashed border-border mt-1">
-                                                            +{events.filter(e => e.type !== 'holiday').length - 2} Staff
-                                                        </div>
-                                                    )}
-
-                                                    {['Sat', 'Sun'].includes(format(day, 'EEE')) && events.length === 0 && (
-                                                        <div className="text-[10px] text-center text-muted-foreground/50 font-medium py-1">
-                                                            Weekend
-                                                        </div>
-                                                    )}
-                                                </div>
+                            <CardContent className="p-0 overflow-x-auto">
+                                <div className="min-w-[800px]">
+                                    <div className="grid grid-cols-7 border-b border-border bg-slate-50">
+                                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                            <div key={day} className="py-2 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                                {day}
                                             </div>
-                                        )
-                                    })}
+                                        ))}
+                                    </div>
+                                    <div className="grid grid-cols-7 auto-rows-fr">
+                                        {calendarDays.map((day, i) => {
+                                            const events = getEventsForDay(day)
+                                            const isCurrentMonth = isSameMonth(day, currentMonth)
+                                            const isTodayDate = isToday(day)
+
+                                            return (
+                                                <div
+                                                    key={day.toISOString()}
+                                                    onClick={() => setSelectedDayDetail(day)}
+                                                    className={cn(
+                                                        "min-h-[120px] p-2 border-b border-r border-border transition-all hover:bg-muted/50 cursor-pointer active:scale-[0.98] relative",
+                                                        !isSameMonth(day, currentMonth) && "opacity-40 bg-muted/5",
+                                                        isToday(day) && "bg-blue-50/20"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className={cn(
+                                                            "text-xs font-bold h-6 w-6 flex items-center justify-center rounded-full transition-colors",
+                                                            isToday(day) ? "bg-primary text-white shadow-sm" : "text-muted-foreground group-hover:text-foreground"
+                                                        )}>
+                                                            {format(day, 'd')}
+                                                        </span>
+                                                        {isToday(day) && (
+                                                            <Badge variant="outline" className="text-[9px] px-1 h-4 bg-primary/10 text-primary border-primary/20 font-bold uppercase tracking-wider">Today</Badge>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-1 overflow-hidden">
+                                                        {/* Prioritize Holiday */}
+                                                        {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')] && (
+                                                            <div className="text-[10px] bg-red-50 text-red-600 px-1.5 py-1 rounded border border-red-100 truncate font-bold flex items-center gap-1">
+                                                                <div className="w-1 h-1 rounded-full bg-red-600" />
+                                                                {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')]}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Show up to 2 personnel events */}
+                                                        {events.filter(e => e.type !== 'holiday').slice(0, 2).map((event: any, idx: number) => (
+                                                            <div
+                                                                key={idx}
+                                                                className={cn(
+                                                                    "text-[10px] px-1.5 py-1 rounded border truncate font-medium flex items-center gap-1",
+                                                                    event.type === 'leave' ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                                )}
+                                                            >
+                                                                <div className={cn("w-1 h-1 rounded-full", event.type === 'leave' ? "bg-blue-600" : "bg-emerald-600")} />
+                                                                {event.data.userName.split(' ')[0]}
+                                                                {event.type === 'leave' && <span className="opacity-60 text-[8px]">({event.data.type === 'ANNUAL' ? 'AL' : 'SL'})</span>}
+                                                            </div>
+                                                        ))}
+
+                                                        {/* +N More logic */}
+                                                        {events.filter(e => e.type !== 'holiday').length > 2 && (
+                                                            <div className="text-[10px] font-bold text-muted-foreground flex items-center justify-center py-1 bg-muted/30 rounded-md border border-dashed border-border mt-1">
+                                                                +{events.filter(e => e.type !== 'holiday').length - 2} Staff
+                                                            </div>
+                                                        )}
+
+                                                        {['Sat', 'Sun'].includes(format(day, 'EEE')) && events.length === 0 && (
+                                                            <div className="text-[10px] text-center text-muted-foreground/50 font-medium py-1">
+                                                                Weekend
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>
@@ -1244,20 +1288,124 @@ export default function ManagerControlPage() {
 
                                     {/* Individual Staff Cards */}
                                     <div className="pt-8 border-t border-border">
-                                        <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
-                                            <Users className="h-4 w-4 text-primary" />
-                                            Individual Performance Breakdown
-                                        </h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                            {filteredTeam.map(member => (
-                                                <StaffPerformanceCard
-                                                    key={member.id}
-                                                    user={member}
-                                                    attendanceRecords={rawPerformanceData.filter((a: any) => a.userId === member.id)}
-                                                    dateRange={{ start: perfStartDate, end: perfEndDate }}
-                                                />
-                                            ))}
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                                                <Users className="h-4 w-4 text-primary" />
+                                                Individual Performance Breakdown
+                                            </h3>
+                                            <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg">
+                                                <Button
+                                                    variant={perfViewMode === 'card' ? 'default' : 'ghost'}
+                                                    size="sm"
+                                                    onClick={() => setPerfViewMode('card')}
+                                                    className="h-7 px-2"
+                                                >
+                                                    <LayoutGrid className="w-4 h-4" />
+                                                </Button>
+                                                <Button
+                                                    variant={perfViewMode === 'table' ? 'default' : 'ghost'}
+                                                    size="sm"
+                                                    onClick={() => setPerfViewMode('table')}
+                                                    className="h-7 px-2"
+                                                >
+                                                    <List className="w-4 h-4" />
+                                                </Button>
+                                            </div>
                                         </div>
+
+                                        {perfViewMode === 'card' ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                                {filteredTeam.map(member => (
+                                                    <StaffPerformanceCard
+                                                        key={member.id}
+                                                        user={member}
+                                                        attendanceRecords={rawPerformanceData.filter((a: any) => a.userId === member.id)}
+                                                        dateRange={{ start: perfStartDate, end: perfEndDate }}
+                                                        onEditWorkHours={openEditWorkHours}
+                                                    />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <Card className="border-border bg-white overflow-hidden">
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full">
+                                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                                            <tr>
+                                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Staff Member</th>
+                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Punctuality</th>
+                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Avg. Lateness</th>
+                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">On-Time</th>
+                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Late Arrivals</th>
+                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Avg Early Dept</th>
+                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Hours Variance</th>
+                                                                <th className="text-right p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {filteredTeam.map(member => {
+                                                                const metrics = calculateUserPerformanceMetrics(
+                                                                    rawPerformanceData.filter((a: any) => a.userId === member.id),
+                                                                    member
+                                                                )
+                                                                return (
+                                                                    <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
+                                                                        <td className="p-4">
+                                                                            <div className="flex items-center gap-3">
+                                                                                <Avatar className="h-9 w-9 border-2 border-white shadow-sm">
+                                                                                    <AvatarFallback className="bg-slate-900 text-white font-bold text-xs">{member.name.charAt(0)}</AvatarFallback>
+                                                                                </Avatar>
+                                                                                <div>
+                                                                                    <p className="font-semibold text-sm text-foreground">{member.name}</p>
+                                                                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{member.departmentId ? managerDepartments.find(d => d.id === member.departmentId)?.name : 'Team Member'}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td className="p-4 text-center">
+                                                                            <Badge variant="outline" className={cn("font-bold", metrics.punctualityColor)}>
+                                                                                {metrics.punctualityRate}%
+                                                                            </Badge>
+                                                                        </td>
+                                                                        <td className="p-4 text-center">
+                                                                            <span className={cn("font-mono font-bold text-sm", metrics.tardinessColor)}>
+                                                                                {metrics.avgTardiness} min
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="p-4 text-center">
+                                                                            <span className="text-sm font-semibold text-emerald-600">{metrics.onTimeDays}</span>
+                                                                        </td>
+                                                                        <td className="p-4 text-center">
+                                                                            <span className="text-sm font-semibold text-amber-600">{metrics.lateDays}</span>
+                                                                        </td>
+                                                                        <td className="p-4 text-center">
+                                                                            <span className="text-sm font-medium text-slate-600">{metrics.avgEarlyDeparture} min</span>
+                                                                        </td>
+                                                                        <td className="p-4 text-center">
+                                                                            <Badge variant="secondary" className={cn(
+                                                                                "font-mono font-bold",
+                                                                                metrics.hoursVariance < 0 ? "bg-red-50 text-red-700 hover:bg-red-100" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                                                            )}>
+                                                                                {metrics.hoursVariance > 0 ? '+' : ''}{metrics.hoursVariance} hrs
+                                                                            </Badge>
+                                                                        </td>
+                                                                        <td className="p-4 text-right">
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="ghost"
+                                                                                onClick={() => openEditWorkHours(member)}
+                                                                                className="h-8 w-8 p-0"
+                                                                                title="Edit Shift Hours"
+                                                                            >
+                                                                                <Edit className="w-4 h-4 text-slate-400 hover:text-primary" />
+                                                                            </Button>
+                                                                        </td>
+                                                                    </tr>
+                                                                )
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </Card>
+                                        )}
                                     </div>
                                 </div>
                             ) : (
@@ -1597,6 +1745,44 @@ export default function ManagerControlPage() {
                             Close
                         </Button>
                     </div>
+                </DialogContent>
+            </Dialog>
+            {/* Edit Work Hours Dialog */}
+            <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Update Work Schedule</DialogTitle>
+                        <DialogDescription>
+                            Change default shift hours for <span className="font-bold text-foreground">{editingMember?.name}</span>.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-2 gap-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="start-time">Shift Start</Label>
+                            <Input
+                                id="start-time"
+                                type="time"
+                                value={editShiftStart}
+                                onChange={(e) => setEditShiftStart(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="end-time">Shift End</Label>
+                            <Input
+                                id="end-time"
+                                type="time"
+                                value={editShiftEnd}
+                                onChange={(e) => setEditShiftEnd(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingMember(null)}>Cancel</Button>
+                        <Button onClick={handleSaveWorkHours} disabled={isSubmitting}>
+                            {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

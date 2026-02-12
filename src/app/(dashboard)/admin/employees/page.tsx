@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle } from "lucide-react"
+import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle, Clock } from "lucide-react"
 import { statusConfig } from "@/components/UserStatusDropdown"
 import { toast } from "sonner"
 
@@ -28,6 +28,7 @@ export default function EmployeesPage() {
     const [newManagerId, setNewManagerId] = useState("")
     const [newLocation, setNewLocation] = useState("")
     const [newShiftStart, setNewShiftStart] = useState("09:00")
+    const [newShiftEnd, setNewShiftEnd] = useState("17:00")
     const [isAddOpen, setIsAddOpen] = useState(false)
 
     // Edit state
@@ -39,6 +40,7 @@ export default function EmployeesPage() {
     const [editManagerId, setEditManagerId] = useState("")
     const [editLocation, setEditLocation] = useState("")
     const [editShiftStart, setEditShiftStart] = useState("09:00")
+    const [editShiftEnd, setEditShiftEnd] = useState("17:00")
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -110,7 +112,8 @@ export default function EmployeesPage() {
                     roles: newRoles,
                     managerId: newManagerId && newManagerId !== "unassigned" ? newManagerId : null,
                     location: newLocation,
-                    shiftStartTime: newShiftStart
+                    shiftStartTime: newShiftStart,
+                    shiftEndTime: newShiftEnd
                 })
             })
             if (res.ok) {
@@ -123,6 +126,7 @@ export default function EmployeesPage() {
                 setNewManagerId("")
                 setNewLocation("")
                 setNewShiftStart("09:00")
+                setNewShiftEnd("17:00")
                 fetchData()
             } else {
                 const data = await res.json()
@@ -146,6 +150,7 @@ export default function EmployeesPage() {
         setEditManagerId(emp.managerId || "")
         setEditLocation(emp.location || "")
         setEditShiftStart(emp.shiftStartTime || "09:00")
+        setEditShiftEnd(emp.shiftEndTime || "17:00")
         setIsEditOpen(true)
     }
 
@@ -164,7 +169,8 @@ export default function EmployeesPage() {
                     roles: editRoles,
                     managerId: (editManagerId && editManagerId !== "unassigned") ? editManagerId : null,
                     location: editLocation,
-                    shiftStartTime: editShiftStart
+                    shiftStartTime: editShiftStart,
+                    shiftEndTime: editShiftEnd
                 })
             })
             if (res.ok) {
@@ -414,6 +420,15 @@ export default function EmployeesPage() {
                                 <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for attendance late calculations</p>
                             </div>
                             <div className="space-y-2">
+                                <Label>Shift End Time</Label>
+                                <Input
+                                    type="time"
+                                    value={newShiftEnd}
+                                    onChange={e => setNewShiftEnd(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
                                 <Label>Roles</Label>
                                 <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-lg border border-border">
                                     {['USER', 'MANAGER', 'ADMIN'].map((role) => (
@@ -583,6 +598,7 @@ export default function EmployeesPage() {
                                 </TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Staff Identity</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Work Hours</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Location</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Email</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Roles</TableHead>
@@ -632,6 +648,12 @@ export default function EmployeesPage() {
                                         <Badge variant="outline" className="font-normal text-xs bg-muted/50 text-muted-foreground border-border">
                                             <Building className="h-3 w-3 mr-1.5 opacity-70" />
                                             {emp.department?.name || 'Unassigned'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                        <Badge variant="outline" className="font-mono text-xs bg-white text-slate-600 border-slate-200">
+                                            <Clock className="h-3 w-3 mr-1.5 opacity-70" />
+                                            {emp.shiftStartTime || "09:00"} - {emp.shiftEndTime || "17:00"}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="py-4 px-6">
@@ -808,6 +830,15 @@ export default function EmployeesPage() {
                                 required
                             />
                             <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for attendance late calculations</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Shift End Time</Label>
+                            <Input
+                                type="time"
+                                value={editShiftEnd}
+                                onChange={e => setEditShiftEnd(e.target.value)}
+                                required
+                            />
                         </div>
                         <div className="space-y-2">
                             <Label>Roles</Label>

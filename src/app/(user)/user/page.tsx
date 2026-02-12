@@ -136,12 +136,7 @@ export default function UserPortal() {
     }, [userTimeZone])
 
     // Initialize scheduled times with user's default work hours
-    useEffect(() => {
-        if (userProfile?.shiftStartTime && userProfile?.shiftEndTime) {
-            setScheduledStart(userProfile.shiftStartTime)
-            setScheduledEnd(userProfile.shiftEndTime)
-        }
-    }, [userProfile])
+
 
     const handleTimezoneWorkHoursConfirm = async () => {
         try {
@@ -200,7 +195,32 @@ export default function UserPortal() {
         }
     }
 
-    const handleSaveScheduledHours = async () => {
+
+
+    // Decline Dialog State
+    const [isDeclineOpen, setIsDeclineOpen] = useState(false)
+    const [declineReason, setDeclineReason] = useState("")
+    const [selectedLeaveId, setSelectedLeaveId] = useState<string | null>(null)
+
+
+
+    // User's Own Leave Requests
+    const [myLeaveRequests, setMyLeaveRequests] = useState<any[]>([])
+
+    // Scheduled Times for Today (Edit Work Hours)
+    const [scheduledStart, setScheduledStart] = useState("")
+    const [scheduledEnd, setScheduledEnd] = useState("")
+    const [showScheduleInput, setShowScheduleInput] = useState(false)
+
+    // Initialize scheduled times with user's default work hours
+    useEffect(() => {
+        if (userProfile?.shiftStartTime && userProfile?.shiftEndTime) {
+            setScheduledStart(userProfile.shiftStartTime)
+            setScheduledEnd(userProfile.shiftEndTime)
+        }
+    }, [userProfile])
+
+    const handleUpdateWorkHours = async () => {
         if (!scheduledStart || !scheduledEnd) {
             toast.error("Please set both start and end times")
             return
@@ -229,19 +249,6 @@ export default function UserPortal() {
             toast.error("Failed to update work hours")
         }
     }
-
-    // Decline Dialog State
-    const [isDeclineOpen, setIsDeclineOpen] = useState(false)
-    const [declineReason, setDeclineReason] = useState("")
-    const [selectedLeaveId, setSelectedLeaveId] = useState<string | null>(null)
-
-    // Scheduled Times for Today
-    const [scheduledStart, setScheduledStart] = useState("")
-    const [scheduledEnd, setScheduledEnd] = useState("")
-    const [showScheduleInput, setShowScheduleInput] = useState(false)
-
-    // User's Own Leave Requests
-    const [myLeaveRequests, setMyLeaveRequests] = useState<any[]>([])
     // Pending Attendance Amendment Requests
     const [myAttendanceRequests, setMyAttendanceRequests] = useState<any[]>([])
 
@@ -798,21 +805,7 @@ export default function UserPortal() {
             const clockInISO = new Date().toISOString()
 
             // Prepare scheduled times if provided
-            let scheduledStartISO = null
-            let scheduledEndISO = null
 
-            if (scheduledStart && scheduledEnd) {
-                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
-                const offset = (() => {
-                    try {
-                        const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
-                        return part?.value.replace('GMT', '') || '+00:00'
-                    } catch { return '+00:00' }
-                })()
-
-                scheduledStartISO = new Date(`${todayStr}T${scheduledStart}:00${offset}`).toISOString()
-                scheduledEndISO = new Date(`${todayStr}T${scheduledEnd}:00${offset}`).toISOString()
-            }
 
             const res = await fetch('/api/attendance', {
                 method: 'POST',
@@ -820,9 +813,7 @@ export default function UserPortal() {
                 body: JSON.stringify({
                     userId: session.user.id,
                     mode,
-                    clockIn: clockInISO,
-                    scheduledStart: scheduledStartISO,
-                    scheduledEnd: scheduledEndISO
+                    clockIn: clockInISO
                 })
             })
             if (res.ok) {
@@ -1476,10 +1467,10 @@ export default function UserPortal() {
                                 <CardDescription className="text-sm text-muted-foreground">Manage your attendance for today</CardDescription>
                             </div>
                             {userProfile?.shiftStartTime && userProfile?.shiftEndTime && (
-                                <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
+                                <div className="flex items-center gap-3 bg-[#FFF5F5] px-4 py-2 rounded-lg border border-red-100">
                                     <div className="text-right">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Work Hours</p>
-                                        <p className="text-sm font-mono font-bold text-slate-900">
+                                        <p className="text-[10px] font-bold text-red-600/80 uppercase tracking-wider">Work Hours</p>
+                                        <p className="text-sm font-mono font-bold text-[#8B2323]">
                                             {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
                                         </p>
                                     </div>
@@ -1487,21 +1478,22 @@ export default function UserPortal() {
                                         variant="ghost"
                                         size="sm"
                                         onClick={() => setShowScheduleInput(!showScheduleInput)}
-                                        className="h-8 w-8 p-0 hover:bg-slate-200"
+                                        className="h-8 w-8 p-0 hover:bg-red-100"
                                     >
-                                        <Edit className="w-4 h-4 text-slate-600" />
+                                        <Edit className="w-4 h-4 text-[#8B2323]" />
                                     </Button>
                                 </div>
+
                             )}
                         </div>
 
-                        {/* Set Today's Work Schedule - Collapsible Section */}
+                        {/* Edit Work Hours - Collapsible Section */}
                         {showScheduleInput && (
-                            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+                            <div className="mt-4 p-4 bg-[#FFF5F5] border border-red-100 rounded-xl space-y-3 animate-in slide-in-from-top-2">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-sm font-bold text-[#8B2323]">Set Today's Work Schedule</p>
-                                        <p className="text-xs text-red-700 mt-0.5">Adjust your work hours for today only</p>
+                                        <p className="text-sm font-bold text-[#8B2323]">Edit Work Hours</p>
+                                        <p className="text-xs text-red-600/80 mt-0.5">Update your default shift timings</p>
                                     </div>
                                     <Button
                                         variant="ghost"
@@ -1509,38 +1501,39 @@ export default function UserPortal() {
                                         onClick={() => setShowScheduleInput(false)}
                                         className="h-7 w-7 p-0 hover:bg-red-100"
                                     >
-                                        <X className="w-4 h-4 text-red-600" />
+                                        <X className="w-4 h-4 text-[#8B2323]" />
                                     </Button>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs font-semibold text-[#8B2323]">Scheduled Start</Label>
+                                        <Label className="text-xs font-semibold text-[#8B2323]">Start Time</Label>
                                         <Input
                                             type="time"
                                             value={scheduledStart}
                                             onChange={(e) => setScheduledStart(e.target.value)}
-                                            className="h-10 font-mono font-semibold border-red-300 focus:border-[#8B2323]"
+                                            className="h-10 font-mono font-semibold border-red-200 focus:border-[#8B2323] bg-white"
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs font-semibold text-[#8B2323]">Scheduled End</Label>
+                                        <Label className="text-xs font-semibold text-[#8B2323]">End Time</Label>
                                         <Input
                                             type="time"
                                             value={scheduledEnd}
                                             onChange={(e) => setScheduledEnd(e.target.value)}
-                                            className="h-10 font-mono font-semibold border-red-300 focus:border-[#8B2323]"
+                                            className="h-10 font-mono font-semibold border-red-200 focus:border-[#8B2323] bg-white"
                                         />
                                     </div>
                                 </div>
                                 <Button
-                                    onClick={handleSaveScheduledHours}
-                                    className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-wider"
+                                    onClick={handleUpdateWorkHours}
+                                    className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-wider shadow-md shadow-red-900/10"
                                 >
                                     <Check className="w-4 h-4 mr-2" />
-                                    Update Work Hours
+                                    Save Changes
                                 </Button>
                             </div>
                         )}
+
                     </CardHeader>
                     <CardContent className="p-6">
                         <div className="flex flex-col gap-8">
@@ -1578,51 +1571,7 @@ export default function UserPortal() {
                             </div>
 
                             {/* Scheduled Work Times Section */}
-                            {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
-                                <div className="border-t border-slate-100 pt-6">
-                                    <Button
-                                        variant="ghost"
-                                        onClick={() => setShowScheduleInput(!showScheduleInput)}
-                                        className="w-full justify-between text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 h-auto py-3 px-4 rounded-lg"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <Calendar className="w-4 h-4" />
-                                            <span>Set Today's Work Schedule</span>
-                                        </div>
-                                        <ChevronDown className={cn("w-4 h-4 transition-transform", showScheduleInput && "rotate-180")} />
-                                    </Button>
 
-                                    {showScheduleInput && (
-                                        <div className="mt-4 p-4 bg-slate-50 rounded-xl space-y-4">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Scheduled Start</Label>
-                                                    <Input
-                                                        type="time"
-                                                        value={scheduledStart}
-                                                        onChange={(e) => setScheduledStart(e.target.value)}
-                                                        placeholder={userProfile?.shiftStartTime || "09:00"}
-                                                        className="h-11 bg-white border-slate-200 rounded-lg font-mono font-semibold text-base"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Scheduled End</Label>
-                                                    <Input
-                                                        type="time"
-                                                        value={scheduledEnd}
-                                                        onChange={(e) => setScheduledEnd(e.target.value)}
-                                                        placeholder="17:00"
-                                                        className="h-11 bg-white border-slate-200 rounded-lg font-mono font-semibold text-base"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <p className="text-xs text-slate-500 italic">
-                                                Optional: Set your planned work hours to track tardiness and early departures
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
 
                             <div id="tour-action-buttons" className="flex flex-wrap gap-4 items-center">
                                 {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
