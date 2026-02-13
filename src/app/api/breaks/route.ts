@@ -138,20 +138,37 @@ export async function POST(req: Request) {
         const session = await auth() as any
         if (session && session.user.id !== userId) {
             const targetUser = await prisma.user.findUnique({ where: { id: userId } })
-            if (targetUser && targetUser.email && session.accessToken) {
-                const details = `Start: ${new Date(breakRecord.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` +
-                    (breakRecord.endTime ? `, End: ${new Date(breakRecord.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '')
-
-                await sendAdminActionEmail({
-                    userName: targetUser.name || "Employee",
-                    userEmail: targetUser.email,
-                    adminName: session.user.name || "Administrator",
-                    adminEmail: session.user.email,
-                    adminAccessToken: session.accessToken,
-                    actionType: 'BREAK',
-                    details: details,
-                    date: new Date(attendance.date).toLocaleDateString()
+            if (targetUser) {
+                // 1. Create In-App Notification
+                await prisma.notification.create({
+                    data: {
+                        userId: userId,
+                        title: "New Break Record Added",
+                        message: `An administrator (${session.user.name || 'Admin'}) has added a new break record for you on ${new Date(attendance.date).toLocaleDateString()}.`,
+                        type: "ADMIN_ACTION",
+                        link: "/user"
+                    }
                 })
+
+                // 2. Broadcast for real-time bell
+                broadcastUpdate('notification', { userId })
+
+                // 3. Send Email
+                if (targetUser.email && session.accessToken) {
+                    const details = `Start: ${new Date(breakRecord.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` +
+                        (breakRecord.endTime ? `, End: ${new Date(breakRecord.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '')
+
+                    await sendAdminActionEmail({
+                        userName: targetUser.name || "Employee",
+                        userEmail: targetUser.email,
+                        adminName: session.user.name || "Administrator",
+                        adminEmail: session.user.email,
+                        adminAccessToken: session.accessToken,
+                        actionType: 'BREAK',
+                        details: details,
+                        date: new Date(attendance.date).toLocaleDateString()
+                    })
+                }
             }
         }
 

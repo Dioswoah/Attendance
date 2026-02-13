@@ -300,31 +300,46 @@ export async function sendAdminActionEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = `Record Update: New ${actionType.toLowerCase()} entry added`;
-    const color = '#ff9800'; // Orange for admin action
+    const subject = `Administration Update: New ${actionType.toLowerCase()} entry added`;
+    const themeColor = '#6366f1'; // Indigo for admin updates
 
     const emailContent = `From: "${adminName}" <${adminEmail}>
 To: ${userEmail}
 Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-  <div style="background-color: ${color}; padding: 20px; text-align: center;">
-    <h2 style="margin: 0; color: #ffffff;">New Record Added</h2>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: ${themeColor}; padding: 32px 24px; text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 16px;">📝</div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Record Update</h2>
   </div>
-  <div style="padding: 20px;">
-    <p>Hi <strong>${userName}</strong>,</p>
-    <p>An administrator has manually added a new <strong>${actionType.toLowerCase()}</strong> record to your profile.</p>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
+      An administrator has recently updated your profile with a new <strong>${actionType.toLowerCase()}</strong> record. This ensures all your time-tracking information remains complete and accurate.
+    </p>
     
-    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
-      <p style="margin: 5px 0;"><strong>Date:</strong> ${date}</p>
-      <p style="margin: 5px 0;"><strong>Details:</strong> ${details}</p>
+    <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #e2e8f0;">
+      <div style="margin-bottom: 12px; display: flex; align-items: flex-start;">
+        <span style="color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 100px; display: block;">Date</span>
+        <span style="color: #0f172a; font-weight: 600; font-size: 16px;">${date}</span>
+      </div>
+      <div style="display: flex; align-items: flex-start;">
+        <span style="color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 100px; display: block;">Details</span>
+        <span style="color: #0f172a; font-weight: 500; font-size: 15px; line-height: 1.5;">${details}</span>
+      </div>
     </div>
 
-    <p>Please log in to the <a href="${process.env.NEXTAUTH_URL}" style="color: ${color}; text-decoration: none; font-weight: bold;">User Portal</a> to review your records.</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">
+      You can review this new entry and all your other records anytime through your personal dashboard.
+    </p>
+
+    <div style="text-align: center;">
+      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: ${themeColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
+    </div>
   </div>
-  <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
-    <p style="margin: 0;">This is an automated message.</p>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is an administrative notification.<br/>Designed to help you stay informed about your profile updates.</p>
   </div>
 </div>`;
 
@@ -351,6 +366,7 @@ interface BreakLimitEmailProps {
   userAccessToken: string;
   totalBreakTime: string;
   limit: string;
+  isWarning?: boolean;
 }
 
 export async function sendBreakLimitEmail({
@@ -358,7 +374,8 @@ export async function sendBreakLimitEmail({
   userEmail,
   userAccessToken,
   totalBreakTime,
-  limit
+  limit,
+  isWarning = false
 }: BreakLimitEmailProps) {
   try {
     const oauth2Client = new google.auth.OAuth2(
@@ -368,40 +385,58 @@ export async function sendBreakLimitEmail({
     oauth2Client.setCredentials({ access_token: userAccessToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
+    const subject = isWarning
+      ? "Friendly Reminder: Break Time Update"
+      : "Important: Break Time Allocation Check-in";
+
+    const headerColor = isWarning ? '#3B82F6' : '#F59E0B'; // Blue for warning, Orange for exceeded
+    const icon = isWarning ? '?' : '??';
+
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
-Subject: Friendly Reminder: Break Time Check-in
+Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Segoe UI', Arial, sans-serif; color: #4a5568; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
-  <div style="background-color: #F59E0B; padding: 24px; text-align: center;">
-    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 20px;">Break Time Check-in</h2>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 16px;">${icon}</div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Break Time Check-in</h2>
   </div>
-  <div style="padding: 32px 24px;">
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hello <strong>${userName}</strong>,</p>
     
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-      I would like to check in with you. It seems like you might have forgotten to end your break, as the recorded time has gone slightly over the daily allocation.
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
+      ${isWarning
+        ? "We're reaching out to provide a gentle update regarding your break time. Our records indicate that you have about <strong>15 minutes remaining</strong> of your daily break allocation."
+        : "We would like to check in with you regarding your current break session. It appears the recorded break time has extended slightly beyond the daily allocation."
+      }
     </p>
     
-    <div style="background-color: #FFFBEB; padding: 20px; border-radius: 12px; margin: 24px 0; border: 1px solid #FCD34D;">
-      <p style="margin: 8px 0; color: #92400E;"><strong>Daily Allocation:</strong> ${limit}</p>
-      <p style="margin: 8px 0; color: #92400E;"><strong>Recorded Today:</strong> ${totalBreakTime}</p>
+    <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #e2e8f0;">
+      <div style="margin-bottom: 12px; display: flex; align-items: center;">
+        <span style="color: #64748b; font-size: 14px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 140px;">Daily Allocation</span>
+        <span style="color: #0f172a; font-weight: 700; font-size: 16px;">${limit}</span>
+      </div>
+      <div style="display: flex; align-items: center;">
+        <span style="color: #64748b; font-size: 14px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 140px;">Recorded Today</span>
+        <span style="color: ${isWarning ? '#0f172a' : '#ef4444'}; font-weight: 700; font-size: 16px;">${totalBreakTime}</span>
+      </div>
     </div>
 
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 8px;">
-      If you are already back at work, please remember to clock back in via the portal.
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 16px;">
+      If you've already returned to your tasks, please take a quick moment to <strong>end your break session</strong> via the dashboard to ensure your attendance records remain accurate.
     </p>
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-      If you need a bit more time or if this is an error, please feel free to let your manager know.
+    
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">
+      If you require additional time or if there's been a discrepancy, please feel free to coordinate with your lead or administrator.
     </p>
 
-    <div style="text-align: center; margin-top: 32px;">
-      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: #F59E0B; color: #ffffff; text-decoration: none; font-weight: 600; padding: 12px 24px; border-radius: 8px; font-size: 16px;">Go to User Portal</a>
+    <div style="text-align: center;">
+      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px; transition: background-color 0.2s;">Access Dashboard</a>
     </div>
   </div>
-  <div style="background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0;">This is an automated message sent with care.</p>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is an automated system notification.<br/>Designed to help keep your workflow status up to date.</p>
   </div>
 </div>`;
 
@@ -418,5 +453,82 @@ Content-Type: text/html; charset=utf-8
     console.log("[Email Service] Break limit email sent.");
   } catch (error) {
     console.error("[Email Service] FAILED to send break limit email:", error);
+  }
+}
+
+interface ForgottenClockOutEmailProps {
+  userName: string;
+  userEmail: string;
+  userAccessToken: string;
+  date: string;
+}
+
+export async function sendForgottenClockOutEmail({
+  userName,
+  userEmail,
+  userAccessToken,
+  date
+}: ForgottenClockOutEmailProps) {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET
+    );
+    oauth2Client.setCredentials({ access_token: userAccessToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const emailContent = `From: "Attendance System" <${userEmail}>
+To: ${userEmail}
+Subject: Friendly Reminder: Attendance Status Cleanup
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #64748b; padding: 32px 24px; text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 16px;">⏱️</div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Attendance Status Update</h2>
+  </div>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
+    
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
+      Our system noticed that your session for <strong>${date}</strong> remained active after the end of the day. To keep your attendance records accurate, we have automatically finalized the record for that day.
+    </p>
+
+    <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #e2e8f0; text-align: center;">
+      <p style="margin: 0; color: #64748b; font-size: 14px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em;">Updated Record</p>
+      <p style="margin: 8px 0; color: #0f172a; font-weight: 700; font-size: 18px;">${date}</p>
+      <p style="margin: 0; color: #94a3b8; font-size: 13px;">Status: Finalized at 11:59 PM</p>
+    </div>
+    
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
+      If this was intentional or if any adjustments are needed to the finalized time, please don't hesitate to reach out to your administrator to update the record manually.
+    </p>
+
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">
+      For future days, please remember to click <strong>"Clock Out"</strong> via the portal before heading off to ensure everything is captured correctly.
+    </p>
+
+    <div style="text-align: center;">
+      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: #64748b; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Attendance Records</a>
+    </div>
+  </div>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is an automated maintenance notification.<br/>Designed to keep your profile status current.</p>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+    console.log("[Email Service] Forgotten clock-out email sent.");
+  } catch (error) {
+    console.error("[Email Service] FAILED to send forgotten clock-out email:", error);
   }
 }

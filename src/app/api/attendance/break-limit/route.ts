@@ -30,14 +30,15 @@ export async function POST(req: Request) {
         // 2. Broadcast for real-time bell
         broadcastUpdate('notification', { userId })
 
-        // 3. If EXCEEDED, send email
-        if (type === 'EXCEEDED' && session.accessToken) {
+        // 3. Send email for both Warning and Exceeded types
+        if (session.accessToken) {
             await sendBreakLimitEmail({
                 userName: session.user.name || "Employee",
                 userEmail: session.user.email,
                 userAccessToken: session.accessToken,
                 totalBreakTime,
-                limit
+                limit,
+                isWarning: type === 'WARNING'
             })
         }
 

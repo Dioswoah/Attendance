@@ -188,17 +188,34 @@ export async function POST(req: Request) {
         const session = await auth() as any;
 
         if (session && session.user.id !== userId) {
-            if (user && user.email && session.accessToken) {
-                await sendAdminActionEmail({
-                    userName: user.name || "Employee",
-                    userEmail: user.email,
-                    adminName: session.user.name || "Administrator",
-                    adminEmail: session.user.email,
-                    adminAccessToken: session.accessToken,
-                    actionType: 'LEAVE',
-                    details: `${type} - ${duration} (${reason || 'No reason specified'})`,
-                    date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`
+            if (user && user.email) {
+                // 1. Create In-App Notification
+                await prisma.notification.create({
+                    data: {
+                        userId: userId,
+                        title: "New Leave Record Added",
+                        message: `An administrator (${session.user.name || 'Admin'}) has added a new leave record for you from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
+                        type: "ADMIN_ACTION",
+                        link: "/user"
+                    }
                 })
+
+                // 2. Broadcast for real-time bell
+                broadcastUpdate('notification', { userId })
+
+                // 3. Send Email
+                if (session.accessToken) {
+                    await sendAdminActionEmail({
+                        userName: user.name || "Employee",
+                        userEmail: user.email,
+                        adminName: session.user.name || "Administrator",
+                        adminEmail: session.user.email,
+                        adminAccessToken: session.accessToken,
+                        actionType: 'LEAVE',
+                        details: `${type} - ${duration} (${reason || 'No reason specified'})`,
+                        date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`
+                    })
+                }
             }
         }
 

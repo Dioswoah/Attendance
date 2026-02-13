@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from "@/auth"
-import { sendAdminActionEmail } from "@/lib/email"
+import { sendAdminActionEmail, sendForgottenClockOutEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { syncStatusToCalendar } from "@/lib/calendar"
 
@@ -64,12 +64,7 @@ function getPHTToday() {
  * Helper to automatically "seal" open sessions from previous days.
  * If someone forgot to clock out or end a break, we close them at 11:59:59 PM of that day.
  */
-async function cleanupOldSessions() {
-    // We need to fetch sessions that are "Open" (clockOut: null)
-    // We cannot easily filter by "Date < Today" globally because "Today" depends on User Timezone.
-    // However, we can fetch ALL open sessions and filter in code, or use a safe "Global Yesterday" buffer.
-    // Given the scale, fetching all open sessions is likely fine (usually small number).
-
+async function cleanupOldSessions(sessionToken?: string) {
     const unclosed = await prisma.attendance.findMany({
         where: {
             clockOut: null
@@ -78,6 +73,8 @@ async function cleanupOldSessions() {
             user: {
                 select: {
                     id: true,
+                    name: true,
+                    email: true,
                     selectedTimezone: true,
                     location: true
                 }
@@ -89,53 +86,16 @@ async function cleanupOldSessions() {
 
     for (const session of unclosed) {
         const timeZone = session.user?.selectedTimezone || 'Asia/Manila'
-
-        // 1. Determine "Today's Date" in User's Timezone
         const now = new Date()
         const userTodayStr = now.toLocaleDateString('en-CA', { timeZone }) // YYYY-MM-DD
-
-        // 2. Determine Session Date (from the 'date' field which is YYYY-MM-DD T00:00:00Z)
-        // We know 'date' was constructed from the User's Local Date string.
         const sessionDateStr = session.date.toISOString().split('T')[0]
 
-        // 3. If Session Date is STRICTLY BEFORE User's Today Date, it's an old session.
         if (sessionDateStr < userTodayStr) {
-            // Calculate 23:59:59 of the SESSION DATE in USER TIMEZONE
-            const sessionEndStr = `${sessionDateStr} 23:59:59`;
-            // We need to parse this local string into a UTC Date
-            // There isn't a native "parse from specific timezone" in JS Date without libraries like date-fns-tz
-            // But we can approximate or use a trick with LocaleString
-
-            // Trick: Create a date that produces this string in the target timezone
-            // Or simpler: We just want to effectively close it. 
-            // If we assume the 'date' field (UTC Midnight) + 23:59:59 UTC is "good enough" consistent logic, we can stick to that.
-            // BUT, to be "Friendly", 11:59PM User Time is best.
-
-            // Helper to get UTC timestamp for "YYYY-MM-DD HH:mm:ss" in "Continent/City"
-            // We can iterate until we match, or use offsets. 
-            // Let's use the offset approach:
-
-            const offsetDate = new Date(session.date); // This is UTC Midnight matching the date
-            // We want to find a Date D such that D.toLocaleTimeString(..., {timeZone}) === '23:59:59'
-            // and D.toLocaleDateString(..., {timeZone}) === sessionDateStr
-
-            // Let's try setting it to UTC Noon first, then adjust? 
-            // No, easier: get offset.
-            // Intl.DateTimeFormat can give us the offset str.
-
-            // Fallback: Just use the same logic as "Midnight PHT" but inverted?
-            // Let's rely on the fact that we can construct a string that Date() might parse if we attach offset? No.
-
-            // Robust method without moment-timezone/date-fns-tz:
-            // CORRECT LOGIC: We want 23:59:59 LOCAL Time.
-            // 1. Get the offset of that timezone on that day.
-            // 2. Construct ISO string with offset and let Date parse it to UTC.
-
             const getOffset = (d: Date, tz: string) => {
                 try {
                     const format = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
                     const parts = format.formatToParts(d);
-                    const offset = parts.find(p => p.type === 'timeZoneName')?.value; // "GMT", "GMT+8", "GMT-5:00"
+                    const offset = parts.find(p => p.type === 'timeZoneName')?.value;
                     if (!offset) return 'Z';
                     const cleaned = offset.replace('GMT', '');
                     return cleaned || 'Z';
@@ -144,12 +104,9 @@ async function cleanupOldSessions() {
                 }
             };
 
-            // We need the offset for the END of that day.
-            // Estimate noon UTC on that day as a safe probe point
             const probe = new Date(session.date);
             probe.setUTCHours(12);
-
-            const offsetStr = getOffset(probe, timeZone); // e.g., "+08:00" or "Z"
+            const offsetStr = getOffset(probe, timeZone);
             const isoString = `${sessionDateStr}T23:59:59.999${offsetStr}`;
             const endDay = new Date(isoString);
 
@@ -161,16 +118,42 @@ async function cleanupOldSessions() {
                 }
             })
 
-            // Also close any open breaks for this session
             await prisma.break.updateMany({
-                where: {
-                    attendanceId: session.id,
-                    endTime: null
-                },
+                where: { attendanceId: session.id, endTime: null },
+                data: { endTime: endDay }
+            })
+
+            // --- Notifications ---
+            const userId = session.user.id
+            const dateStr = session.date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                timeZone: timeZone
+            })
+
+            // 1. In-App Notification
+            await prisma.notification.create({
                 data: {
-                    endTime: endDay
+                    userId,
+                    title: "Attendance Record Finalized",
+                    message: `Your session for ${dateStr} was automatically finalized as it remained active past midnight.`,
+                    type: "ADMIN_ACTION",
+                    link: "/user"
                 }
             })
+            broadcastUpdate('notification', { userId })
+
+            // 2. Email Notification (if access token available)
+            if (sessionToken && session.user.email) {
+                await sendForgottenClockOutEmail({
+                    userName: session.user.name || "Employee",
+                    userEmail: session.user.email,
+                    userAccessToken: sessionToken,
+                    date: dateStr
+                })
+            }
         }
     }
 }
@@ -239,8 +222,9 @@ async function syncAvailabilityWithAttendance() {
 }
 
 export async function GET(req: Request) {
+    const session = await auth() as any
     try {
-        await cleanupOldSessions()
+        await cleanupOldSessions(session?.accessToken)
         await cleanupDuplicateBreaks()
         await syncAvailabilityWithAttendance()
     } catch (e) {
@@ -593,22 +577,39 @@ export async function POST(req: Request) {
         // Notify User if Admin created it
         if (session && session.user.id !== userId) {
             // User already fetched above as 'user'
-            if (user.email && session.accessToken) {
-                const emailTz = user.selectedTimezone || 'Asia/Manila'
-                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
-                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
-                    ` (${attendance.mode})`
-
-                await sendAdminActionEmail({
-                    userName: user.name || "Employee",
-                    userEmail: user.email,
-                    adminName: session.user.name || "Administrator",
-                    adminEmail: session.user.email,
-                    adminAccessToken: session.accessToken,
-                    actionType: 'ATTENDANCE',
-                    details: details,
-                    date: new Date(attendance.date).toLocaleDateString()
+            if (user) {
+                // 1. Create In-App Notification
+                await prisma.notification.create({
+                    data: {
+                        userId: userId,
+                        title: "New Attendance Record Added",
+                        message: `An administrator (${session.user.name || 'Admin'}) has added a new attendance record for you on ${new Date(attendance.date).toLocaleDateString()}.`,
+                        type: "ADMIN_ACTION",
+                        link: "/user"
+                    }
                 })
+
+                // 2. Broadcast for real-time bell
+                broadcastUpdate('notification', { userId })
+
+                // 3. Send Email
+                if (user.email && session.accessToken) {
+                    const emailTz = user.selectedTimezone || 'Asia/Manila'
+                    const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
+                        (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
+                        ` (${attendance.mode})`
+
+                    await sendAdminActionEmail({
+                        userName: user.name || "Employee",
+                        userEmail: user.email,
+                        adminName: session.user.name || "Administrator",
+                        adminEmail: session.user.email,
+                        adminAccessToken: session.accessToken,
+                        actionType: 'ATTENDANCE',
+                        details: details,
+                        date: new Date(attendance.date).toLocaleDateString()
+                    })
+                }
             }
         }
 
