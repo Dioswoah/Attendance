@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { sendAdminActionEmail } from "@/lib/email"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -103,6 +104,35 @@ export async function POST(req: Request) {
                 endTime: endTime ? new Date(endTime) : null
             }
         })
+
+        // Sync with Attendance convenience fields
+        const latestBreak = await prisma.break.findFirst({
+            where: { attendanceId: attendance.id, deletedAt: null },
+            orderBy: { startTime: 'desc' }
+        })
+
+        const updatedAttendance = await prisma.attendance.update({
+            where: { id: attendance.id },
+            data: {
+                breakStart: latestBreak?.startTime || null,
+                breakEnd: latestBreak?.endTime || null
+            }
+        })
+
+        // Update User Availability Status if session is active
+        if (updatedAttendance.clockOut === null) {
+            let newStatus: 'AVAILABLE' | 'BE_RIGHT_BACK' = 'AVAILABLE'
+            if (latestBreak && !latestBreak.endTime) {
+                newStatus = 'BE_RIGHT_BACK'
+            }
+            await prisma.user.update({
+                where: { id: userId },
+                data: { availabilityStatus: newStatus }
+            })
+        }
+
+        broadcastUpdate('attendance', updatedAttendance)
+        broadcastUpdate('staff')
 
         // Notify User if Admin created it
         const session = await auth() as any

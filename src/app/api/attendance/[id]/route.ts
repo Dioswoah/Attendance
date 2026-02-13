@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -91,6 +92,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params
     try {
         const body = await req.json()
+
+        // 1. Fetch current record to get userId and check state
+        const existing = await prisma.attendance.findUnique({
+            where: { id }
+        })
+        if (!existing) return NextResponse.json({ error: "Attendance not found" }, { status: 404 })
+
+        // 2. Perform Update
         const attendance = await prisma.attendance.update({
             where: { id },
             data: {
@@ -101,8 +110,41 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 date: body.date ? new Date(body.date) : undefined
             }
         })
+
+        // 3. Update User Availability Status if session state changed
+        // If clocking out an active session
+        if (existing.clockOut === null && attendance.clockOut !== null) {
+            await prisma.user.update({
+                where: { id: attendance.userId },
+                data: { availabilityStatus: 'APPEAR_OFFLINE' }
+            })
+
+            // Also auto-close any open breaks
+            await prisma.break.updateMany({
+                where: {
+                    attendanceId: id,
+                    endTime: null
+                },
+                data: {
+                    endTime: attendance.clockOut
+                }
+            })
+        }
+        // If re-opening a session
+        else if (existing.clockOut !== null && attendance.clockOut === null) {
+            await prisma.user.update({
+                where: { id: attendance.userId },
+                data: { availabilityStatus: 'AVAILABLE' }
+            })
+        }
+
+        // 4. Broadcast
+        broadcastUpdate('attendance', attendance)
+        broadcastUpdate('staff')
+
         return NextResponse.json(attendance)
     } catch (error) {
+        console.error("PATCH attendance error:", error)
         return NextResponse.json({ error: "Failed to update attendance record" }, { status: 500 })
     }
 }
@@ -110,12 +152,33 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {
-        await prisma.attendance.update({
+        // 1. Fetch to get userId
+        const existing = await prisma.attendance.findUnique({
+            where: { id }
+        })
+        if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+        // 2. Soft Delete
+        const attendance = await prisma.attendance.update({
             where: { id },
             data: { deletedAt: new Date() }
         })
+
+        // 3. If it was active, update user status to OFFLINE
+        if (existing.clockOut === null) {
+            await prisma.user.update({
+                where: { id: existing.userId },
+                data: { availabilityStatus: 'APPEAR_OFFLINE' }
+            })
+        }
+
+        // 4. Broadcast
+        broadcastUpdate('attendance', attendance)
+        broadcastUpdate('staff')
+
         return NextResponse.json({ success: true })
     } catch (error) {
+        console.error("DELETE attendance error:", error)
         return NextResponse.json({ error: "Failed to delete attendance record" }, { status: 500 })
     }
 }
