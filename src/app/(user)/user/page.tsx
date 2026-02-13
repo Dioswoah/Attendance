@@ -1105,8 +1105,8 @@ export default function UserPortal() {
 
     // Staff Status Helper: Global Directory
     const myTeamList = useMemo(() => {
-        // Return all employees for company-wide visibility
-        return employees
+        // Return active employees for company-wide visibility
+        return employees.filter((e: any) => !e.isArchived)
     }, [employees])
 
     const sortedTeamStatus = useMemo(() => {
@@ -1207,6 +1207,7 @@ export default function UserPortal() {
 
     const uniqueDepartments = Array.from(new Set(
         employees
+            .filter((e: any) => !e.isArchived)
             .map((e: any) => {
                 if (typeof e.department === 'string') return e.department
                 return e.department?.name
