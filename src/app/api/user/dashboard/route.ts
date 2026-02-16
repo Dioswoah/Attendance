@@ -83,11 +83,23 @@ export async function GET() {
             })
         ])
 
+        // Transform records to include UI-friendly status strings (matching /api/attendance)
+        const transformRecord = (a: any) => ({
+            ...a,
+            status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
+            // Ensure dates are stringified if they are Date objects (Prisma returns Dates)
+            clockIn: a.clockIn?.toISOString(),
+            clockOut: a.clockOut?.toISOString(),
+            breakStart: a.breakStart?.toISOString(),
+            breakEnd: a.breakEnd?.toISOString(),
+            date: a.date instanceof Date ? a.date.toISOString().split('T')[0] : a.date
+        })
+
         return NextResponse.json({
             user,
             attendance: {
-                mine: myAttendance,
-                allToday: allAttendanceToday
+                mine: myAttendance.map(transformRecord),
+                allToday: allAttendanceToday.map(transformRecord)
             },
             leaves: myLeaves,
             attendanceRequests: myAttendanceRequests,
