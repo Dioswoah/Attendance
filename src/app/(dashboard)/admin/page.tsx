@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -110,6 +110,55 @@ export default function AdminDashboard() {
             if (eventSource) eventSource.close();
         }
     }, [])
+
+    const activityFeed = useMemo(() => {
+        const feed: any[] = []
+        attendanceRecords.forEach(record => {
+            if (record.clockIn) {
+                feed.push({
+                    id: `${record.id}-in`,
+                    userName: record.userName,
+                    userImage: record.userImage,
+                    department: record.department,
+                    type: 'clock-in',
+                    timestamp: new Date(record.clockIn)
+                })
+            }
+            if (record.breaks && Array.isArray(record.breaks)) {
+                record.breaks.forEach((b: any) => {
+                    feed.push({
+                        id: `${b.id}-start`,
+                        userName: record.userName,
+                        userImage: record.userImage,
+                        department: record.department,
+                        type: 'start-break',
+                        timestamp: new Date(b.startTime)
+                    })
+                    if (b.endTime) {
+                        feed.push({
+                            id: `${b.id}-end`,
+                            userName: record.userName,
+                            userImage: record.userImage,
+                            department: record.department,
+                            type: 'end-break',
+                            timestamp: new Date(b.endTime)
+                        })
+                    }
+                })
+            }
+            if (record.clockOut) {
+                feed.push({
+                    id: `${record.id}-out`,
+                    userName: record.userName,
+                    userImage: record.userImage,
+                    department: record.department,
+                    type: 'clock-out',
+                    timestamp: new Date(record.clockOut)
+                })
+            }
+        })
+        return feed.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+    }, [attendanceRecords])
 
     // Live Clock State
     const [now, setNow] = useState(new Date())
@@ -261,25 +310,44 @@ export default function AdminDashboard() {
                         </div>
                     </CardHeader>
                     <CardContent className="p-0">
-                        {attendanceRecords.length > 0 ? (
+                        {activityFeed.length > 0 ? (
                             <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
-                                {attendanceRecords.slice(0, 10).map((record) => (
-                                    <div key={record.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-all duration-200">
+                                {activityFeed.map((log) => (
+                                    <div key={log.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-all duration-200">
                                         <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-medium text-sm">
-                                                {record.userName?.charAt(0)}
+                                            <div className="relative">
+                                                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-medium text-sm overflow-hidden border border-border">
+                                                    {log.userImage ? (
+                                                        <img src={log.userImage} alt={log.userName} className="h-full w-full object-cover" />
+                                                    ) : (
+                                                        log.userName?.charAt(0)
+                                                    )}
+                                                </div>
+                                                <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10">
+                                                    {log.type === 'clock-in' && <Zap className="h-3 w-3 text-green-500 fill-green-500" />}
+                                                    {log.type === 'clock-out' && <CheckCircle2 className="h-3 w-3 text-slate-500" />}
+                                                    {log.type === 'start-break' && <Coffee className="h-3 w-3 text-amber-500" />}
+                                                    {log.type === 'end-break' && <Zap className="h-3 w-3 text-blue-500" />}
+                                                </div>
                                             </div>
                                             <div>
-                                                <p className="font-medium text-foreground text-sm">{record.userName}</p>
-                                                <p className="text-xs text-muted-foreground">{record.department}</p>
+                                                <p className="font-medium text-foreground text-sm leading-tight">{log.userName}</p>
+                                                <p className="text-xs text-muted-foreground">{log.department}</p>
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <Badge variant="outline" className="font-normal text-xs">
-                                                {record.status.replace('-', ' ')}
+                                            <Badge variant="outline" className={`font-normal text-xs mb-1 ${log.type === 'clock-in' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                log.type === 'start-break' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                    log.type === 'end-break' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                        'bg-slate-50 text-slate-700 border-slate-200'
+                                                }`}>
+                                                {log.type === 'clock-in' ? 'Clocked In' :
+                                                    log.type === 'start-break' ? 'Started Break' :
+                                                        log.type === 'end-break' ? 'Resumed Work' :
+                                                            'Clocked Out'}
                                             </Badge>
-                                            <p className="text-xs text-muted-foreground mt-1 font-mono">
-                                                {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                            <p className="text-xs text-muted-foreground font-mono">
+                                                {log.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
                                             </p>
                                         </div>
                                     </div>
@@ -288,7 +356,7 @@ export default function AdminDashboard() {
                         ) : (
                             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground opacity-50">
                                 <Clock className="h-8 w-8 mb-2" />
-                                <p className="text-sm font-medium">No active logs</p>
+                                <p className="text-sm font-medium">No active logs today</p>
                             </div>
                         )}
                     </CardContent>
