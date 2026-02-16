@@ -429,9 +429,21 @@ export default function ManagerActivityPage() {
         }
     }
 
-    const handleDelete = async (item: any) => {
-        if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return
+    const handleDelete = (item: any) => {
+        toast("Delete Record?", {
+            description: "Are you sure you want to delete this record? This cannot be undone.",
+            action: {
+                label: "Confirm Delete",
+                onClick: () => performDelete(item)
+            },
+            cancel: {
+                label: "Cancel",
+                onClick: () => toast.dismiss()
+            }
+        })
+    }
 
+    const performDelete = async (item: any) => {
         setProcessingId(item.id)
         const endpoint = item.kind === 'ATTENDANCE'
             ? `/api/attendance-requests/${item.id}`

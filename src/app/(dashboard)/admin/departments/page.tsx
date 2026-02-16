@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Plus, Building2, Users, MoreVertical, Trash2, Search, ArrowRight, Loader2, UserMinus, ShieldCheck, LayoutGrid, Edit2, Flame } from "lucide-react"
+import { toast } from "sonner"
 
 export default function DepartmentsPage() {
     const [departments, setDepartments] = useState<any[]>([])
@@ -94,27 +95,54 @@ export default function DepartmentsPage() {
         }
     }
 
-    const handleDeleteDept = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this department? Employees will be unassigned.")) return
+    const handleDeleteDept = (id: string) => {
+        toast("Delete Department?", {
+            description: "Are you sure you want to delete this department? Employees will be unassigned.",
+            action: {
+                label: "Delete",
+                onClick: () => performDeleteDept(id)
+            },
+            cancel: {
+                label: "Cancel",
+                onClick: () => toast.dismiss()
+            }
+        })
+    }
 
+    const performDeleteDept = async (id: string) => {
         setProcessingId(id)
         try {
             const res = await fetch(`/api/departments/${id}`, {
                 method: 'DELETE'
             })
             if (res.ok) {
+                toast.success("Department deleted")
                 fetchData()
+            } else {
+                toast.error("Failed to delete department")
             }
         } catch (error) {
-            // Error handled
+            toast.error("Error deleting department")
         } finally {
             setProcessingId(null)
         }
     }
 
-    const handleUnassignStaff = async (empId: string) => {
-        if (!confirm("Are you sure you want to remove this staff from the department?")) return
+    const handleUnassignStaff = (empId: string) => {
+        toast("Unassign Staff?", {
+            description: "Are you sure you want to remove this staff from the department?",
+            action: {
+                label: "Unassign",
+                onClick: () => performUnassignStaff(empId)
+            },
+            cancel: {
+                label: "Cancel",
+                onClick: () => toast.dismiss()
+            }
+        })
+    }
 
+    const performUnassignStaff = async (empId: string) => {
         setProcessingId(empId)
         try {
             const res = await fetch(`/api/employees/${empId}`, {
@@ -123,10 +151,13 @@ export default function DepartmentsPage() {
                 body: JSON.stringify({ departmentId: null })
             })
             if (res.ok) {
+                toast.success("Staff unassigned")
                 fetchData()
+            } else {
+                toast.error("Failed to unassign staff")
             }
         } catch (error) {
-            // Error handled
+            toast.error("Error unassigning staff")
         } finally {
             setProcessingId(null)
         }

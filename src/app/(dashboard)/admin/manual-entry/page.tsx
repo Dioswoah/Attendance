@@ -165,7 +165,7 @@ export default function ManualEntryPage() {
         e.preventDefault()
 
         if (attOut && attOut < attIn) {
-            alert("Clock Out time cannot be earlier than Clock In time.")
+            toast.error("Clock Out time cannot be earlier than Clock In time.")
             return
         }
 
@@ -239,7 +239,7 @@ export default function ManualEntryPage() {
         e.preventDefault()
 
         if (brOut && brOut < brIn) {
-            alert("Session End time cannot be earlier than Session Start time.")
+            toast.error("Session End time cannot be earlier than Session Start time.")
             return
         }
 
@@ -268,6 +268,7 @@ export default function ManualEntryPage() {
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setProcessing(true)
+
         try {
             // Validate break sessions for attendance edits
             if (activeTab === 'attendance' && editForm.breaks && editForm.breaks.length > 0) {
@@ -287,24 +288,41 @@ export default function ManualEntryPage() {
                 })
 
                 if (invalidBreaks.length > 0) {
-                    const proceed = confirm(
-                        `⚠️ WARNING: ${invalidBreaks.length} break session(s) fall outside the new clock in/out timeframe.\n\n` +
-                        `These break sessions may become invalid after this change.\n\n` +
-                        `Do you want to proceed? You may need to manually adjust or remove these break sessions.`
-                    )
-
-                    if (!proceed) {
-                        setProcessing(false)
-                        return
-                    }
-
-                    toast.warning(`${invalidBreaks.length} break session(s) may need adjustment`, {
-                        position: 'top-right',
-                        duration: 5000
+                    toast.warning("Invalid Breaks Detected", {
+                        description: `${invalidBreaks.length} break session(s) fall outside the new clock in/out timeframe.`,
+                        action: {
+                            label: "Proceed Anyway",
+                            onClick: () => finalizeEditSubmit()
+                        },
+                        cancel: {
+                            label: "Cancel",
+                            onClick: () => setProcessing(false)
+                        },
+                        duration: 8000
                     })
+                    // Stop here, wait for user action
+                    // Note: setProcessing stays true to prevent double submit, but maybe we should false it?
+                    // Actually if we return, the spinner spins. 
+                    // Let's setProcessing(false) so they can cancel. But disable submit button until decision?
+                    // Simpler: setProcessing(false) and let them click submit again if they check the inputs. 
+                    // But here we rely on the Action click.
+                    setProcessing(false)
+                    return
                 }
             }
 
+            // If no issues, proceed directly
+            finalizeEditSubmit()
+
+        } catch (error) {
+            console.error('Validation error:', error)
+            setProcessing(false)
+        }
+    }
+
+    const finalizeEditSubmit = async () => {
+        setProcessing(true)
+        try {
             const endpoint = `/api/${activeTab}/${editingRecord.id}`
             const res = await fetch(endpoint, {
                 method: 'PATCH',
@@ -414,51 +432,64 @@ export default function ManualEntryPage() {
                     // Check if there are breaks associated with this attendance
                     if (record.breaks && record.breaks.length > 0) {
                         const breakCount = record.breaks.length
-                        const confirmMsg = `⚠️ WARNING: This attendance record has ${breakCount} break session(s) associated with it.\n\nDeleting this record will also delete all associated break sessions.\n\nAre you sure you want to proceed?`
-
-                        if (!confirm(confirmMsg)) {
-                            setProcessing(false)
-                            return
-                        }
-
-                        // Notify user about the breaks that will be deleted
-                        toast.warning(`Deleting ${breakCount} break session(s) along with attendance record`, {
-                            duration: 5000,
-                            position: 'top-right'
+                        toast("Delete Attendance Record?", {
+                            description: `⚠️ WARNING: This attendance record has ${breakCount} break session(s) associated with it.\n\nDeleting this record will also delete all associated break sessions.`,
+                            action: {
+                                label: "Confirm Delete All",
+                                onClick: () => performDeleteRecord(id)
+                            },
+                            cancel: {
+                                label: "Cancel",
+                                onClick: () => toast.dismiss()
+                            },
+                            duration: 8000
                         })
-                    } else {
-                        // Standard confirmation for records without breaks
-                        if (!confirm("Are you sure you want to delete this attendance record?")) {
-                            setProcessing(false)
-                            return
-                        }
-                    }
-                }
-            } else if (activeTab === 'breaks') {
-                // For break sessions, check if deleting would affect attendance computation
-                const res = await fetch(`/api/breaks/${id}`)
-                if (res.ok) {
-                    const breakRecord = await res.json()
-
-                    if (!confirm(`Are you sure you want to delete this break session?\n\nThis will affect the total hours computation for this day.`)) {
                         setProcessing(false)
                         return
                     }
-
-                    toast.info('Break session deleted. Attendance hours have been recalculated.', {
-                        position: 'top-right',
-                        duration: 4000
-                    })
                 }
-            } else {
-                // Standard confirmation for other record types
-                if (!confirm("Are you sure you want to delete this record?")) {
-                    setProcessing(false)
-                    return
-                }
+            } else if (activeTab === 'breaks') {
+                toast("Delete Break Session?", {
+                    description: "Are you sure you want to delete this break session? This will affect the total hours computation for this day.",
+                    action: {
+                        label: "Delete",
+                        onClick: () => performDeleteRecord(id)
+                    },
+                    cancel: {
+                        label: "Cancel",
+                        onClick: () => toast.dismiss()
+                    }
+                })
+                setProcessing(false)
+                return
             }
 
-            // Proceed with deletion
+            // Standard confirmation for other record types
+            toast("Delete Record?", {
+                description: "Are you sure you want to delete this record? This action cannot be undone.",
+                action: {
+                    label: "Delete",
+                    onClick: () => performDeleteRecord(id)
+                },
+                cancel: {
+                    label: "Cancel",
+                    onClick: () => toast.dismiss()
+                }
+            })
+            setProcessing(false) // Wait for toast action
+
+        } catch (error) {
+            console.error('Delete error:', error)
+            toast.error('An error occurred while deleting the record', {
+                position: 'top-right'
+            })
+            setProcessing(false)
+        }
+    }
+
+    const performDeleteRecord = async (id: string) => {
+        setProcessing(true)
+        try {
             const deleteRes = await fetch(`/api/${activeTab}/${id}`, { method: 'DELETE' })
 
             if (deleteRes.ok) {
@@ -473,17 +504,28 @@ export default function ManualEntryPage() {
                 })
             }
         } catch (error) {
-            console.error('Delete error:', error)
-            toast.error('An error occurred while deleting the record', {
-                position: 'top-right'
-            })
+            console.error('Delete execution error:', error)
+            toast.error('Failed to execute deletion')
         } finally {
             setProcessing(false)
         }
     }
 
-    const deleteBreakInline = async (breakId: string) => {
-        if (!confirm("Are you sure you want to delete this break session?")) return
+    const deleteBreakInline = (breakId: string) => {
+        toast("Delete Break Session?", {
+            description: "Are you sure you want to delete this break session?",
+            action: {
+                label: "Delete",
+                onClick: () => performDeleteBreakInline(breakId)
+            },
+            cancel: {
+                label: "Cancel",
+                onClick: () => toast.dismiss()
+            }
+        })
+    }
+
+    const performDeleteBreakInline = async (breakId: string) => {
         setProcessing(true)
         try {
             const res = await fetch(`/api/breaks/${breakId}`, { method: 'DELETE' })
@@ -760,7 +802,7 @@ export default function ManualEntryPage() {
                                         <Input type="date" value={lvEnd} onChange={e => {
                                             const newEnd = e.target.value
                                             if (lvStart && newEnd < lvStart) {
-                                                alert("End date cannot be before start date")
+                                                toast.error("End date cannot be before start date")
                                                 return
                                             }
                                             setLvEnd(newEnd)

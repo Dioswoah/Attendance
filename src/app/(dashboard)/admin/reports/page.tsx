@@ -1,5 +1,7 @@
 "use client"
 
+import { toast } from "sonner"
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -306,7 +308,7 @@ export default function ExportPage() {
                                 value={endDate}
                                 onChange={(e) => {
                                     if (e.target.value < startDate) {
-                                        alert("End Data cannot be earlier than Start Date")
+                                        toast.error("End Data cannot be earlier than Start Date")
                                         return
                                     }
                                     setEndDate(e.target.value)
