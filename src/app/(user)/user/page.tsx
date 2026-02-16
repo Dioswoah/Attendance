@@ -36,13 +36,17 @@ export default function UserPortal() {
     const [showLocationDialog, setShowLocationDialog] = useState(false)
     const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
+    const [isLoading, setIsLoading] = useState(true)
     const [hasAutoSwitchedStatus, setHasAutoSwitchedStatus] = useState(false)
+    const [hasAutoActionRun, setHasAutoActionRun] = useState(false)
+    const searchParams = useSearchParams()
+    const router = useRouter()
 
     // Auto-switch to AVAILABLE if user is APPEAR_OFFLINE but active in the app
     // Auto-switch logic REMOVED to respect Google Chat Status
     // We do NOT want to force "Available" if Google says "Away/Offline".
 
-    // User Profile & Location State
+    // State Declarations (Consolidated at top)
     const [userProfile, setUserProfile] = useState<any>(null)
     const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
     const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
@@ -53,8 +57,6 @@ export default function UserPortal() {
     const [onboardingDepartment, setOnboardingDepartment] = useState("")
     const [onboardingShiftStart, setOnboardingShiftStart] = useState("09:00")
     const [onboardingShiftEnd, setOnboardingShiftEnd] = useState("17:00")
-
-    // Role & Leave Management State
     const [userRoles, setUserRoles] = useState<string[]>([])
     const [userId, setUserId] = useState<string>("")
     const [userDepartment, setUserDepartment] = useState<string>("")
@@ -62,14 +64,10 @@ export default function UserPortal() {
     const [userManagerId, setUserManagerId] = useState<string | null>(null)
     const [pendingLeaves, setPendingLeaves] = useState<any[]>([])
     const [isLeaveOpen, setIsLeaveOpen] = useState(false)
-
-    // Calendar & Team View State
     const [currentMonth, setCurrentMonth] = useState(new Date())
     const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([])
     const [teamApprovedLeaves, setTeamApprovedLeaves] = useState<any[]>([])
     const [selectedDayDetail, setSelectedDayDetail] = useState<Date | null>(null)
-
-    // Leave Form State
     const [leaveType, setLeaveType] = useState('SICK')
     const [leaveDurationType, setLeaveDurationType] = useState('Full Day')
     const [leaveStartTime, setLeaveStartTime] = useState('09:00')
@@ -77,49 +75,120 @@ export default function UserPortal() {
     const [leaveStartDate, setLeaveStartDate] = useState("")
     const [leaveEndDate, setLeaveEndDate] = useState("")
     const [leaveReason, setLeaveReason] = useState("")
+    const [myLeaveRequests, setMyLeaveRequests] = useState<any[]>([])
+    const [myAttendanceRequests, setMyAttendanceRequests] = useState<any[]>([])
+    const [workedTime, setWorkedTime] = useState("00:00:00")
+    const [breakTime, setBreakTime] = useState("00:00:00")
+    const [sortBy, setSortBy] = useState<string>("name")
+    const [filterStatus, setFilterStatus] = useState<string>("all")
+    const [filterDepartment, setFilterDepartment] = useState<string>("all")
+    const [searchQuery, setSearchQuery] = useState<string>("")
+    const [feedSearch, setFeedSearch] = useState("")
+    const [breakTotalMs, setBreakTotalMs] = useState(0)
+    const [warningTriggered, setWarningTriggered] = useState(false)
+    const [limitTriggered, setLimitTriggered] = useState(false)
+    const [showBreakDialog, setShowBreakDialog] = useState(false)
+    const [breakDialogType, setBreakDialogType] = useState<"WARNING" | "EXCEEDED">("WARNING")
+    const [customClockInTime, setCustomClockInTime] = useState("")
+    const [customReason, setCustomReason] = useState("")
+    const [previousTimezone, setPreviousTimezone] = useState<string | null>(null)
+    const [showTimezoneWorkHoursDialog, setShowTimezoneWorkHoursDialog] = useState(false)
+    const [tempWorkHoursStart, setTempWorkHoursStart] = useState("")
+    const [tempWorkHoursEnd, setTempWorkHoursEnd] = useState("")
+    const [scheduledStart, setScheduledStart] = useState("")
+    const [scheduledEnd, setScheduledEnd] = useState("")
+    const [showScheduleInput, setShowScheduleInput] = useState(false)
+    const [isDeclineOpen, setIsDeclineOpen] = useState(false)
+    const [declineReason, setDeclineReason] = useState("")
+    const [selectedLeaveId, setSelectedLeaveId] = useState<string | null>(null)
 
-    // User Profile Fetch
-    useEffect(() => {
-        const fetchProfile = async () => {
-            if (status === 'authenticated') {
-                try {
-                    const res = await fetch('/api/user/me')
-                    if (res.ok) {
-                        const data = await res.json()
-                        setUserProfile(data)
-                        if (data.useCurrentTimezone) {
-                            setUserTimeZone(getBrowserTimezone())
-                        } else if (data.selectedTimezone) {
-                            setUserTimeZone(data.selectedTimezone)
-                        } else {
-                            // Fallback for legacy behavior
-                            if (data.location === 'Philippines') setUserTimeZone('Asia/Manila')
-                            else if (data.location === 'Australia') setUserTimeZone('Australia/Sydney')
-                        }
+    // --- CONSOLIDATED QUICK LOAD ---
+    const fetchDashboardData = async () => {
+        if (status !== 'authenticated' || !session?.user?.id) return
 
-                        if (data.location !== 'Philippines' && data.location !== 'Australia') {
-                            // Only show onboarding if the account is "fresh" (created < 24 hours ago) 
-                            // AND we haven't skipped it this session.
-                            const isFreshAccount = data.createdAt ? (new Date().getTime() - new Date(data.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
+        // Show loading only on first run
+        if (!userProfile) setIsLoading(true)
 
-                            if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
-                                setIsOnboardingOpen(true)
-                                const [mRes, dRes] = await Promise.all([
-                                    fetch('/api/managers'),
-                                    fetch('/api/departments')
-                                ])
-                                if (mRes.ok) setManagerList(await mRes.json())
-                                if (dRes.ok) setDepartmentList(await dRes.json())
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.error("Profile fetch error", e)
+        try {
+            const res = await fetch('/api/user/dashboard')
+            if (!res.ok) throw new Error("Failed to load dashboard")
+
+            const data = await res.json()
+
+            // 1. Set Profile & Timezone
+            setUserProfile(data.user)
+            if (data.user) {
+                if (data.user.useCurrentTimezone) {
+                    setUserTimeZone(getBrowserTimezone())
+                } else if (data.user.selectedTimezone) {
+                    setUserTimeZone(data.user.selectedTimezone)
+                }
+
+                // Set metadata states
+                setUserId(data.user.id)
+                setUserRoles(data.user.roles || [])
+                setUserDepartment(data.user.department?.name || "Unassigned")
+                setUserDepartmentId(data.user.departmentId || "")
+                setUserManagerId(data.user.managerId || null)
+
+                // Handle Manager/Admin extra data
+                if (data.user.roles.includes('MANAGER') || data.user.roles.includes('ADMIN')) {
+                    fetchPendingLeaves(data.user.id)
                 }
             }
+
+            // Handle Onboarding Logic
+            if (data.user && data.user.location !== 'Philippines' && data.user.location !== 'Australia') {
+                const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
+                if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
+                    setIsOnboardingOpen(true)
+                    const [mRes, dRes] = await Promise.all([
+                        fetch('/api/managers'),
+                        fetch('/api/departments')
+                    ]).catch(() => [null, null])
+
+                    if (mRes && mRes.ok) setManagerList(await mRes.json())
+                    if (dRes && dRes.ok) setDepartmentList(await dRes.json())
+                }
+            }
+
+            // 2. Set Attendance
+            setUserAttendanceList(data.attendance.mine)
+            setAllAttendance(data.attendance.allToday)
+
+            // Determine active session
+            const active = data.attendance.mine.find((r: any) => !r.clockOut)
+            setCurrentAttendance(active || data.attendance.mine[0] || null)
+
+            // 3. Set Requests & Staff
+            setMyLeaveRequests(data.leaves)
+            setMyAttendanceRequests(data.attendanceRequests)
+            setEmployees(data.staff)
+
+        } catch (e) {
+            console.error("Dashboard Quick Load Error:", e)
+        } finally {
+            setIsLoading(false)
         }
-        fetchProfile()
-    }, [status])
+    }
+
+    // Aliases for legacy interaction handlers to prevent refactoring every button
+    const fetchProfile = fetchDashboardData
+    const fetchAttendance = fetchDashboardData
+    const fetchMyLeaveRequests = fetchDashboardData
+    const fetchUserDetails = fetchDashboardData
+
+    useEffect(() => {
+        if (status === 'authenticated' && session?.user?.id) {
+            fetchDashboardData()
+        }
+    }, [status, session?.user?.id])
+
+    useEffect(() => {
+        if (status === 'unauthenticated') {
+            router.push('/')
+        }
+    }, [status, router])
 
     // Detect Timezone Changes and Prompt Work Hours Confirmation
     useEffect(() => {
@@ -198,20 +267,13 @@ export default function UserPortal() {
 
 
 
-    // Decline Dialog State
-    const [isDeclineOpen, setIsDeclineOpen] = useState(false)
-    const [declineReason, setDeclineReason] = useState("")
-    const [selectedLeaveId, setSelectedLeaveId] = useState<string | null>(null)
 
 
 
-    // User's Own Leave Requests
-    const [myLeaveRequests, setMyLeaveRequests] = useState<any[]>([])
 
-    // Scheduled Times for Today (Edit Work Hours)
-    const [scheduledStart, setScheduledStart] = useState("")
-    const [scheduledEnd, setScheduledEnd] = useState("")
-    const [showScheduleInput, setShowScheduleInput] = useState(false)
+
+
+
 
     // Initialize scheduled times with user's default work hours
     useEffect(() => {
@@ -227,6 +289,15 @@ export default function UserPortal() {
             return
         }
 
+        // Optimistic UI update
+        const previousProfile = userProfile ? { ...userProfile } : null
+        setUserProfile((prev: any) => ({
+            ...prev,
+            shiftStartTime: scheduledStart,
+            shiftEndTime: scheduledEnd
+        }))
+        setShowScheduleInput(false)
+
         try {
             const res = await fetch('/api/user/me', {
                 method: 'PATCH',
@@ -240,47 +311,31 @@ export default function UserPortal() {
             if (res.ok) {
                 const updated = await res.json()
                 setUserProfile(updated)
-                setShowScheduleInput(false)
                 toast.success("Work hours updated successfully")
             } else {
+                // Revert on error
+                setUserProfile(previousProfile)
                 toast.error("Failed to update work hours")
             }
         } catch (error) {
+            // Revert on error
+            setUserProfile(previousProfile)
             console.error("Failed to save scheduled hours", error)
             toast.error("Failed to update work hours")
         }
     }
-    // Pending Attendance Amendment Requests
-    const [myAttendanceRequests, setMyAttendanceRequests] = useState<any[]>([])
 
-    // Time Tracking
-    const [workedTime, setWorkedTime] = useState("00:00:00")
-    const [breakTime, setBreakTime] = useState("00:00:00")
 
-    // Dashboard UI State
-    const [sortBy, setSortBy] = useState<string>("name")
-    const [filterStatus, setFilterStatus] = useState<string>("all")
-    const [filterDepartment, setFilterDepartment] = useState<string>("all")
-    const [searchQuery, setSearchQuery] = useState<string>("")
-    // Feed Filters
-    const [feedSearch, setFeedSearch] = useState("")
 
-    // Break Limit Monitoring State
-    const [breakTotalMs, setBreakTotalMs] = useState(0)
-    const [warningTriggered, setWarningTriggered] = useState(false)
-    const [limitTriggered, setLimitTriggered] = useState(false)
-    const [showBreakDialog, setShowBreakDialog] = useState(false)
-    const [breakDialogType, setBreakDialogType] = useState<"WARNING" | "EXCEEDED">("WARNING")
 
-    // Custom Clock In State
-    const [customClockInTime, setCustomClockInTime] = useState("")
-    const [customReason, setCustomReason] = useState("")
 
-    // Timezone Change Detection
-    const [previousTimezone, setPreviousTimezone] = useState<string | null>(null)
-    const [showTimezoneWorkHoursDialog, setShowTimezoneWorkHoursDialog] = useState(false)
-    const [tempWorkHoursStart, setTempWorkHoursStart] = useState("")
-    const [tempWorkHoursEnd, setTempWorkHoursEnd] = useState("")
+
+
+
+
+
+
+
 
     // --- OPTIMISTIC STATUS CALCULATION ---
     const optimisticStatus = useMemo(() => {
@@ -333,12 +388,9 @@ export default function UserPortal() {
         setMounted(true)
         setCurrentTime(new Date())
 
-        // Only load data if we have a valid session
+        // Only load dashboard if authenticated
         if (session?.user?.id) {
-            setUserId(session.user.id)
-            fetchUserDetails()
-            fetchAttendance()
-            fetchMyLeaveRequests()
+            fetchDashboardData()
         }
 
         // Initialize Realtime Server-Sent Events
@@ -658,88 +710,16 @@ export default function UserPortal() {
         return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })
     }
 
-    const fetchUserDetails = async () => {
-        if (!session?.user?.email) return
-        try {
-            const res = await fetch('/api/employees')
-            if (res.ok) {
-                const users = await res.json()
-                setEmployees(users)
-                const me = users.find((u: any) => u.email === session.user?.email)
-                if (me) {
-                    const roles = me.roles || [me.role]
-                    setUserRoles(roles)
-                    setUserDepartment(me.department?.name || "Unassigned")
-                    setUserDepartmentId(me.departmentId || me.department?.id || "")
-                    setUserManagerId(me.managerId || null)
-
-                    // If Manager or Admin, fetch pending leaves assigned to them
-                    if (roles.includes('MANAGER') || roles.includes('ADMIN')) {
-                        fetchPendingLeaves(me.id)
-                    }
-                }
-            }
-        } catch (error) {
-            // Error handled silently for production
-        }
-    }
-
+    // Pending Leaves for Managers
     const fetchPendingLeaves = async (managerId: string) => {
         try {
-            // Fetch leaves assigned to this manager (or department manager logic if handled by API)
             const res = await fetch(`/api/leaves?managerId=${managerId}&status=PENDING`)
             if (res.ok) {
                 const data = await res.json()
                 setPendingLeaves(data)
             }
         } catch (error) {
-            // Error handled silently for production
-        }
-    }
-
-    const fetchMyLeaveRequests = async () => {
-        if (!session?.user?.id) return
-        try {
-            // Fetch Leave Requests
-            const leaveRes = await fetch(`/api/leaves?userId=${session.user.id}`)
-            if (leaveRes.ok) {
-                const data = await leaveRes.json()
-                setMyLeaveRequests(data)
-            }
-
-            // Fetch Attendance Requests
-            const attnRes = await fetch(`/api/attendance-requests?userId=${session.user.id}&status=PENDING`)
-            if (attnRes.ok) {
-                const data = await attnRes.json()
-                setMyAttendanceRequests(data)
-            }
-        } catch (error) {
-            // Error handled silently for production
-        }
-    }
-
-    const fetchAttendance = async () => {
-        if (!session?.user?.id) return
-
-        try {
-            // Fetch both in parallel for speed
-            const [userRes, allRes] = await Promise.all([
-                fetch(`/api/attendance?userId=${session.user.id}`),
-                fetch('/api/attendance')
-            ])
-
-            if (userRes.ok) {
-                const data = await userRes.json()
-                setUserAttendanceList(data)
-                setCurrentAttendance(data[0] || null)
-            }
-
-            if (allRes.ok) {
-                const allData = await allRes.json()
-                setAllAttendance(allData)
-            }
-        } catch (error) {
-            // Error handled silently for production
+            console.error("Failed to fetch pending leaves", error)
         }
     }
 
@@ -752,11 +732,39 @@ export default function UserPortal() {
 
     const confirmClockIn = async (mode: string) => {
         if (!session?.user?.id) return
+
+        // Optimistic UI: Update state immediately
+        const now = new Date()
+        const clockInISO = now.toISOString()
+
+        // Create optimistic record
+        const optimisticRecord = {
+            id: `temp-${Date.now()}`,
+            userId: session.user.id,
+            clockIn: clockInISO,
+            clockOut: null,
+            breaks: [],
+            status: 'clocked-in',
+            mode: mode
+        }
+
+        // Save previous state for rollback
+        const previousAttendance = currentAttendance
+        const previousList = [...userAttendanceList]
+
+        // Update local state instantly
+        setCurrentAttendance(optimisticRecord)
+        setUserAttendanceList([optimisticRecord, ...userAttendanceList])
+        setShowLocationDialog(false)
+
+        // We don't set isProcessing to true here to keep the UI interactive/responsive
+        // But we might want to disable the button to prevent double-clicks
         setIsProcessing(true)
 
         try {
             // Start Amendment Logic
             if (customClockInTime && customClockInTime.trim() !== "") {
+                // ... (existing amendment logic) ...
                 const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
                 const offset = (() => {
                     try {
@@ -766,11 +774,11 @@ export default function UserPortal() {
                 })()
                 const customDateStr = `${todayStr}T${customClockInTime}:00${offset}`
 
-                // If we have a custom reason or time, it's an amendment request
-                // We trust the user wants an amendment if they used the dropdown flow (which sets customClockInTime)
-
                 if (!customReason.trim()) {
                     toast.error("Please kindly provide a reason for this time adjustment")
+                    // Revert state
+                    setCurrentAttendance(previousAttendance)
+                    setUserAttendanceList(previousList)
                     setIsProcessing(false)
                     return
                 }
@@ -788,26 +796,22 @@ export default function UserPortal() {
                 })
 
                 if (res.ok) {
-                    setShowLocationDialog(false)
                     toast.success("Thank you! Your amendment request has been sent to your manager for review.")
-                    fetchMyLeaveRequests() // Refresh pending requests
-                    fetchAttendance() // Refresh attendance to sync provisional record
+                    fetchMyLeaveRequests()
+                    fetchAttendance()
                 } else {
                     const data = await res.json()
                     toast.error(data.error || "We encountered a small issue submitting your request. Please try again.")
+                    // Revert on error
+                    setCurrentAttendance(previousAttendance)
+                    setUserAttendanceList(previousList)
                 }
-
                 setIsProcessing(false)
                 return
             }
             // End Amendment Logic
 
-            // Normal Clock In
-            const clockInISO = new Date().toISOString()
-
-            // Prepare scheduled times if provided
-
-
+            // Normal Clock In API Call
             const res = await fetch('/api/attendance', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -817,16 +821,24 @@ export default function UserPortal() {
                     clockIn: clockInISO
                 })
             })
+
             if (res.ok) {
-                setShowLocationDialog(false)
+                // Success! We can now fetch the real data to get the real ID, 
+                // but the user already sees the "Clocked In" state so it feels instant.
                 fetchAttendance()
             } else {
                 const data = await res.json()
                 toast.error(data.error || "We couldn't clock you in just yet. Please try again.")
+                // Revert on error
+                setCurrentAttendance(previousAttendance)
+                setUserAttendanceList(previousList)
                 fetchAttendance()
             }
         } catch (error) {
             toast.error("We encountered a small issue. Please try again.")
+            // Revert on error
+            setCurrentAttendance(previousAttendance)
+            setUserAttendanceList(previousList)
         } finally {
             setIsProcessing(false)
         }
@@ -835,13 +847,78 @@ export default function UserPortal() {
 
     const handleAction = async (action: 'clock-out' | 'start-break' | 'end-break') => {
         if (!session?.user?.id) return
+
+        // Optimistic UI: Save state & Update immediately
+        const now = new Date()
+        const nowISO = now.toISOString()
+        const previousAttendance = currentAttendance ? { ...currentAttendance } : null
+        const previousList = [...userAttendanceList]
+
+        // We only apply optimistic updates for normal actions, not simulated/amendment requests
+        // because amendment requests don't change the "Live" status instantly anyway.
+        const realStatus = currentAttendance?.status || 'clocked-out'
+        const isSimulated = optimisticStatus !== realStatus
+
+        let shouldApplyOptimistic = !isSimulated
+
+        // Special case: If we are correcting a "simulated" state that aligns with reality
+        if (isSimulated && currentAttendance?.clockIn && !currentAttendance.clockOut) {
+            if (action === 'start-break' && realStatus === 'clocked-in') shouldApplyOptimistic = true
+            else if (action === 'end-break' && realStatus === 'on-break') shouldApplyOptimistic = true
+            else if (action === 'clock-out' && (realStatus === 'clocked-in' || realStatus === 'on-break')) shouldApplyOptimistic = true
+        }
+
+        if (shouldApplyOptimistic && currentAttendance) {
+            const updatedRecord = { ...currentAttendance }
+
+            if (action === 'start-break') {
+                updatedRecord.status = 'on-break'
+                // Add a new break
+                const newBreak = {
+                    id: `temp-break-${Date.now()}`,
+                    startTime: nowISO,
+                    endTime: null
+                }
+                updatedRecord.breaks = updatedRecord.breaks ? [...updatedRecord.breaks, newBreak] : [newBreak]
+            } else if (action === 'end-break') {
+                updatedRecord.status = 'clocked-in'
+                // Close the open break
+                if (updatedRecord.breaks && updatedRecord.breaks.length > 0) {
+                    // Find last open break
+                    const lastBreakIndex = updatedRecord.breaks.findIndex((b: any) => !b.endTime)
+                    if (lastBreakIndex >= 0) {
+                        const breaks = [...updatedRecord.breaks]
+                        breaks[lastBreakIndex] = { ...breaks[lastBreakIndex], endTime: nowISO }
+                        updatedRecord.breaks = breaks
+                    }
+                }
+            } else if (action === 'clock-out') {
+                updatedRecord.status = 'clocked-out'
+                updatedRecord.clockOut = nowISO
+                // Close any open breaks
+                if (updatedRecord.breaks) {
+                    updatedRecord.breaks = updatedRecord.breaks.map((b: any) =>
+                        !b.endTime ? { ...b, endTime: nowISO } : b
+                    )
+                }
+            }
+
+            // Apply Optimistic Update
+            setCurrentAttendance(updatedRecord)
+            // Also update the list view
+            const newList = [...userAttendanceList]
+            const recordIndex = newList.findIndex(r => r.id === updatedRecord.id)
+            if (recordIndex >= 0) {
+                newList[recordIndex] = updatedRecord
+                setUserAttendanceList(newList)
+            }
+        }
+
         setIsProcessing(true)
 
         try {
             // Check if we are in a "Simulated" state (where our optimistic status differs from real server status)
             // Or if we specifically have a pending Clock In (root of simulation)
-            const realStatus = currentAttendance?.status || 'clocked-out'
-            const isSimulated = optimisticStatus !== realStatus
 
             // Special check: If we are trying to End Break, but real status is 'clocked-in' (meaning Break Start was pending),
             // we must send a request.
@@ -871,6 +948,22 @@ export default function UserPortal() {
                 } else {
                     // Still force simulation if the gap is too large (e.g. server thinks I'm clocked out but I want to start a break)
                     // Continue with simulated request...
+                    // Revert optimistic update for simulated requests as they go into pending state
+                    if (shouldApplyOptimistic) {
+                        setCurrentAttendance(previousAttendance)
+                        setUserAttendanceList(previousList)
+                    }
+                }
+            }
+
+            if (isSimulated && !(currentAttendance?.clockIn && !currentAttendance.clockOut) && action !== 'clock-out') {
+                // Revert if we are going into request mode (unless we handled above)
+                // Actually, for clock-out we might want to show it as "Pending Clock Out" in feed, 
+                // but main status might remain "Clocked In" until approved?
+                // For now, simpler to revert optimistic UI if it's a request, and let the request toaster handle it.
+                if (shouldApplyOptimistic) {
+                    setCurrentAttendance(previousAttendance)
+                    setUserAttendanceList(previousList)
                 }
             }
 
@@ -908,11 +1001,24 @@ export default function UserPortal() {
                     body: JSON.stringify({ userId: session.user.id, action })
                 })
                 if (res.ok) {
+                    // Success! Fetch real data to sync up
                     fetchAttendance()
+                } else {
+                    // Revert on error
+                    if (shouldApplyOptimistic) {
+                        setCurrentAttendance(previousAttendance)
+                        setUserAttendanceList(previousList)
+                    }
+                    toast.error("Action failed. Please try again.")
                 }
             }
         } catch (error) {
-            // Error handled silently
+            // Revert on error
+            if (shouldApplyOptimistic) {
+                setCurrentAttendance(previousAttendance)
+                setUserAttendanceList(previousList)
+            }
+            toast.error("We encountered a small issue. Please try again.")
         } finally {
             setIsProcessing(false)
         }
@@ -936,6 +1042,26 @@ export default function UserPortal() {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
         const duration = `${diffDays} Day${diffDays > 1 ? 's' : ''}`
 
+        // Optimistic UI update: Add to myLeaveRequests list instantly
+        const tempRequestId = `temp-leave-${Date.now()}`
+        const newLeaveRequest = {
+            id: tempRequestId,
+            userId,
+            startDate: leaveStartDate,
+            endDate: leaveEndDate,
+            type: leaveType,
+            reason: leaveReason,
+            status: 'PENDING',
+            duration: leaveDurationType === 'Full Day' && diffDays > 1 ? `${diffDays} Days` : leaveDurationType,
+            startTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveStartTime}:00${offset}`).toISOString() : null,
+            endTime: leaveDurationType !== 'Full Day' ? new Date(`${leaveStartDate}T${leaveEndTime}:00${offset}`).toISOString() : null,
+            createdAt: new Date().toISOString()
+        }
+
+        const previousLeaves = [...myLeaveRequests]
+        setMyLeaveRequests([newLeaveRequest, ...myLeaveRequests])
+        setIsLeaveOpen(false)
+
         try {
             const res = await fetch('/api/leaves', {
                 method: 'POST',
@@ -953,21 +1079,25 @@ export default function UserPortal() {
             })
 
             if (res.ok) {
-                setIsLeaveOpen(false)
+                // Success - Clear form and fetch real data to get real ID
                 setLeaveReason("")
                 setLeaveStartDate("")
                 setLeaveEndDate("")
                 setLeaveDurationType("Full Day")
                 setLeaveStartTime("09:00")
                 setLeaveEndTime("13:00")
-                fetchMyLeaveRequests() // Refresh the list
+                fetchMyLeaveRequests()
                 toast.success("Thank you! Your leave request has been submitted for approval.")
             } else {
+                // Revert on error
+                setMyLeaveRequests(previousLeaves)
                 const data = await res.json()
                 console.error('[Leave Request] Error response:', data);
                 toast.error(data.error || "We encountered a small issue submitting your leave request. Please try again.")
             }
         } catch (error) {
+            // Revert on error
+            setMyLeaveRequests(previousLeaves)
             toast.error("We encountered a small issue. Please try again.")
         }
     }
@@ -1429,26 +1559,35 @@ export default function UserPortal() {
     const breakStart = () => handleAction('start-break')
     const breakEnd = () => handleAction('end-break')
     const handleLeaveSubmit = requestLeave
-
-    // Handle Email Action Links (e.g. End Break)
-    const searchParams = useSearchParams()
-    const router = useRouter()
-    const [hasAutoActionRun, setHasAutoActionRun] = useState(false)
-
     useEffect(() => {
         const action = searchParams.get('action')
         if (action === 'endBreak' && !hasAutoActionRun && session?.user?.id) {
-            // Trigger End Break logic
-            // We use handleAction which handles simulation/API calls
             handleAction('end-break')
             setHasAutoActionRun(true)
             toast.info("Processing your request to end break...")
-
-            // Clean URL
             router.replace('/user')
         }
     }, [searchParams, session, hasAutoActionRun])
 
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6">
+                <div className="h-20 w-20 rounded-[2.5rem] bg-[#8B2323] flex items-center justify-center shadow-2xl border-4 border-white/20 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-black/20 to-transparent" />
+                    <Loader2 className="h-10 w-10 animate-spin text-white relative z-10" />
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-[#8B2323] animate-pulse">
+                        Synchronizing Systems
+                    </p>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest opacity-50">
+                        Preparing your workspace
+                    </p>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-8 w-full">
