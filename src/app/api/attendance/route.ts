@@ -627,7 +627,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
     try {
         const body = await req.json()
-        const { userId, action } = body
+        const { userId, action, expectedReturnTime } = body
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
@@ -700,7 +700,8 @@ export async function PATCH(req: Request) {
             await prisma.break.create({
                 data: {
                     attendanceId: existing.id,
-                    startTime: now
+                    startTime: now,
+                    expectedReturnTime: expectedReturnTime ? new Date(expectedReturnTime) : null
                 }
             })
             // Convenience field (current break)

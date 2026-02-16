@@ -48,7 +48,7 @@ export default function UserPortal() {
 
     // State Declarations (Consolidated at top)
     const [userProfile, setUserProfile] = useState<any>(null)
-    const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
+    const [userTimeZone, setUserTimeZone] = useState(getBrowserTimezone())
     const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
     const [managerList, setManagerList] = useState<any[]>([])
     const [departmentList, setDepartmentList] = useState<any[]>([])
@@ -101,6 +101,12 @@ export default function UserPortal() {
     const [isDeclineOpen, setIsDeclineOpen] = useState(false)
     const [declineReason, setDeclineReason] = useState("")
     const [selectedLeaveId, setSelectedLeaveId] = useState<string | null>(null)
+    const [calendarFilterDepartment, setCalendarFilterDepartment] = useState("all")
+    const [showBreakStartDialog, setShowBreakStartDialog] = useState(false)
+    const [breakReturnTime, setBreakReturnTime] = useState("")
+
+    // Ref to track if we are in the initial data loading phase
+    const isFirstTimezoneSync = useRef(true)
 
     // --- CONSOLIDATED QUICK LOAD ---
     const fetchDashboardData = async () => {
@@ -192,18 +198,35 @@ export default function UserPortal() {
 
     // Detect Timezone Changes and Prompt Work Hours Confirmation
     useEffect(() => {
+        // If we are in the initial sync phase (profile just loaded or loading)
+        // ignore the transition and just update the baseline.
+        // We consider the sync "done" once we have a userProfile and a userTimeZone.
+        if (isFirstTimezoneSync.current) {
+            if (userProfile && userTimeZone) {
+                isFirstTimezoneSync.current = false
+                setPreviousTimezone(userTimeZone)
+            } else if (userTimeZone) {
+                // If we have a timezone but no profile yet, track it but stay in first sync
+                setPreviousTimezone(userTimeZone)
+            }
+            return
+        }
+
         if (userTimeZone && previousTimezone && userTimeZone !== previousTimezone) {
             // Timezone has changed - prompt user to confirm work hours
-            setTempWorkHoursStart(userProfile?.shiftStartTime || "09:00")
-            setTempWorkHoursEnd(userProfile?.shiftEndTime || "17:00")
-            setShowTimezoneWorkHoursDialog(true)
+            // ONLY if the user is based in the Philippines (as per request)
+            if (userProfile?.location === 'Philippines') {
+                setTempWorkHoursStart(userProfile?.shiftStartTime || "09:00")
+                setTempWorkHoursEnd(userProfile?.shiftEndTime || "17:00")
+                setShowTimezoneWorkHoursDialog(true)
+            }
         }
 
         // Update previous timezone
-        if (userTimeZone && !previousTimezone) {
+        if (userTimeZone) {
             setPreviousTimezone(userTimeZone)
         }
-    }, [userTimeZone])
+    }, [userTimeZone, userProfile])
 
     // Initialize scheduled times with user's default work hours
 
@@ -877,7 +900,13 @@ export default function UserPortal() {
                 const newBreak = {
                     id: `temp-break-${Date.now()}`,
                     startTime: nowISO,
-                    endTime: null
+                    endTime: null,
+                    expectedReturnTime: breakReturnTime ? (() => {
+                        const [h, m] = breakReturnTime.split(':').map(Number)
+                        const d = new Date()
+                        d.setHours(h, m, 0, 0)
+                        return d.toISOString()
+                    })() : null
                 }
                 updatedRecord.breaks = updatedRecord.breaks ? [...updatedRecord.breaks, newBreak] : [newBreak]
             } else if (action === 'end-break') {
@@ -995,10 +1024,18 @@ export default function UserPortal() {
                 }
             } else {
                 // Normal API Call
+                const body: any = { userId: session.user.id, action }
+                if (action === 'start-break' && breakReturnTime) {
+                    const [h, m] = breakReturnTime.split(':').map(Number)
+                    const d = new Date()
+                    d.setHours(h, m, 0, 0)
+                    body.expectedReturnTime = d.toISOString()
+                }
+
                 const res = await fetch('/api/attendance', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: session.user.id, action })
+                    body: JSON.stringify(body)
                 })
                 if (res.ok) {
                     // Success! Fetch real data to sync up
@@ -1286,16 +1323,34 @@ export default function UserPortal() {
             const liveStatus = isMe ? optimisticStatus : (attendanceRecord ? attendanceRecord.status : 'clocked-out')
 
             // OPTIMISTIC LAST ACTIVE: Also show the pending time if applicable for display consistency
-            let lastActive = attendanceRecord ? attendanceRecord.clockIn : null
+            let lastActive = attendanceRecord ? attendanceRecord.clockIn : (staff.lastAttendance ? staff.lastAttendance.clockIn : null)
             if (isMe && pendingClockInForDisplay && (liveStatus === 'clocked-in' || liveStatus === 'on-break')) {
                 lastActive = pendingClockInForDisplay.time || pendingClockInForDisplay.date
+            }
+
+            // EXPECTED RETURN TIME: Find the active break for this user
+            let expectedReturnTime = null
+            if (liveStatus === 'on-break' && attendanceRecord && attendanceRecord.breaks) {
+                const activeBreak = attendanceRecord.breaks.find((b: any) => !b.endTime)
+                if (activeBreak) {
+                    expectedReturnTime = activeBreak.expectedReturnTime
+                }
+            }
+            if (isMe && liveStatus === 'on-break' && !expectedReturnTime) {
+                // Try to find it in the optimistic record if it's me
+                const optimisticBreak = currentAttendance?.breaks?.find((b: any) => !b.endTime)
+                if (optimisticBreak) {
+                    expectedReturnTime = optimisticBreak.expectedReturnTime
+                }
             }
 
             return {
                 ...staff,
                 status: liveStatus,
                 lastActive: lastActive,
-                returnDate: attendanceRecord ? attendanceRecord.returnDate : null
+                returnDate: attendanceRecord ? attendanceRecord.returnDate : null,
+                expectedReturnTime: expectedReturnTime,
+                selectedTimezone: staff.selectedTimezone
             }
         })
         .filter((staff: any) => staff.name?.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -1368,7 +1423,7 @@ export default function UserPortal() {
 
             const [deptAttRes, deptLeaveRes] = await Promise.all([
                 fetch(`/api/attendance?${deptQuery.toString()}`),
-                fetch(`/api/leaves?${deptQuery.toString()}&status=APPROVED`)
+                fetch(`/api/leaves?${deptQuery.toString()}`)
             ])
 
             let newMonthlyAttendance: any[] = []
@@ -1389,7 +1444,7 @@ export default function UserPortal() {
                 })
                 const [mgrAttRes, mgrLeaveRes] = await Promise.all([
                     fetch(`/api/attendance?${mgrQuery.toString()}`),
-                    fetch(`/api/leaves?${mgrQuery.toString()}&status=APPROVED`)
+                    fetch(`/api/leaves?${mgrQuery.toString()}`)
                 ])
 
                 if (mgrAttRes.ok) newMonthlyAttendance = [...newMonthlyAttendance, ...(await mgrAttRes.json())]
@@ -1470,7 +1525,8 @@ export default function UserPortal() {
                 events.push({
                     type: 'clock-in',
                     timestamp: record.clockIn,
-                    label: 'Clocked In'
+                    label: 'Clocked In',
+                    isPending: false
                 })
             }
 
@@ -1479,7 +1535,8 @@ export default function UserPortal() {
                 events.push({
                     type: 'break-start',
                     timestamp: record.breakStart,
-                    label: 'Started Break'
+                    label: 'Started Break',
+                    isPending: false
                 })
             }
 
@@ -1488,7 +1545,8 @@ export default function UserPortal() {
                 events.push({
                     type: 'break-end',
                     timestamp: record.breakEnd,
-                    label: 'Ended Break'
+                    label: 'Ended Break',
+                    isPending: false
                 })
             }
 
@@ -1497,7 +1555,8 @@ export default function UserPortal() {
                 events.push({
                     type: 'clock-out',
                     timestamp: record.clockOut,
-                    label: 'Clocked Out'
+                    label: 'Clocked Out',
+                    isPending: false
                 })
             }
 
@@ -1506,7 +1565,8 @@ export default function UserPortal() {
                 events.push({
                     type: 'leave-start',
                     timestamp: record.date ? `${record.date}T09:00:00` : new Date().toISOString(),
-                    label: `On Leave (${record.type || 'Approved'})`
+                    label: `On Leave (${record.type || 'Approved'})`,
+                    isPending: false
                 })
             }
 
@@ -1519,16 +1579,16 @@ export default function UserPortal() {
             let type = 'request-pending'
 
             if (req.type === 'CLOCK_IN') {
-                label = 'Clock In'
+                label = 'Clock In Request'
                 type = 'clock-in-pending'
             } else if (req.type === 'CLOCK_OUT') {
-                label = 'Clock Out'
+                label = 'Clock Out Request'
                 type = 'clock-out-pending'
             } else if (req.type === 'BREAK_START') {
-                label = 'Break Started'
+                label = 'Break Start Request'
                 type = 'break-start-pending'
             } else if (req.type === 'BREAK_END') {
-                label = 'Break Ended'
+                label = 'Break End Request'
                 type = 'break-end-pending'
             }
 
@@ -1548,15 +1608,32 @@ export default function UserPortal() {
             return eventPHT === todayPHT
         })
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    // De-duplicate: If we have a 'Clock In' and 'Clock In (Pending)' at similar times, user behavior suggests prefer the REAL one,
-    // but if the Pending one is strictly newer/different, showing both is fine to indicate status.
-    // For simplicity, we just show everything sorted.
+        // De-duplicate: Remove pending requests if a real event exists at the same time (within 1 min)
+        .filter((event, _, allEvents) => {
+            if (!event.isPending) return true
+
+            // Check if a real event of similar type exists nearby
+            const hasRealDuplicate = allEvents.some(realEvent =>
+                !realEvent.isPending &&
+                Math.abs(new Date(realEvent.timestamp).getTime() - new Date(event.timestamp).getTime()) < 60000 && // 1 minute tolerance
+                (
+                    (event.type === 'clock-in-pending' && realEvent.type === 'clock-in') ||
+                    (event.type === 'clock-out-pending' && realEvent.type === 'clock-out') ||
+                    (event.type === 'break-start-pending' && realEvent.type === 'break-start') ||
+                    (event.type === 'break-end-pending' && realEvent.type === 'break-end')
+                )
+            )
+            return !hasRealDuplicate
+        })
 
 
     // Aliases for new UI Actions
     const clockIn = () => confirmClockIn('OFFICE')
     const clockOut = () => handleAction('clock-out')
-    const breakStart = () => handleAction('start-break')
+    const breakStart = () => {
+        setBreakReturnTime("")
+        setShowBreakStartDialog(true)
+    }
     const breakEnd = () => handleAction('end-break')
     const handleLeaveSubmit = requestLeave
     useEffect(() => {
@@ -1726,6 +1803,19 @@ export default function UserPortal() {
                                                 return pending ? formatTime(new Date(pending.time || pending.date)) : formatTime(new Date())
                                             })()}
                                         </p>
+                                        {(() => {
+                                            // Show Expected Return if available
+                                            const activeBreak = currentAttendance?.breaks?.find((b: any) => !b.endTime)
+                                            if (activeBreak?.expectedReturnTime) {
+                                                const returnTime = new Date(activeBreak.expectedReturnTime)
+                                                return (
+                                                    <p className="text-[10px] sm:text-xs font-bold text-[#765424] mt-1">
+                                                        Expected Return: {returnTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: userTimeZone })}
+                                                    </p>
+                                                )
+                                            }
+                                            return null
+                                        })()}
                                     </div>
                                 )}
                             </div>
@@ -1938,7 +2028,7 @@ export default function UserPortal() {
                                     <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="all">All Statuses</SelectItem>
                                     <SelectItem value="clocked-in">Clocked In</SelectItem>
                                     <SelectItem value="on-break">On Break</SelectItem>
                                     <SelectItem value="clocked-out">Clocked Out</SelectItem>
@@ -1947,7 +2037,7 @@ export default function UserPortal() {
                             </Select>
 
                             <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                                <SelectTrigger className="h-9 w-[160px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0">
+                                <SelectTrigger className="h-9 w-[240px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0">
                                     <SelectValue placeholder="Department" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -2032,12 +2122,43 @@ export default function UserPortal() {
                                                         {getStaffStatusBadge(staff.status)}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Badge variant="outline" className="text-[10px] font-medium text-slate-500 border-slate-200 bg-white">
-                                                            {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
-                                                        </Badge>
+                                                        <div className="flex flex-col gap-1">
+                                                            <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
+                                                                {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
+                                                            </Badge>
+                                                            {staff.status === 'on-break' && staff.expectedReturnTime && (
+                                                                <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1">
+                                                                    Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
-                                                    <TableCell className="text-right pr-6 text-xs font-mono font-medium text-slate-500">
-                                                        {staff.lastActive ? new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }) : '--:--'}
+                                                    <TableCell className="text-right pr-6">
+                                                        {staff.lastActive ? (
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-xs font-bold text-slate-600 font-mono">
+                                                                    {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: staff.selectedTimezone || userTimeZone })}
+                                                                </span>
+                                                                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                                                                    {new Date(staff.lastActive).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })}
+                                                                    {staff.selectedTimezone && (
+                                                                        <span className="ml-1 text-[9px] font-black text-slate-300">
+                                                                            {(() => {
+                                                                                try {
+                                                                                    const parts = new Intl.DateTimeFormat('en-US', { timeZone: staff.selectedTimezone, timeZoneName: 'short' }).formatToParts(new Date())
+                                                                                    const tz = parts.find(p => p.type === 'timeZoneName')?.value
+                                                                                    // Strip "Standard Time" or "Daylight Time" if it's too long, or just keep initials if possible.
+                                                                                    // Usually 'short' gives PST, EST, GMT+8 etc.
+                                                                                    return tz || 'Local'
+                                                                                } catch (e) { return 'Local' }
+                                                                            })()}
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
+                                                        )}
                                                     </TableCell>
                                                 </TableRow>
                                             )
@@ -2056,20 +2177,25 @@ export default function UserPortal() {
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
                                         <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-2">
-                                                {userDepartment && (
-                                                    <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-black uppercase tracking-widest px-2 py-0.5">
-                                                        {userDepartment} Team
-                                                    </Badge>
-                                                )}
-                                            </div>
+                                            {/* Department Filter for Calendar */}
+                                            <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
+                                                <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
+                                                    <SelectValue placeholder="Department" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All Departments</SelectItem>
+                                                    {uniqueDepartments.map((dept: any) => (
+                                                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                         <TabsList className="bg-slate-100 p-1 rounded-xl h-9">
                                             <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
                                                 Staff Overview
                                             </TabsTrigger>
                                             <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                                Staff Calendar
+                                                Leave Calendar
                                             </TabsTrigger>
                                         </TabsList>
                                     </div>
@@ -2085,6 +2211,21 @@ export default function UserPortal() {
                                         </Button>
                                     </div>
                                 </div>
+                                {/* Legend */}
+                                <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/50">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Approved Leave</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pending Approval</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Public Holiday</span>
+                                    </div>
+                                </div>
                             </CardHeader>
                             <CardContent className="p-0">
                                 <div className="grid grid-cols-7 border-b border-border bg-slate-50/50">
@@ -2096,7 +2237,49 @@ export default function UserPortal() {
                                 </div>
                                 <div className="grid grid-cols-7 auto-rows-fr">
                                     {calendarDays.map((day, i) => {
-                                        const events = getEventsForDay(day)
+                                        const dateStr = format(day, 'yyyy-MM-dd')
+
+                                        // 1. Paid Leaves (Approved) - Exclude SICK, Filter Dept
+                                        const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
+                                            if (leave.type === 'SICK' || leave.status !== 'APPROVED') return false
+
+                                            // Dept Filter
+                                            if (calendarFilterDepartment !== 'all') {
+                                                const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
+                                                const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                if (dept !== calendarFilterDepartment) return false
+                                            }
+
+                                            return isWithinInterval(day, {
+                                                start: parseISO(leave.startDate),
+                                                end: parseISO(leave.endDate)
+                                            })
+                                        }).map((l: any) => ({ type: 'leave-approved', data: l }))
+
+                                        // 2. Pending Leaves - Exclude SICK, Filter Dept
+                                        const pendingLeaves = teamApprovedLeaves.filter((leave: any) => {
+                                            if (leave.type === 'SICK' || leave.status !== 'PENDING') return false
+
+                                            // Dept Filter
+                                            if (calendarFilterDepartment !== 'all') {
+                                                const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
+                                                const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                if (dept !== calendarFilterDepartment) return false
+                                            }
+
+                                            return isWithinInterval(day, {
+                                                start: parseISO(leave.startDate),
+                                                end: parseISO(leave.endDate)
+                                            })
+                                        }).map((l: any) => ({ type: 'leave-pending', data: l }))
+
+                                        const events: any[] = [...approvedLeaves, ...pendingLeaves]
+
+                                        // Holidays
+                                        if (NSW_HOLIDAYS_2026[dateStr]) {
+                                            events.unshift({ type: 'holiday', name: NSW_HOLIDAYS_2026[dateStr], data: null })
+                                        }
+
                                         const isCurrentMonth = isSameMonth(day, currentMonth)
                                         const isTodayDay = isToday(day)
 
@@ -2123,8 +2306,9 @@ export default function UserPortal() {
                                                         <div key={idx} className={cn(
                                                             "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md truncate border",
                                                             event.type === 'holiday' ? "bg-red-50 text-red-600 border-red-100" :
-                                                                event.type === 'leave' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                                                                    "bg-green-50 text-green-600 border-green-100"
+                                                                event.type === 'leave-approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
+                                                                    event.type === 'leave-pending' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                                                        "bg-slate-50 text-slate-600 border-slate-100"
                                                         )}>
                                                             {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || 'Staff')}
                                                         </div>
@@ -2383,7 +2567,56 @@ export default function UserPortal() {
             </Dialog >
 
             {/* Break Time Warning/Limit Dialog */}
-            < Dialog open={showBreakDialog} onOpenChange={setShowBreakDialog} >
+            <Dialog open={showBreakStartDialog} onOpenChange={setShowBreakStartDialog}>
+                <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+                    <div className="bg-[#D4A056] p-8 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/20 to-transparent" />
+                        <Coffee className="h-12 w-12 text-white/30 mx-auto mb-4" />
+                        <DialogTitle className="text-2xl font-black text-white uppercase tracking-tight relative z-10">
+                            Start Break
+                        </DialogTitle>
+                        <DialogDescription className="text-white/80 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
+                            Taking a moment to recharge?
+                        </DialogDescription>
+                    </div>
+                    <div className="p-8 space-y-6 bg-white">
+                        <div className="space-y-2">
+                            <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Expected Return Time (Optional)</Label>
+                            <Input
+                                type="time"
+                                value={breakReturnTime}
+                                onChange={(e) => setBreakReturnTime(e.target.value)}
+                                className="h-12 bg-muted/40 border-border rounded-xl font-bold text-lg text-center"
+                            />
+                            <p className="text-[10px] text-muted-foreground text-center">
+                                Providing this helps your team know when to expect you back.
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowBreakStartDialog(false)}
+                                disabled={isProcessing}
+                                className="h-14 font-black uppercase tracking-widest rounded-xl"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    await handleAction('start-break');
+                                    setShowBreakStartDialog(false);
+                                }}
+                                disabled={isProcessing}
+                                className="h-14 bg-[#D4A056] hover:bg-[#b88640] text-white font-black rounded-xl shadow-lg transition-all active:scale-95 uppercase tracking-widest"
+                            >
+                                {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : "Start Break"}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={showBreakDialog} onOpenChange={setShowBreakDialog} >
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className={cn(
                         "p-8 text-center relative overflow-hidden transition-colors duration-500",

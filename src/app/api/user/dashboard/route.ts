@@ -77,7 +77,14 @@ export async function GET() {
                     department: { select: { id: true, name: true } },
                     availabilityStatus: true,
                     customStatusMessage: true,
-                    location: true
+                    location: true,
+                    selectedTimezone: true,
+                    attendance: {
+                        take: 1,
+                        orderBy: { clockIn: 'desc' },
+                        where: { deletedAt: null },
+                        include: { breaks: true }
+                    }
                 },
                 orderBy: { name: 'asc' }
             })
@@ -92,7 +99,23 @@ export async function GET() {
             clockOut: a.clockOut?.toISOString(),
             breakStart: a.breakStart?.toISOString(),
             breakEnd: a.breakEnd?.toISOString(),
-            date: a.date instanceof Date ? a.date.toISOString().split('T')[0] : a.date
+            date: a.date instanceof Date ? a.date.toISOString().split('T')[0] : a.date,
+            breaks: a.breaks?.map((b: any) => ({
+                id: b.id,
+                startTime: b.startTime.toISOString(),
+                endTime: b.endTime?.toISOString(),
+                expectedReturnTime: b.expectedReturnTime?.toISOString()
+            }))
+        })
+
+        const detailedEmployees = employees.map((emp: any) => {
+            const lastRecord = emp.attendance && emp.attendance[0] ? transformRecord(emp.attendance[0]) : null
+            // Remove the raw attendance array from the output to keep it clean
+            const { attendance, ...rest } = emp
+            return {
+                ...rest,
+                lastAttendance: lastRecord
+            }
         })
 
         return NextResponse.json({
@@ -103,7 +126,7 @@ export async function GET() {
             },
             leaves: myLeaves,
             attendanceRequests: myAttendanceRequests,
-            staff: employees
+            staff: detailedEmployees
         })
 
     } catch (error) {

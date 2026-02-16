@@ -459,7 +459,7 @@ export default function UserLayout({
                                 </Button>
                             </Link>
                         )}
-                        <TimezoneSettings />
+                        <TimezoneSettings showNote={false} />
                         <UserOnboardingTour mode="trigger" />
                         <NotificationBell />
                     </div>
