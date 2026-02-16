@@ -130,6 +130,8 @@ model Attendance {
   deletedAt      DateTime?
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   breaks         Break[]
+  breakWarningSent      Boolean   @default(false)
+  breakLimitExceededSent Boolean  @default(false)
 
   @@index([userId, date])
 }

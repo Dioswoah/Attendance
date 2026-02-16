@@ -13,6 +13,32 @@ export async function POST(req: Request) {
     try {
         const { type, totalBreakTime, limit } = await req.json()
         const userId = session.user.id
+        const userEmail = session.user.email
+        const userName = session.user.name
+
+        // Find today's active attendance
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const attendance = await prisma.attendance.findFirst({
+            where: {
+                userId,
+                date: { gte: today },
+                clockOut: null
+            }
+        });
+
+        if (!attendance) {
+            return NextResponse.json({ error: "No active attendance found" }, { status: 404 });
+        }
+
+        // Check flags to prevent duplicate notifications
+        if (type === 'WARNING' && attendance.breakWarningSent) {
+            return NextResponse.json({ success: true, message: "Already warned" });
+        }
+        if (type === 'EXCEEDED' && attendance.breakLimitExceededSent) {
+            return NextResponse.json({ success: true, message: "Already notified limit" });
+        }
 
         // 1. Create In-App Notification
         const notification = await prisma.notification.create({
@@ -30,17 +56,27 @@ export async function POST(req: Request) {
         // 2. Broadcast for real-time bell
         broadcastUpdate('notification', { userId })
 
-        // 3. Send email for both Warning and Exceeded types
+        // 3. Send email for both Warning and Exceeded types (with check)
         if (session.accessToken) {
+            const actionLink = `${process.env.NEXTAUTH_URL}/user?action=endBreak`;
             await sendBreakLimitEmail({
-                userName: session.user.name || "Employee",
-                userEmail: session.user.email,
+                userName: userName || "Employee",
+                userEmail: userEmail,
                 userAccessToken: session.accessToken,
                 totalBreakTime,
                 limit,
-                isWarning: type === 'WARNING'
+                actionLink
             })
         }
+
+        // 4. Update Flags
+        await prisma.attendance.update({
+            where: { id: attendance.id },
+            data: {
+                breakWarningSent: type === 'WARNING' ? true : attendance.breakWarningSent,
+                breakLimitExceededSent: type === 'EXCEEDED' ? true : attendance.breakLimitExceededSent
+            }
+        });
 
         return NextResponse.json({ success: true })
     } catch (error) {

@@ -2,8 +2,9 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { sendLeaveStatusUpdateEmail, sendLeaveActionEmail } from "@/lib/email"
+import { sendLeaveStatusUpdateEmail, sendLeaveActionEmail, sendGeneralEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
+import { notifyRole } from "@/lib/notifications"
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -64,7 +65,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             // If Manager Approved, Create OFFICIAL LEAVE record
             if (!isUserEditing && body.status === 'APPROVED' && leaveRequest.status !== 'APPROVED') {
                 // Create Leave
-                await prisma.leave.create({
+                const newLeave = await prisma.leave.create({
                     data: {
                         userId: leaveRequest.userId,
                         startDate: updatedRequest.startDate,
@@ -77,6 +78,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         endTime: updatedRequest.endTime,
                     }
                 })
+
+                // Notify Admin about Manager Approval
+                if (isManager && !isAdmin) { // If Manager (not Admin) approves
+                    // We need to notify Admin
+                    // Use imported notifyRole and sendGeneralEmail
+                    // (I need to add imports to the file first, see next step)
+                    await notifyRole("ADMIN", "Manager Approval", `Manager ${session.user.name} approved leave for ${updatedRequest.user.name}.`, "INFO");
+
+                    // Send Email to Admin (Iterate admins or generic system email? Since sendGeneralEmail is single recipient, we need to find an admin email or skip email.)
+                    // Use notifyRole which sends in-app. For email, maybe skip or find one admin.
+                    // The prompt requires "email on the admin". I will fetch admins.
+                    const admins = await prisma.user.findMany({ where: { roles: { has: 'ADMIN' }, email: { not: null } } });
+                    for (const admin of admins) {
+                        if (session.accessToken) {
+                            await sendGeneralEmail({
+                                toEmail: admin.email!,
+                                subject: "Manager Approved Leave",
+                                title: "Leave Approved",
+                                message: `Manager ${session.user.name} has approved a leave request for ${updatedRequest.user.name} (${updatedRequest.type}).`,
+                                accessToken: session.accessToken,
+                                link: `${process.env.NEXTAUTH_URL}/admin/leaves`
+                            });
+                        }
+                    }
+                }
             }
 
             // Notifications (Reuse logic or simplify)

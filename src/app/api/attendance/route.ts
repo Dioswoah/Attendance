@@ -67,7 +67,8 @@ function getPHTToday() {
 async function cleanupOldSessions(sessionToken?: string) {
     const unclosed = await prisma.attendance.findMany({
         where: {
-            clockOut: null
+            clockOut: null,
+            deletedAt: null
         },
         include: {
             user: {
@@ -119,7 +120,7 @@ async function cleanupOldSessions(sessionToken?: string) {
             })
 
             await prisma.break.updateMany({
-                where: { attendanceId: session.id, endTime: null },
+                where: { attendanceId: session.id, endTime: null, deletedAt: null },
                 data: { endTime: endDay }
             })
 
@@ -165,10 +166,10 @@ async function cleanupOldSessions(sessionToken?: string) {
 async function cleanupDuplicateBreaks() {
     const today = getPHTToday()
     const sessionsWithOpenBreaks = await prisma.attendance.findMany({
-        where: { date: today },
+        where: { date: today, deletedAt: null },
         include: {
             breaks: {
-                where: { endTime: null },
+                where: { endTime: null, deletedAt: null },
                 orderBy: { startTime: 'desc' }
             }
         }
@@ -198,7 +199,7 @@ async function syncAvailabilityWithAttendance() {
     try {
         // 1. Get all currently clocked-in users
         const activeSessions = await prisma.attendance.findMany({
-            where: { clockOut: null },
+            where: { clockOut: null, deletedAt: null },
             select: { userId: true }
         })
         const activeUserIds = activeSessions.map(s => s.userId)
@@ -531,11 +532,12 @@ export async function POST(req: Request) {
         const targetDate = new Date(`${localDateStr}T00:00:00Z`)
 
         // Check for an ACTIVE session (not clocked out)
-        // Check for an ACTIVE session (not clocked out) - ignore date, just check if user has open session
+        // Check for an ACTIVE session (not clocked out)
         const activeSession = await prisma.attendance.findFirst({
             where: {
                 userId,
-                clockOut: null
+                clockOut: null,
+                deletedAt: null
             }
         })
 
@@ -633,7 +635,8 @@ export async function PATCH(req: Request) {
         const existing = await prisma.attendance.findFirst({
             where: {
                 userId,
-                clockOut: null
+                clockOut: null,
+                deletedAt: null
             }
         })
 
@@ -653,7 +656,8 @@ export async function PATCH(req: Request) {
             await prisma.break.updateMany({
                 where: {
                     attendanceId: existing.id,
-                    endTime: null
+                    endTime: null,
+                    deletedAt: null
                 },
                 data: {
                     endTime: now
@@ -684,7 +688,8 @@ export async function PATCH(req: Request) {
             await prisma.break.updateMany({
                 where: {
                     attendanceId: existing.id,
-                    endTime: null
+                    endTime: null,
+                    deletedAt: null
                 },
                 data: {
                     endTime: now
@@ -720,7 +725,8 @@ export async function PATCH(req: Request) {
             const latestBreak = await prisma.break.findFirst({
                 where: {
                     attendanceId: existing.id,
-                    endTime: null
+                    endTime: null,
+                    deletedAt: null
                 },
                 orderBy: { startTime: 'desc' }
             })

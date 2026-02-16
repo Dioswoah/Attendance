@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
+import { useSearchParams, useRouter } from "next/navigation"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
@@ -1429,6 +1430,25 @@ export default function UserPortal() {
     const breakEnd = () => handleAction('end-break')
     const handleLeaveSubmit = requestLeave
 
+    // Handle Email Action Links (e.g. End Break)
+    const searchParams = useSearchParams()
+    const router = useRouter()
+    const [hasAutoActionRun, setHasAutoActionRun] = useState(false)
+
+    useEffect(() => {
+        const action = searchParams.get('action')
+        if (action === 'endBreak' && !hasAutoActionRun && session?.user?.id) {
+            // Trigger End Break logic
+            // We use handleAction which handles simulation/API calls
+            handleAction('end-break')
+            setHasAutoActionRun(true)
+            toast.info("Processing your request to end break...")
+
+            // Clean URL
+            router.replace('/user')
+        }
+    }, [searchParams, session, hasAutoActionRun])
+
 
     return (
         <div className="space-y-8 w-full">
@@ -2382,7 +2402,7 @@ export default function UserPortal() {
             {/* Timezone Change - Work Hours Confirmation Dialog */}
             <Dialog open={showTimezoneWorkHoursDialog} onOpenChange={setShowTimezoneWorkHoursDialog}>
                 <DialogContent className="max-w-md rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
-                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-8 text-center relative overflow-hidden">
+                    <div className="bg-[#8B2323] p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
                         <Globe className="h-12 w-12 text-white/30 mx-auto mb-4" />
                         <DialogTitle className="text-2xl font-bold text-white uppercase tracking-tight relative z-10">
@@ -2394,14 +2414,14 @@ export default function UserPortal() {
                     </div>
 
                     <div className="p-8 space-y-6 bg-white">
-                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <div className="bg-[#FFF5F5] border border-red-100 rounded-xl p-4">
                             <div className="flex items-start gap-3">
-                                <AlertTriangle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                <AlertTriangle className="w-5 h-5 text-[#8B2323] mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
-                                    <p className="text-sm font-semibold text-blue-900 mb-1">
+                                    <p className="text-sm font-semibold text-[#8B2323] mb-1">
                                         Your timezone has changed to: <span className="font-mono">{userTimeZone}</span>
                                     </p>
-                                    <p className="text-xs text-blue-700">
+                                    <p className="text-xs text-red-600/80">
                                         Please verify your work hours are correct for this timezone. Your current hours may need adjustment.
                                     </p>
                                 </div>
@@ -2421,7 +2441,7 @@ export default function UserPortal() {
                                             type="time"
                                             value={tempWorkHoursStart}
                                             onChange={(e) => setTempWorkHoursStart(e.target.value)}
-                                            className="h-11 font-mono font-semibold text-base border-2 focus:border-blue-500"
+                                            className="h-11 font-mono font-semibold text-base border-2 focus:border-[#8B2323]"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -2430,7 +2450,7 @@ export default function UserPortal() {
                                             type="time"
                                             value={tempWorkHoursEnd}
                                             onChange={(e) => setTempWorkHoursEnd(e.target.value)}
-                                            className="h-11 font-mono font-semibold text-base border-2 focus:border-blue-500"
+                                            className="h-11 font-mono font-semibold text-base border-2 focus:border-[#8B2323]"
                                         />
                                     </div>
                                 </div>
@@ -2440,7 +2460,7 @@ export default function UserPortal() {
                         <div className="flex flex-col gap-3">
                             <Button
                                 onClick={handleTimezoneWorkHoursConfirm}
-                                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase tracking-widest text-xs rounded-xl shadow-lg"
+                                className="w-full h-12 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold uppercase tracking-widest text-xs rounded-xl shadow-lg"
                             >
                                 <Check className="w-4 h-4 mr-2" />
                                 Confirm Work Hours

@@ -366,7 +366,8 @@ interface BreakLimitEmailProps {
   userAccessToken: string;
   totalBreakTime: string;
   limit: string;
-  isWarning?: boolean;
+  actionLink: string; // The URL to end the break
+  refreshToken?: string;
 }
 
 export async function sendBreakLimitEmail({
@@ -375,68 +376,65 @@ export async function sendBreakLimitEmail({
   userAccessToken,
   totalBreakTime,
   limit,
-  isWarning = false
-}: BreakLimitEmailProps) {
+  actionLink,
+  refreshToken
+}: BreakLimitEmailProps): Promise<boolean> {
   try {
     const oauth2Client = new google.auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
-    oauth2Client.setCredentials({ access_token: userAccessToken });
+    oauth2Client.setCredentials({
+      access_token: userAccessToken,
+      refresh_token: refreshToken
+    });
+
+    // Auto-refresh if possible (ensure fresh token)
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
+      }
+    }
+
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = isWarning
-      ? "Friendly Reminder: Break Time Update"
-      : "Important: Break Time Allocation Check-in";
-
-    const headerColor = isWarning ? '#3B82F6' : '#F59E0B'; // Blue for warning, Orange for exceeded
-    const icon = isWarning ? '?' : '??';
+    const subject = "Quick Check-in: Break Status ☕";
+    // Soft, friendly colors
+    const headerColor = '#60A5FA'; // Soft Blue
 
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
 Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
   <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
-    <div style="font-size: 48px; margin-bottom: 16px;">${icon}</div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Break Time Check-in</h2>
+    <div style="font-size: 48px; margin-bottom: 12px;">☕</div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Time Check-in</h2>
   </div>
   <div style="padding: 40px 32px;">
-    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hello <strong>${userName}</strong>,</p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
     
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      ${isWarning
-        ? "We're reaching out to provide a gentle update regarding your break time. Our records indicate that you have about <strong>15 minutes remaining</strong> of your daily break allocation."
-        : "We would like to check in with you regarding your current break session. It appears the recorded break time has extended slightly beyond the daily allocation."
-      }
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+      Hope you're having a good break! Just sending a friendly notification as your break time has reached <strong>${totalBreakTime}</strong> today (daily guideline: ${limit}).
     </p>
     
-    <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #e2e8f0;">
-      <div style="margin-bottom: 12px; display: flex; align-items: center;">
-        <span style="color: #64748b; font-size: 14px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 140px;">Daily Allocation</span>
-        <span style="color: #0f172a; font-weight: 700; font-size: 16px;">${limit}</span>
-      </div>
-      <div style="display: flex; align-items: center;">
-        <span style="color: #64748b; font-size: 14px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 140px;">Recorded Today</span>
-        <span style="color: ${isWarning ? '#0f172a' : '#ef4444'}; font-weight: 700; font-size: 16px;">${totalBreakTime}</span>
-      </div>
-    </div>
-
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 16px;">
-      If you've already returned to your tasks, please take a quick moment to <strong>end your break session</strong> via the dashboard to ensure your attendance records remain accurate.
-    </p>
-    
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">
-      If you require additional time or if there's been a discrepancy, please feel free to coordinate with your lead or administrator.
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
+      If you're ready to jump back in, you can end your break with one click below.
     </p>
 
-    <div style="text-align: center;">
-      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px; transition: background-color 0.2s;">Access Dashboard</a>
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(96, 165, 250, 0.4);">
+        End Break & Clock In
+      </a>
     </div>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is an automated system notification.<br/>Designed to help keep your workflow status up to date.</p>
+
+    <p style="font-size: 14px; color: #6b7280; text-align: center;">
+      (No worries if you need a bit more time! This is just to help you keep track.)
+    </p>
   </div>
 </div>`;
 
@@ -450,9 +448,11 @@ Content-Type: text/html; charset=utf-8
       userId: 'me',
       requestBody: { raw: encodedMessage },
     });
-    console.log("[Email Service] Break limit email sent.");
+    console.log(`[Email Service] Sent break limit email to ${userEmail}`);
+    return true;
   } catch (error) {
     console.error("[Email Service] FAILED to send break limit email:", error);
+    return false;
   }
 }
 
@@ -530,5 +530,258 @@ Content-Type: text/html; charset=utf-8
     console.log("[Email Service] Forgotten clock-out email sent.");
   } catch (error) {
     console.error("[Email Service] FAILED to send forgotten clock-out email:", error);
+  }
+}
+
+interface EmailResult {
+  accepted: string[];
+  rejected: string[];
+  response: string;
+}
+
+export type SendEmailResult = Promise<boolean>;
+interface GeneralEmailProps {
+  toEmail: string;
+  subject: string;
+  title: string;
+  message: string;
+  link?: string;
+  linkText?: string;
+  accessToken: string; // Sender's access token
+}
+
+// ... existing imports
+
+interface LateArrivalEmailProps {
+  userName: string;
+  userEmail: string;
+  userAccessToken: string;
+  scheduledStart: string;
+  actionLink: string;
+  refreshToken?: string;
+}
+
+export async function sendLateArrivalEmail({
+  userName,
+  userEmail,
+  userAccessToken,
+  scheduledStart,
+  actionLink,
+  refreshToken
+}: LateArrivalEmailProps): Promise<boolean> {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET
+    );
+    oauth2Client.setCredentials({
+      access_token: userAccessToken,
+      refresh_token: refreshToken
+    });
+
+    // Auto-refresh if possible (ensure fresh token)
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
+      }
+    }
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const subject = "Check In: Start Your Shift? ⏰";
+    const headerColor = '#F59E0B'; // Amber
+
+    const emailContent = `From: "Attendance System" <${userEmail}>
+To: ${userEmail}
+Subject: ${subject}
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
+  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 12px;">⏰</div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Time to Clock In?</h2>
+  </div>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
+    
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+      We noticed you haven't clocked in yet for your shift scheduled at <strong>${scheduledStart}</strong>. 
+    </p>
+    
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
+      If you're already online and just forgot, you can clock in immediately using the button below. If you're running late or on leave, you can ignore this safe in the knowledge that we've checked in.
+    </p>
+
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.4);">
+        Clock In Now
+      </a>
+    </div>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+    console.log("[Email Service] Late arrival email sent.");
+    return true;
+  } catch (error) {
+    console.error(`[Email Service] FAILED to send late arrival email:`, error);
+    return false;
+  }
+}
+
+interface OverdueDepartureEmailProps {
+  userName: string;
+  userEmail: string;
+  userAccessToken: string;
+  scheduledEnd: string;
+  actionLink: string;
+  refreshToken?: string;
+}
+
+export async function sendOverdueDepartureEmail({
+  userName,
+  userEmail,
+  userAccessToken,
+  scheduledEnd,
+  actionLink,
+  refreshToken
+}: OverdueDepartureEmailProps): Promise<boolean> {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET
+    );
+    oauth2Client.setCredentials({
+      access_token: userAccessToken,
+      refresh_token: refreshToken
+    });
+
+    // Auto-refresh if possible (ensure fresh token)
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
+      }
+    }
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const subject = "Check Out Reminder: Shift Ended? 🌙";
+    const headerColor = '#6366F1'; // Indigo
+
+    const emailContent = `From: "Attendance System" <${userEmail}>
+To: ${userEmail}
+Subject: ${subject}
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
+  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 12px;">🌙</div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Shift Wrap-Up</h2>
+  </div>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
+    
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+      Just a friendly reminder that your scheduled shift ended around <strong>${scheduledEnd}</strong>, and you're still clocked in.
+    </p>
+    
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
+       If you're done for the day, simply click below to clock out. If you're working late, feel free to ignore this message!
+    </p>
+
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);">
+        Clock Out Now
+      </a>
+    </div>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+    console.log("[Email Service] Overdue departure email sent.");
+    return true;
+  } catch (error) {
+    console.error("[Email Service] FAILED to send overdue departure email:", error);
+    return false;
+  }
+}
+
+export async function sendGeneralEmail({
+  toEmail,
+  subject,
+  title,
+  message,
+  link,
+  linkText = "View Details",
+  accessToken
+}: GeneralEmailProps) {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET
+    );
+    oauth2Client.setCredentials({ access_token: accessToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const emailContent = `From: "Attendance System" <me>
+To: ${toEmail}
+Subject: ${subject}
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: 'Inter', sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+  <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-bottom: 1px solid #e0e0e0;">
+    <h2 style="margin: 0; color: #333;">${title}</h2>
+  </div>
+  <div style="padding: 20px;">
+    <p style="font-size: 16px; line-height: 1.6;">${message}</p>
+    
+    ${link ? `
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="${link}" style="display: inline-block; background-color: #000; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">${linkText}</a>
+    </div>
+    ` : ''}
+  </div>
+  <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
+    <p style="margin: 0;">Automated Notification</p>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+    console.log(`[Email Service] General email sent to ${toEmail}`);
+  } catch (error) {
+    console.error("[Email Service] FAILED to send general email:", error);
   }
 }
