@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users, Edit } from "lucide-react"
+import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users, Edit, Briefcase, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -104,6 +104,8 @@ export default function UserPortal() {
     const [calendarFilterDepartment, setCalendarFilterDepartment] = useState("all")
     const [showBreakStartDialog, setShowBreakStartDialog] = useState(false)
     const [breakReturnTime, setBreakReturnTime] = useState("")
+    const [selectedLocationMode, setSelectedLocationMode] = useState<string | null>(null)
+    const [locationDetails, setLocationDetails] = useState("")
 
     // Ref to track if we are in the initial data loading phase
     const isFirstTimezoneSync = useRef(true)
@@ -750,11 +752,23 @@ export default function UserPortal() {
         // Clear custom time/reason for normal clock in
         setCustomClockInTime("")
         setCustomReason("")
+        setSelectedLocationMode(null)
+        setLocationDetails("")
         setShowLocationDialog(true)
     }
 
     const confirmClockIn = async (mode: string) => {
         if (!session?.user?.id) return
+
+        // Validate location details if required
+        if (mode === 'ONSITE' && !locationDetails.trim()) {
+            toast.error("Please provide a Location or Job Number for Onsite work")
+            return
+        }
+        if (mode === 'OTHER' && !locationDetails.trim()) {
+            toast.error("Please provide Location Details")
+            return
+        }
 
         // Optimistic UI: Update state immediately
         const now = new Date()
@@ -768,7 +782,8 @@ export default function UserPortal() {
             clockOut: null,
             breaks: [],
             status: 'clocked-in',
-            mode: mode
+            mode: mode,
+            locationDetails: locationDetails
         }
 
         // Save previous state for rollback
@@ -814,7 +829,7 @@ export default function UserPortal() {
                         date: customDateStr,
                         time: customDateStr,
                         type: 'CLOCK_IN',
-                        reason: `[${mode}] ${customReason}`
+                        reason: `[${mode}${locationDetails ? `: ${locationDetails}` : ''}] ${customReason}`
                     })
                 })
 
@@ -841,6 +856,7 @@ export default function UserPortal() {
                 body: JSON.stringify({
                     userId: session.user.id,
                     mode,
+                    locationDetails,
                     clockIn: clockInISO
                 })
             })
@@ -1526,6 +1542,8 @@ export default function UserPortal() {
                     type: 'clock-in',
                     timestamp: record.clockIn,
                     label: 'Clocked In',
+                    mode: record.mode,
+                    locationDetails: record.locationDetails,
                     isPending: false
                 })
             }
@@ -1703,25 +1721,37 @@ export default function UserPortal() {
                                 </CardTitle>
                                 <CardDescription className="text-sm text-muted-foreground">Manage your attendance for today</CardDescription>
                             </div>
-                            {userProfile?.shiftStartTime && userProfile?.shiftEndTime && (
-                                <div className="flex items-center gap-3 bg-[#FFF5F5] px-4 py-2 rounded-lg border border-red-100">
-                                    <div className="text-right">
-                                        <p className="text-[10px] font-bold text-red-600/80 uppercase tracking-wider">Work Hours</p>
-                                        <p className="text-sm font-mono font-bold text-[#8B2323]">
-                                            {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
+                            <div className="flex items-center gap-4">
+                                {userProfile?.shiftStartTime && userProfile?.shiftEndTime && (
+                                    <div className="flex items-center gap-3 bg-red-50/50 px-4 py-2 rounded-xl border border-red-100/50 shadow-sm shadow-red-500/5">
+                                        <div className="text-right">
+                                            <p className="text-[9px] font-black text-red-600/60 uppercase tracking-widest mb-0.5">Work Hours</p>
+                                            <p className="text-sm font-mono font-bold text-red-900 flex items-center gap-1.5">
+                                                <Briefcase className="w-3 h-3 text-red-500" />
+                                                {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setShowScheduleInput(!showScheduleInput)}
+                                            className="h-8 w-8 p-0 hover:bg-red-100/50 rounded-lg transition-all"
+                                        >
+                                            <Edit className="w-3.5 h-3.5 text-red-600" />
+                                        </Button>
+                                    </div>
+                                )}
+
+                                <div className="flex items-center gap-3 bg-slate-50/80 px-4 py-2 rounded-xl border border-slate-200/60 shadow-sm shadow-slate-500/5">
+                                    <div className="text-left">
+                                        <p className="text-[9px] font-black text-slate-500/60 uppercase tracking-widest mb-0.5">Current Time</p>
+                                        <p className="text-sm font-mono font-bold text-slate-700 flex items-center gap-1.5">
+                                            <Globe className="w-3 h-3 text-primary/60" />
+                                            {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true, timeZone: userTimeZone }) : "--:--:--"}
                                         </p>
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setShowScheduleInput(!showScheduleInput)}
-                                        className="h-8 w-8 p-0 hover:bg-red-100"
-                                    >
-                                        <Edit className="w-4 h-4 text-[#8B2323]" />
-                                    </Button>
                                 </div>
-
-                            )}
+                            </div>
                         </div>
 
                         {/* Edit Work Hours - Collapsible Section */}
@@ -1775,7 +1805,7 @@ export default function UserPortal() {
                     <CardContent className="p-6">
                         <div className="flex flex-col gap-8">
                             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                                <div className="text-center p-4 sm:p-6 rounded-xl bg-[#FDFBF7] border border-[#F2EFE9] overflow-hidden min-w-0 flex-1">
+                                <div className="text-center p-4 sm:p-6 rounded-xl bg-[#FDFBF7] border border-[#F2EFE9] overflow-hidden min-w-0 flex-1 hidden">
                                     <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Current Time</p>
                                     <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-mono font-medium text-foreground whitespace-nowrap tabular-nums tracking-tight">
                                         {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: userTimeZone }) : "--:--:--"}
@@ -1915,7 +1945,15 @@ export default function UserPortal() {
                                                         <div className="w-1 h-1 bg-white rounded-full opacity-50" />
                                                     </div>
                                                     <div className="flex flex-col">
-                                                        <span className={cn("text-sm font-bold", labelClass)}>{event.label}</span>
+                                                        <span className={cn("text-sm font-bold", labelClass)}>
+                                                            {event.label}
+                                                            {event.mode && (
+                                                                <span className="ml-2 text-[10px] font-black uppercase text-slate-400">
+                                                                    • {event.mode.replace('_', ' ')}
+                                                                    {event.locationDetails && `: ${event.locationDetails}`}
+                                                                </span>
+                                                            )}
+                                                        </span>
                                                         <span className="text-xs font-medium text-slate-400 font-mono">{timeString}</span>
                                                     </div>
                                                 </div>
@@ -2004,73 +2042,75 @@ export default function UserPortal() {
                                         Staff Overview
                                     </TabsTrigger>
                                     <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                        Staff Calendar
+                                        Leave Calendar
                                     </TabsTrigger>
                                 </TabsList>
                             </div>
+                        </CardHeader>
+                        <CardContent className="p-0">
 
-                            <div className="flex items-center gap-2 w-full sm:w-auto">
-                                <div className="relative flex-1 sm:w-64">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <div className="p-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center gap-4">
+                                <div className="relative w-full sm:w-72">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                     <Input
                                         placeholder="Search staff..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="pl-9 h-10 bg-white border-slate-200 rounded-xl text-sm focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-primary"
+                                        className="pl-9 h-9 bg-white border-slate-200 rounded-lg text-xs font-medium focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
                                     />
                                 </div>
+
+                                <div className="flex-1 flex flex-wrap items-center gap-2">
+                                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                                        <SelectTrigger className="h-9 w-[130px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
+                                            <SelectValue placeholder="Status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Statuses</SelectItem>
+                                            <SelectItem value="clocked-in">Clocked In</SelectItem>
+                                            <SelectItem value="on-break">On Break</SelectItem>
+                                            <SelectItem value="clocked-out">Clocked Out</SelectItem>
+                                            <SelectItem value="on-leave">On Leave</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+
+                                    <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                                        <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
+                                            <SelectValue placeholder="Department" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Departments</SelectItem>
+                                            {uniqueDepartments.map((dept: any) => (
+                                                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <div className="ml-auto flex items-center gap-2">
+                                        <Select value={sortBy} onValueChange={setSortBy}>
+                                            <SelectTrigger className="h-9 w-[120px] bg-transparent border-transparent hover:bg-slate-200/50 rounded-lg text-xs font-bold text-slate-500 shadow-none focus:ring-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[9px] font-black uppercase text-slate-300">Sort:</span>
+                                                    <SelectValue />
+                                                </div>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="name">Name</SelectItem>
+                                                <SelectItem value="status">Status</SelectItem>
+                                                <SelectItem value="department">Department</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
                             </div>
-                        </CardHeader>
 
-                        <div className="p-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center gap-3">
-                            <Select value={filterStatus} onValueChange={setFilterStatus}>
-                                <SelectTrigger className="h-9 w-[140px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0">
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Statuses</SelectItem>
-                                    <SelectItem value="clocked-in">Clocked In</SelectItem>
-                                    <SelectItem value="on-break">On Break</SelectItem>
-                                    <SelectItem value="clocked-out">Clocked Out</SelectItem>
-                                    <SelectItem value="on-leave">On Leave</SelectItem>
-                                </SelectContent>
-                            </Select>
-
-                            <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                                <SelectTrigger className="h-9 w-[240px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0">
-                                    <SelectValue placeholder="Department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Departments</SelectItem>
-                                    {uniqueDepartments.map((dept: any) => (
-                                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-
-                            <div className="ml-auto flex items-center gap-2">
-                                <span className="text-[10px] uppercase font-black tracking-widest text-slate-400">Sort By</span>
-                                <Select value={sortBy} onValueChange={setSortBy}>
-                                    <SelectTrigger className="h-9 w-[130px] bg-transparent border-transparent hover:bg-slate-200/50 rounded-lg text-xs font-bold text-slate-600 shadow-none focus:ring-0">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="name">Name</SelectItem>
-                                        <SelectItem value="status">Status</SelectItem>
-                                        <SelectItem value="department">Department</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        <CardContent className="p-0">
                             <Table>
                                 <TableHeader className="bg-slate-50">
                                     <TableRow className="hover:bg-transparent">
                                         <TableHead className="w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
+                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Base Location</TableHead>
                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
-                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right pr-6">Last Active</TableHead>
+                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right pr-24">Last Active</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -2123,6 +2163,28 @@ export default function UserPortal() {
                                                     </TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <MapPin className="h-3 w-3 text-slate-400" />
+                                                                <span className="text-sm font-semibold text-slate-600">
+                                                                    {staff.location || 'N/A'}
+                                                                </span>
+                                                            </div>
+                                                            {isOnline && staff.record?.mode && (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-500 uppercase px-1.5 h-5">
+                                                                        {staff.record.mode}
+                                                                    </Badge>
+                                                                    {staff.record.locationDetails && (
+                                                                        <span className="text-[10px] font-medium text-slate-400 truncate max-w-[100px]" title={staff.record.locationDetails}>
+                                                                            {staff.record.locationDetails}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col gap-1">
                                                             <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
                                                                 {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
                                                             </Badge>
@@ -2133,7 +2195,7 @@ export default function UserPortal() {
                                                             )}
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="text-right pr-6">
+                                                    <TableCell className="text-right pr-24">
                                                         {staff.lastActive ? (
                                                             <div className="flex flex-col items-end">
                                                                 <span className="text-xs font-bold text-slate-600 font-mono">
@@ -2452,9 +2514,14 @@ export default function UserPortal() {
                                 onClick={() => confirmClockIn('OFFICE')}
                                 disabled={isProcessing}
                                 variant="outline"
-                                className="h-32 flex flex-col items-center justify-center gap-3 border-2 border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white transition-all rounded-[1.5rem] group"
+                                className={cn(
+                                    "h-32 flex flex-col items-center justify-center gap-3 border-2 transition-all rounded-[1.5rem] group",
+                                    selectedLocationMode === 'OFFICE' ? "border-slate-900 bg-slate-50 shadow-inner" : "border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white"
+                                )}
                             >
-                                <div className="p-3 bg-white border border-slate-100 rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-colors duration-300">
+                                <div className={cn("p-3 border rounded-xl transition-colors duration-300",
+                                    selectedLocationMode === 'OFFICE' ? "bg-slate-900 text-white border-slate-900" : "bg-white border-slate-100 group-hover:bg-slate-900 group-hover:text-white"
+                                )}>
                                     <Building2 className="w-6 h-6" />
                                 </div>
                                 <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">In Office</span>
@@ -2464,14 +2531,97 @@ export default function UserPortal() {
                                 onClick={() => confirmClockIn('WFH')}
                                 disabled={isProcessing}
                                 variant="outline"
-                                className="h-32 flex flex-col items-center justify-center gap-3 border-2 border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white transition-all rounded-[1.5rem] group"
+                                className={cn(
+                                    "h-32 flex flex-col items-center justify-center gap-3 border-2 transition-all rounded-[1.5rem] group",
+                                    selectedLocationMode === 'WFH' ? "border-slate-900 bg-slate-50 shadow-inner" : "border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white"
+                                )}
                             >
-                                <div className="p-3 bg-white border border-slate-100 rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-colors duration-300">
+                                <div className={cn("p-3 border rounded-xl transition-colors duration-300",
+                                    selectedLocationMode === 'WFH' ? "bg-slate-900 text-white border-slate-900" : "bg-white border-slate-100 group-hover:bg-slate-900 group-hover:text-white"
+                                )}>
                                     <MapPin className="w-6 h-6" />
                                 </div>
                                 <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">WFH</span>
                             </Button>
+
+                            <Button
+                                onClick={() => setSelectedLocationMode('ONSITE')}
+                                disabled={isProcessing}
+                                variant="outline"
+                                className={cn(
+                                    "h-32 flex flex-col items-center justify-center gap-3 border-2 transition-all rounded-[1.5rem] group",
+                                    selectedLocationMode === 'ONSITE' ? "border-slate-900 bg-slate-50 shadow-inner" : "border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white"
+                                )}
+                            >
+                                <div className={cn("p-3 border rounded-xl transition-colors duration-300",
+                                    selectedLocationMode === 'ONSITE' ? "bg-slate-900 text-white border-slate-900" : "bg-white border-slate-100 group-hover:bg-slate-900 group-hover:text-white"
+                                )}>
+                                    <Briefcase className="w-6 h-6" />
+                                </div>
+                                <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">Onsite</span>
+                            </Button>
+
+                            <Button
+                                onClick={() => setSelectedLocationMode('OTHER')}
+                                disabled={isProcessing}
+                                variant="outline"
+                                className={cn(
+                                    "h-32 flex flex-col items-center justify-center gap-3 border-2 transition-all rounded-[1.5rem] group",
+                                    selectedLocationMode === 'OTHER' ? "border-slate-900 bg-slate-50 shadow-inner" : "border-[#F2EFE9] bg-[#FDFBF7] hover:border-slate-900 hover:bg-white"
+                                )}
+                            >
+                                <div className={cn("p-3 border rounded-xl transition-colors duration-300",
+                                    selectedLocationMode === 'OTHER' ? "bg-slate-900 text-white border-slate-900" : "bg-white border-slate-100 group-hover:bg-slate-900 group-hover:text-white"
+                                )}>
+                                    <MoreHorizontal className="w-6 h-6" />
+                                </div>
+                                <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">Other</span>
+                            </Button>
                         </div>
+
+                        {selectedLocationMode === 'ONSITE' && (
+                            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300 border-2 border-slate-900/10 p-4 rounded-3xl bg-slate-50">
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Location or Job Number</Label>
+                                    <Input
+                                        placeholder="e.g. Westfield Knox - Job #2234332"
+                                        value={locationDetails}
+                                        onChange={(e) => setLocationDetails(e.target.value)}
+                                        className="h-12 bg-white border-slate-200 rounded-xl font-bold text-sm"
+                                        autoFocus
+                                    />
+                                </div>
+                                <Button
+                                    onClick={() => confirmClockIn('ONSITE')}
+                                    disabled={!locationDetails.trim() || isProcessing}
+                                    className="w-full h-12 bg-slate-900 text-white font-black rounded-xl uppercase tracking-widest text-[10px]"
+                                >
+                                    Confirm Onsite Clock In
+                                </Button>
+                            </div>
+                        )}
+
+                        {selectedLocationMode === 'OTHER' && (
+                            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300 border-2 border-slate-900/10 p-4 rounded-3xl bg-slate-50">
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Location Details</Label>
+                                    <Input
+                                        placeholder="Specify your current location..."
+                                        value={locationDetails}
+                                        onChange={(e) => setLocationDetails(e.target.value)}
+                                        className="h-12 bg-white border-slate-200 rounded-xl font-bold text-sm"
+                                        autoFocus
+                                    />
+                                </div>
+                                <Button
+                                    onClick={() => confirmClockIn('OTHER')}
+                                    disabled={!locationDetails.trim() || isProcessing}
+                                    className="w-full h-12 bg-slate-900 text-white font-black rounded-xl uppercase tracking-widest text-[10px]"
+                                >
+                                    Confirm Other Clock In
+                                </Button>
+                            </div>
+                        )}
 
                         <Button
                             variant="ghost"
@@ -2504,7 +2654,7 @@ export default function UserPortal() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="SICK">Sick Leave</SelectItem>
+                                        <SelectItem value="SICK">Sick / Personal Leave</SelectItem>
                                         <SelectItem value="ANNUAL">Annual Leave</SelectItem>
                                         <SelectItem value="PERSONAL">Personal Leave</SelectItem>
                                         <SelectItem value="MATERNITY">Maternity/Paternity</SelectItem>

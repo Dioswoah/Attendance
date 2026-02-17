@@ -95,6 +95,9 @@ export default function ManagerControlPage() {
     const [viewMode, setViewMode] = useState<'card' | 'table'>('card')
     const [perfViewMode, setPerfViewMode] = useState<'card' | 'table'>('card')
 
+    // Report Selection State
+    const [reportSelectedStaff, setReportSelectedStaff] = useState<string[]>([])
+
     useEffect(() => {
         if (session?.user?.id) {
             fetchInitialData()
@@ -112,7 +115,7 @@ export default function ManagerControlPage() {
         if (session?.user) {
             const tz = (session.user as any).useCurrentTimezone
                 ? getBrowserTimezone()
-                : (session.user as any).selectedTimezone || "Asia/Manila"
+                : (session.user as any).selectedTimezone || getBrowserTimezone()
             setReportTimezone(tz)
         }
     }, [session])
@@ -583,7 +586,7 @@ export default function ManagerControlPage() {
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Manager Control</h1>
                         <p className="text-muted-foreground mt-1">Review requests and monitor team availability</p>
                     </div>
-                    <TabsList className="h-12 bg-white border border-border p-1 w-full md:w-auto shadow-sm gap-1 rounded-xl overflow-x-auto justify-start md:justify-center scrollbar-hide">
+                    <TabsList className="h-12 bg-white border border-border p-1 w-full md:w-auto shadow-sm gap-1 rounded-xl flex-wrap justify-center">
                         <TabsTrigger id="tour-manager-tab-requests" value="requests" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
                             Pending Requests
                             {pendingRequests.length > 0 && (
@@ -1465,7 +1468,13 @@ export default function ManagerControlPage() {
                                             <Building2 className="w-4 h-4 text-primary" />
                                             Target Department
                                         </Label>
-                                        <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                                        <Select
+                                            value={selectedDepartment}
+                                            onValueChange={(val) => {
+                                                setSelectedDepartment(val)
+                                                setReportSelectedStaff([]) // Reset staff selection when department changes
+                                            }}
+                                        >
                                             <SelectTrigger className="bg-muted/30 border-border">
                                                 <SelectValue placeholder="All Managed Departments" />
                                             </SelectTrigger>
@@ -1476,6 +1485,70 @@ export default function ManagerControlPage() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-sm font-bold flex items-center gap-2">
+                                                <Users className="w-4 h-4 text-primary" />
+                                                Select Personnel ({reportSelectedStaff.length === 0 ? 'All' : reportSelectedStaff.length})
+                                            </Label>
+                                            {filteredTeam.length > 0 && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 text-[10px] font-bold uppercase tracking-wider text-primary hover:text-primary/80"
+                                                    onClick={() => {
+                                                        if (reportSelectedStaff.length === filteredTeam.length) {
+                                                            setReportSelectedStaff([])
+                                                        } else {
+                                                            setReportSelectedStaff(filteredTeam.map(s => s.id))
+                                                        }
+                                                    }}
+                                                >
+                                                    {reportSelectedStaff.length === filteredTeam.length ? 'Deselect All' : 'Select All'}
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <div className="border border-border rounded-xl bg-muted/20 p-3 max-h-[200px] overflow-y-auto space-y-2 custom-scrollbar">
+                                            {filteredTeam.length === 0 ? (
+                                                <p className="text-xs text-center py-4 text-muted-foreground italic">No staff found in this scope</p>
+                                            ) : (
+                                                <div className="grid grid-cols-1 gap-1">
+                                                    {filteredTeam.map(member => (
+                                                        <div
+                                                            key={member.id}
+                                                            onClick={() => {
+                                                                setReportSelectedStaff(prev =>
+                                                                    prev.includes(member.id)
+                                                                        ? prev.filter(id => id !== member.id)
+                                                                        : [...prev, member.id]
+                                                                )
+                                                            }}
+                                                            className={cn(
+                                                                "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all border",
+                                                                reportSelectedStaff.includes(member.id)
+                                                                    ? "bg-primary/10 border-primary/20 text-primary"
+                                                                    : "bg-white border-transparent hover:bg-white/80 hover:border-border"
+                                                            )}
+                                                        >
+                                                            <div className={cn(
+                                                                "w-4 h-4 rounded border flex items-center justify-center transition-all",
+                                                                reportSelectedStaff.includes(member.id)
+                                                                    ? "bg-primary border-primary text-white"
+                                                                    : "bg-white border-slate-300"
+                                                            )}>
+                                                                {reportSelectedStaff.includes(member.id) && <Check className="w-3 h-3 stroke-[3]" />}
+                                                            </div>
+                                                            <Avatar className="h-6 w-6 border border-border">
+                                                                <AvatarFallback className="text-[8px] font-bold bg-slate-100 text-slate-600">{member.name.charAt(0)}</AvatarFallback>
+                                                            </Avatar>
+                                                            <span className="text-xs font-semibold truncate">{member.name}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
@@ -1511,9 +1584,12 @@ export default function ManagerControlPage() {
                                         onClick={async () => {
                                             setIsGeneratingReport(true)
                                             try {
-                                                const staffIds = filteredTeam.map(s => s.id)
+                                                const staffIds = reportSelectedStaff.length > 0
+                                                    ? reportSelectedStaff
+                                                    : filteredTeam.map(s => s.id)
+
                                                 if (staffIds.length === 0) {
-                                                    alert("No staff members found in the current filter.")
+                                                    alert("No staff members selected for the report.")
                                                     return
                                                 }
 
@@ -1582,7 +1658,10 @@ export default function ManagerControlPage() {
                                                 XLSX.utils.book_append_sheet(wb, ws, "Attendance Ledger")
 
                                                 // 2. Team Summary Sheet
-                                                const summary = filteredTeam.map(member => {
+                                                const summary = (reportSelectedStaff.length > 0
+                                                    ? filteredTeam.filter(m => reportSelectedStaff.includes(m.id))
+                                                    : filteredTeam
+                                                ).map(member => {
                                                     const memberLogs = data.filter((d: any) => d.userId === member.id)
                                                     // Pass member directly, assuming calculateUserPerformanceMetrics handles default shift times if missing on member
                                                     const metrics = calculateUserPerformanceMetrics(memberLogs, member)

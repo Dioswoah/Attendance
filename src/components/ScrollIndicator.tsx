@@ -26,13 +26,15 @@ export function ScrollIndicator({ offset, variant = "primary" }: ScrollIndicator
             document.documentElement.offsetHeight
         )
 
-        // Show "Scroll to Top" if we've scrolled more than 200px (lowered from 300)
-        setShowTop(scrolled > 200)
+        // Show "Scroll to Top" ONLY if we are at the bottom (as requested)
+        // "if the user is on the top or bottom then it will appear"
+        const isNearBottom = scrolled + viewportHeight >= fullHeight - 100
+        setShowTop(isNearBottom)
 
-        // Show "Scroll to Bottom" if there's significant content left to scroll
-        // Lowered threshold to 50px for better precision
-        const isNearBottom = scrolled + viewportHeight >= fullHeight - 50
-        setShowBottom(!isNearBottom && fullHeight > viewportHeight + 20)
+        // Show "Scroll to Bottom" ONLY if we are at the top
+        // "remove the scroll down button if the user is in the center"
+        const isAtTop = scrolled < 100
+        setShowBottom(isAtTop && fullHeight > viewportHeight + 50)
     }
 
     useEffect(() => {
@@ -88,24 +90,23 @@ export function ScrollIndicator({ offset, variant = "primary" }: ScrollIndicator
             "fixed right-6 z-[100] flex flex-col gap-3 group transition-all duration-300",
             offset || "bottom-6"
         )}>
-            {/* Scroll Down Hint */}
+            {/* Scroll Down Hint - Only at Top */}
             {showBottom && (
                 <Button
                     variant="default"
                     size="icon"
                     className={cn(
-                        "h-10 w-10 rounded-full shadow-lg transition-all duration-300 animate-bounce hover:animate-none border-2 border-white/20",
-                        colorClasses[variant],
-                        showTop ? "opacity-50 hover:opacity-100" : "opacity-100"
+                        "h-12 w-12 rounded-full shadow-lg transition-all duration-300 animate-bounce hover:animate-none border-2 border-white/20",
+                        colorClasses[variant]
                     )}
                     onClick={scrollToBottom}
                     title="Scroll to bottom"
                 >
-                    <DownIcon className="h-5 w-5 text-white" />
+                    <DownIcon className="h-6 w-6 text-white" />
                 </Button>
             )}
 
-            {/* Scroll to Top Button */}
+            {/* Scroll to Top Button - Only at Bottom */}
             {showTop && (
                 <Button
                     variant="default"

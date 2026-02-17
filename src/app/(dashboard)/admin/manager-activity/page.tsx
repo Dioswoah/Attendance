@@ -101,6 +101,10 @@ export default function ManagerActivityPage() {
     const [perfStartDate, setPerfStartDate] = useState(format(subDays(new Date(), 7), "yyyy-MM-dd"))
     const [perfEndDate, setPerfEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
 
+    // Report Selection State
+    const [reportStaffFilter, setReportStaffFilter] = useState<string[]>([])
+    const [reportDeptFilter, setReportDeptFilter] = useState<string>("all")
+
     useEffect(() => {
         if (session?.user) {
             const stored = (session.user as any).selectedTimezone
@@ -292,7 +296,18 @@ export default function ManagerActivityPage() {
         if (!selectedManager) return
         setIsGeneratingReport(true)
         try {
-            const team = employees.filter(e => e.managerId === selectedManager)
+            const team = reportStaffFilter.length > 0
+                ? managerTeam.filter(e => reportStaffFilter.includes(e.id))
+                : (reportDeptFilter === "all"
+                    ? managerTeam
+                    : managerTeam.filter(e => e.departmentId === reportDeptFilter))
+
+            if (team.length === 0) {
+                toast.error("No staff members selected for the report")
+                setIsGeneratingReport(false)
+                return
+            }
+
             const staffIds = team.map(e => e.id)
             const query = new URLSearchParams({
                 userIds: staffIds.join(','),
@@ -1054,6 +1069,107 @@ export default function ManagerActivityPage() {
                                                                         <Input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="h-11 rounded-xl" />
                                                                     </div>
                                                                 </div>
+
+                                                                <div className="space-y-2">
+                                                                    <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Target Department</Label>
+                                                                    <Select
+                                                                        value={reportDeptFilter}
+                                                                        onValueChange={(val) => {
+                                                                            setReportDeptFilter(val)
+                                                                            setReportStaffFilter([]) // Reset staff filter when department changes
+                                                                        }}
+                                                                    >
+                                                                        <SelectTrigger className="h-11 rounded-xl bg-white border-border">
+                                                                            <SelectValue placeholder="All Managed Departments" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="all">All Managed Departments</SelectItem>
+                                                                            {managerDepartments.map(d => (
+                                                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+
+                                                                <div className="space-y-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                                                            Personnel Selection ({reportStaffFilter.length === 0 ? 'All' : reportStaffFilter.length})
+                                                                        </Label>
+                                                                        {(() => {
+                                                                            const team = reportDeptFilter === "all"
+                                                                                ? managerTeam
+                                                                                : managerTeam.filter(e => e.departmentId === reportDeptFilter);
+                                                                            if (team.length === 0) return null;
+                                                                            return (
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    className="h-6 text-[9px] font-black uppercase tracking-widest text-primary hover:text-primary/80"
+                                                                                    onClick={() => {
+                                                                                        if (reportStaffFilter.length === team.length) {
+                                                                                            setReportStaffFilter([])
+                                                                                        } else {
+                                                                                            setReportStaffFilter(team.map(s => s.id))
+                                                                                        }
+                                                                                    }}
+                                                                                >
+                                                                                    {reportStaffFilter.length === team.length ? 'Deselect All' : 'Select All'}
+                                                                                </Button>
+                                                                            )
+                                                                        })()}
+                                                                    </div>
+                                                                    <div className="border border-slate-100 rounded-2xl bg-slate-50/50 p-4 max-h-[180px] overflow-y-auto space-y-2 custom-scrollbar shadow-inner">
+                                                                        {(() => {
+                                                                            const team = reportDeptFilter === "all"
+                                                                                ? managerTeam
+                                                                                : managerTeam.filter(e => e.departmentId === reportDeptFilter);
+
+                                                                            if (team.length === 0) {
+                                                                                return <p className="text-[10px] text-center py-6 text-slate-400 font-bold uppercase tracking-widest italic">No staff in this scope</p>
+                                                                            }
+
+                                                                            return (
+                                                                                <div className="grid grid-cols-1 gap-1.5">
+                                                                                    {team.map(member => (
+                                                                                        <div
+                                                                                            key={member.id}
+                                                                                            onClick={() => {
+                                                                                                setReportStaffFilter(prev =>
+                                                                                                    prev.includes(member.id)
+                                                                                                        ? prev.filter(id => id !== member.id)
+                                                                                                        : [...prev, member.id]
+                                                                                                )
+                                                                                            }}
+                                                                                            className={cn(
+                                                                                                "flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border shadow-sm",
+                                                                                                reportStaffFilter.includes(member.id)
+                                                                                                    ? "bg-primary/10 border-primary/20 text-primary"
+                                                                                                    : "bg-white border-slate-200/50 hover:bg-white/80 hover:border-slate-300"
+                                                                                            )}
+                                                                                        >
+                                                                                            <div className={cn(
+                                                                                                "w-4 h-4 rounded-md border flex items-center justify-center transition-all",
+                                                                                                reportStaffFilter.includes(member.id)
+                                                                                                    ? "bg-primary border-primary text-white"
+                                                                                                    : "bg-white border-slate-300"
+                                                                                            )}>
+                                                                                                {reportStaffFilter.includes(member.id) && <CheckCircle2 className="w-3 h-3" />}
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <p className="text-xs font-bold leading-tight truncate">{member.name}</p>
+                                                                                                <p className="text-[9px] text-slate-400 font-medium truncate uppercase tracking-tighter">
+                                                                                                    {departments.find(d => d.id === member.departmentId)?.name || 'Misc'}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )
+                                                                        })()}
+                                                                    </div>
+                                                                </div>
+
                                                                 <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-center justify-between">
                                                                     <div className="flex items-center gap-3">
                                                                         <div className="h-10 w-10 bg-white rounded-xl shadow-sm border border-primary/10 flex items-center justify-center">
@@ -1061,7 +1177,14 @@ export default function ManagerActivityPage() {
                                                                         </div>
                                                                         <div>
                                                                             <p className="text-[10px] font-black text-primary/60 uppercase tracking-tighter">Selected Scope</p>
-                                                                            <p className="text-sm font-bold text-slate-700">All managed staff ({managerTeam.length})</p>
+                                                                            <p className="text-sm font-bold text-slate-700">
+                                                                                {reportStaffFilter.length > 0
+                                                                                    ? `${reportStaffFilter.length} Selected Personnel`
+                                                                                    : reportDeptFilter === "all"
+                                                                                        ? `All managed staff (${managerTeam.length})`
+                                                                                        : `${managerTeam.filter(e => e.departmentId === reportDeptFilter).length} Staff in Dept.`
+                                                                                }
+                                                                            </p>
                                                                         </div>
                                                                     </div>
                                                                     <Badge className="bg-primary/10 text-primary border-primary/20 uppercase text-[10px] font-black shadow-none px-3">Standard XLSX</Badge>
@@ -1159,7 +1282,7 @@ export default function ManagerActivityPage() {
                                         ) : (
                                             <>
                                                 <SelectItem value="ANNUAL">Annual Leave</SelectItem>
-                                                <SelectItem value="SICK">Sick Leave</SelectItem>
+                                                <SelectItem value="SICK">Sick / Personal Leave</SelectItem>
                                                 <SelectItem value="PERSONAL">Personal Leave</SelectItem>
                                                 <SelectItem value="MATERNITY">Maternity</SelectItem>
                                                 <SelectItem value="OTHER">Other</SelectItem>

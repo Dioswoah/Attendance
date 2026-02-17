@@ -53,7 +53,7 @@ export default function ExportPage() {
         if (session?.user) {
             const tz = (session.user as any).useCurrentTimezone
                 ? getBrowserTimezone()
-                : (session.user as any).selectedTimezone || "Asia/Manila"
+                : (session.user as any).selectedTimezone || getBrowserTimezone()
             setReportTimezone(tz)
         }
     }, [session])

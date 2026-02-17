@@ -384,9 +384,19 @@ export default function AmendRecordsPage() {
                                     <span className="text-muted-foreground uppercase font-bold tracking-wider">Date</span>
                                     <span className="font-semibold">{format(parseISO(selectedDateOption), 'MMMM dd, yyyy')}</span>
                                 </div>
-                                <div className="flex justify-between text-xs pt-1 border-t border-border/20">
-                                    <span className="text-muted-foreground uppercase font-bold tracking-wider">Correcting</span>
-                                    <span className="font-semibold text-red-600">{recordType.replace('_', ' ')}</span>
+                                <div className="space-y-1.5 pt-3 border-t border-border/20">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">What are you correcting?</Label>
+                                    <Select value={recordType} onValueChange={setRecordType}>
+                                        <SelectTrigger className="h-10 bg-white border-border/50">
+                                            <SelectValue placeholder="Select record type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="CLOCK_IN">Clock In</SelectItem>
+                                            <SelectItem value="CLOCK_OUT">Clock Out</SelectItem>
+                                            <SelectItem value="BREAK_START">Break Start</SelectItem>
+                                            <SelectItem value="BREAK_END">Break End</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
 
@@ -619,11 +629,18 @@ export default function AmendRecordsPage() {
                                                     onClick={() => {
                                                         setSelectedDateOption(dateStr)
                                                         // Identify default action based on record status
-                                                        if (!record) setRecordType("CLOCK_IN")
-                                                        else if (!record.clockOut) setRecordType("CLOCK_OUT")
-                                                        else setRecordType("CLOCK_IN")
+                                                        if (!record) {
+                                                            setRecordType("CLOCK_IN")
+                                                            setReferenceTime("No log found for this date. You can request a Clock In.")
+                                                        } else if (!record.clockOut) {
+                                                            // If clocked in but not out, user might want to correct Clock In OR add Clock Out
+                                                            setRecordType("CLOCK_OUT")
+                                                            setReferenceTime(`Clocked in at ${format(parseISO(record.clockIn), 'hh:mm a')}. You can request a Clock Out time or switch to correct Clock In.`)
+                                                        } else {
+                                                            setRecordType("CLOCK_IN")
+                                                            setReferenceTime("Both Clock In and Out found. Use the dropdown to select which to amend, or use specific icons in the table.")
+                                                        }
 
-                                                        setReferenceTime(record ? "Multiple entries found. Use specific icons to amend exact times." : "No log found for this date.")
                                                         setDialogOpen(true)
                                                     }}
                                                 >

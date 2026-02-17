@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap, Home } from "lucide-react"
+import { Users, Clock, Coffee, CalendarOff, UserMinus, Search, Building2, MapPin, Loader2, CheckCircle2, TrendingUp, Activity, Flame, ShieldAlert, Zap, Home, Briefcase, MoreHorizontal } from "lucide-react"
 import { io } from "socket.io-client"
 import { useSession } from "next-auth/react"
 import { getBrowserTimezone } from "@/lib/timezone"
@@ -35,12 +35,13 @@ export default function AdminDashboard() {
     const [searchTerm, setSearchTerm] = useState("")
     const [deptFilter, setDeptFilter] = useState("all")
     const [statusFilter, setStatusFilter] = useState("all")
+    const [sortBy, setSortBy] = useState("name")
 
     // Timezone Logic
     const { data: session } = useSession()
     const userTimeZone = (session?.user as any)?.useCurrentTimezone
         ? getBrowserTimezone()
-        : (session?.user as any)?.selectedTimezone || "Asia/Manila"
+        : (session?.user as any)?.selectedTimezone || getBrowserTimezone()
 
     useEffect(() => {
         const fetchData = async () => {
@@ -239,13 +240,38 @@ export default function AdminDashboard() {
             emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
         const matchesDept = deptFilter === "all" || emp.departmentId === deptFilter
 
-        // Find attendance record for this emp
         const record = attendanceRecords.find(a => a.userId === emp.id)
         const status = record?.status || "absent"
         const matchesStatus = statusFilter === "all" || status === statusFilter
 
         return matchesSearch && matchesDept && matchesStatus
     })
+
+    const sortedEmployees = useMemo(() => {
+        return [...filteredEmployees].sort((a, b) => {
+            const aRecord = attendanceRecords.find(rec => rec.userId === a.id)
+            const bRecord = attendanceRecords.find(rec => rec.userId === b.id)
+            const aStatus = aRecord?.status || "absent"
+            const bStatus = bRecord?.status || "absent"
+            const aLocation = aRecord?.mode || "OFFLINE"
+            const bLocation = bRecord?.mode || "OFFLINE"
+
+            switch (sortBy) {
+                case "name":
+                    return (a.name || "").localeCompare(b.name || "");
+                case "department":
+                    const aDept = a.department?.name || a.department || "";
+                    const bDept = b.department?.name || b.department || "";
+                    return String(aDept).localeCompare(String(bDept));
+                case "status":
+                    return aStatus.localeCompare(bStatus);
+                case "location":
+                    return aLocation.localeCompare(bLocation);
+                default:
+                    return 0;
+            }
+        })
+    }, [filteredEmployees, sortBy, attendanceRecords])
 
     if (loading) {
         return (
@@ -441,6 +467,17 @@ export default function AdminDashboard() {
                                     <SelectItem value="clocked-out">Offline</SelectItem>
                                 </SelectContent>
                             </Select>
+                            <Select value={sortBy} onValueChange={setSortBy}>
+                                <SelectTrigger className="h-10 w-[160px] bg-background rounded-lg text-sm">
+                                    <SelectValue placeholder="Sort By" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="name">First Name</SelectItem>
+                                    <SelectItem value="department">Department</SelectItem>
+                                    <SelectItem value="status">Status</SelectItem>
+                                    <SelectItem value="location">Location</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                 </CardHeader>
@@ -452,11 +489,11 @@ export default function AdminDashboard() {
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground text-center">Status</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Metrics</TableHead>
-                                <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Access</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Base Location</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredEmployees.map((emp) => {
+                            {sortedEmployees.map((emp) => {
                                 const record = attendanceRecords.find(a => a.userId === emp.id)
                                 const status = record?.status || "absent"
 
@@ -539,17 +576,34 @@ export default function AdminDashboard() {
                                         </TableCell>
                                         <TableCell className="py-4 px-6 text-right">
                                             {record?.mode && status !== 'on-leave' ? (
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {record.mode === 'OFFICE' ? (
-                                                        <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
-                                                            <Building2 className="h-3 w-3" />
-                                                            In Office
-                                                        </Badge>
-                                                    ) : (
-                                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
-                                                            <Home className="h-3 w-3" />
-                                                            WFH
-                                                        </Badge>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {record.mode === 'OFFICE' ? (
+                                                            <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                                <Building2 className="h-3 w-3" />
+                                                                In Office
+                                                            </Badge>
+                                                        ) : record.mode === 'WFH' ? (
+                                                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                                <Home className="h-3 w-3" />
+                                                                WFH
+                                                            </Badge>
+                                                        ) : record.mode === 'ONSITE' ? (
+                                                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                                <Briefcase className="h-3 w-3" />
+                                                                Onsite
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                                                <MoreHorizontal className="h-3 w-3" />
+                                                                {record.mode.replace('_', ' ')}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    {record.locationDetails && (
+                                                        <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[150px]" title={record.locationDetails}>
+                                                            {record.locationDetails}
+                                                        </span>
                                                     )}
                                                 </div>
                                             ) : (

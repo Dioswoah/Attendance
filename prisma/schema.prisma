@@ -121,6 +121,7 @@ model Attendance {
   breakEnd   DateTime?
   status     AttendanceStatus @default(ABSENT)
   mode       WorkMode         @default(OFFICE)
+  locationDetails String?
   duration   Int?
   notes      String?
   scheduledStart DateTime?
@@ -259,6 +260,7 @@ enum AttendanceStatus {
 enum WorkMode {
   OFFICE
   WFH
+  ONSITE
   OTHER
 }
 

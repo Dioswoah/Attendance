@@ -77,7 +77,8 @@ async function cleanupOldSessions(sessionToken?: string) {
                     name: true,
                     email: true,
                     selectedTimezone: true,
-                    location: true
+                    location: true,
+                    shiftEndTime: true
                 }
             }
         }
@@ -90,6 +91,8 @@ async function cleanupOldSessions(sessionToken?: string) {
         const now = new Date()
         const userTodayStr = now.toLocaleDateString('en-CA', { timeZone }) // YYYY-MM-DD
         const sessionDateStr = session.date.toISOString().split('T')[0]
+
+        if (!session.clockIn) continue
 
         if (sessionDateStr < userTodayStr) {
             const getOffset = (d: Date, tz: string) => {
@@ -108,20 +111,58 @@ async function cleanupOldSessions(sessionToken?: string) {
             const probe = new Date(session.date);
             probe.setUTCHours(12);
             const offsetStr = getOffset(probe, timeZone);
+
+            // 1. Calculate End of Day Barrier (Local 23:59 -> UTC)
             const isoString = `${sessionDateStr}T23:59:59.999${offsetStr}`;
             const endDay = new Date(isoString);
+
+            // 2. Determine Target Auto-Clock Out Time
+            let targetTime: Date;
+            let reason = "remained active past midnight";
+
+            if (session.user.shiftEndTime) {
+                // Use User's Shift End Time
+                // Construct ISO string for session date + shift end time
+                // Format: YYYY-MM-DDTHH:mm:00+Offset
+                try {
+                    const shiftEndIso = `${sessionDateStr}T${session.user.shiftEndTime}:00${offsetStr}`;
+                    targetTime = new Date(shiftEndIso);
+                    reason = "shift ended";
+                } catch (e) {
+                    // Fallback to 9 hours if parse fails
+                    targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
+                    reason = "maximum duration exceeded";
+                }
+            } else {
+                // Default: 9 hours after clock in
+                targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
+                reason = "maximum duration exceeded";
+            }
+
+            // 3. Apply Cap: No later than 23:59 Local Time
+            // If targetTime is valid and earlier than endDay, use it. Otherwise use endDay.
+            // Also ensure targetTime is after clockIn (sanity check)
+            let finalClockOut = endDay;
+            if (targetTime < endDay && targetTime > session.clockIn) {
+                finalClockOut = targetTime;
+            } else {
+                // If we hit the cap, revert reason to "past midnight" context (or just keep as is? 
+                // User said "but no later than..." implying the rule clips the time. 
+                // We can stick to the reason derived or genericize it.)
+                reason = "forced end of day";
+            }
 
             await prisma.attendance.update({
                 where: { id: session.id },
                 data: {
-                    clockOut: endDay,
+                    clockOut: finalClockOut,
                     status: 'PRESENT'
                 }
             })
 
             await prisma.break.updateMany({
                 where: { attendanceId: session.id, endTime: null, deletedAt: null },
-                data: { endTime: endDay }
+                data: { endTime: finalClockOut }
             })
 
             // --- Notifications ---
@@ -139,7 +180,7 @@ async function cleanupOldSessions(sessionToken?: string) {
                 data: {
                     userId,
                     title: "Attendance Record Finalized",
-                    message: `Your session for ${dateStr} was automatically finalized as it remained active past midnight.`,
+                    message: `Your session for ${dateStr} was automatically closed (${reason}).`,
                     type: "ADMIN_ACTION",
                     link: "/user"
                 }

@@ -335,8 +335,8 @@ export default function LeaveRequestsPage() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="SICK">Sick Leave</SelectItem>
-                                        <SelectItem value="VACATION">Vacation Leave</SelectItem>
+                                        <SelectItem value="SICK">Sick / Personal Leave</SelectItem>
+                                        <SelectItem value="VACATION">Vacation / Holiday Leave</SelectItem>
                                         <SelectItem value="BIRTHDAY">Birthday Leave</SelectItem>
                                         <SelectItem value="MATERNITY">Maternity/Paternity</SelectItem>
                                         <SelectItem value="OTHER">Other</SelectItem>
@@ -566,7 +566,9 @@ export default function LeaveRequestsPage() {
                                                 <div className="flex flex-col gap-2">
                                                     <div className="flex items-center gap-2">
                                                         <h3 className="font-bold text-base text-foreground capitalize">
-                                                            {request.type.toLowerCase().replace('_', ' ')}
+                                                            {request.type === 'SICK' ? 'Sick / Personal Leave' :
+                                                                request.type === 'VACATION' ? 'Vacation / Holiday Leave' :
+                                                                    request.type.toLowerCase().replace('_', ' ')}
                                                         </h3>
                                                     </div>
 

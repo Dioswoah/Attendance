@@ -785,8 +785,8 @@ export default function ManualEntryPage() {
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="SICK">Sick Leave</SelectItem>
-                                                <SelectItem value="VACATION">Vacation Leave</SelectItem>
+                                                <SelectItem value="SICK">Sick / Personal Leave</SelectItem>
+                                                <SelectItem value="VACATION">Vacation / Holiday Leave</SelectItem>
                                                 <SelectItem value="BIRTHDAY">Birthday Leave</SelectItem>
                                                 <SelectItem value="MATERNITY">Maternity/Paternity</SelectItem>
                                                 <SelectItem value="OTHER">Other</SelectItem>
