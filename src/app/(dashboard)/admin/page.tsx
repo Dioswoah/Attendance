@@ -489,7 +489,7 @@ export default function AdminDashboard() {
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground text-center">Status</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Metrics</TableHead>
-                                <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Base Location</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Location</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>

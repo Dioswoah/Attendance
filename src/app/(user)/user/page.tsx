@@ -61,12 +61,14 @@ export default function UserPortal() {
     const [userId, setUserId] = useState<string>("")
     const [userDepartment, setUserDepartment] = useState<string>("")
     const [userDepartmentId, setUserDepartmentId] = useState<string>("")
+    const [managedDepartments, setManagedDepartments] = useState<any[]>([])
     const [userManagerId, setUserManagerId] = useState<string | null>(null)
     const [pendingLeaves, setPendingLeaves] = useState<any[]>([])
     const [isLeaveOpen, setIsLeaveOpen] = useState(false)
     const [currentMonth, setCurrentMonth] = useState(new Date())
     const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([])
     const [teamApprovedLeaves, setTeamApprovedLeaves] = useState<any[]>([])
+    const [todayTeamLeaves, setTodayTeamLeaves] = useState<any[]>([])
     const [selectedDayDetail, setSelectedDayDetail] = useState<Date | null>(null)
     const [leaveType, setLeaveType] = useState('SICK')
     const [leaveDurationType, setLeaveDurationType] = useState('Full Day')
@@ -106,6 +108,7 @@ export default function UserPortal() {
     const [breakReturnTime, setBreakReturnTime] = useState("")
     const [selectedLocationMode, setSelectedLocationMode] = useState<string | null>(null)
     const [locationDetails, setLocationDetails] = useState("")
+    const [activeTab, setActiveTab] = useState("overview")
 
     // Ref to track if we are in the initial data loading phase
     const isFirstTimezoneSync = useRef(true)
@@ -137,11 +140,14 @@ export default function UserPortal() {
                 setUserRoles(data.user.roles || [])
                 setUserDepartment(data.user.department?.name || "Unassigned")
                 setUserDepartmentId(data.user.departmentId || "")
+                setManagedDepartments(data.user.managedDepartments || [])
                 setUserManagerId(data.user.managerId || null)
 
                 // Handle Manager/Admin extra data
                 if (data.user.roles.includes('MANAGER') || data.user.roles.includes('ADMIN')) {
                     fetchPendingLeaves(data.user.id)
+                    // Fetch full department list for filtering/managed dept logic
+                    fetch('/api/departments').then(r => r.ok && r.json()).then(depts => depts && setDepartmentList(depts))
                 }
             }
 
@@ -168,10 +174,10 @@ export default function UserPortal() {
             const active = data.attendance.mine.find((r: any) => !r.clockOut)
             setCurrentAttendance(active || data.attendance.mine[0] || null)
 
-            // 3. Set Requests & Staff
             setMyLeaveRequests(data.leaves)
             setMyAttendanceRequests(data.attendanceRequests)
             setEmployees(data.staff)
+            if (data.teamLeaves) setTodayTeamLeaves(data.teamLeaves)
 
         } catch (e) {
             console.error("Dashboard Quick Load Error:", e)
@@ -393,8 +399,8 @@ export default function UserPortal() {
             if (reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) !== todayPHT) return false
             // CRITICAL: Must be newer than the latest real event to affect current status
             // If we have no real record (latestRealTime===0), then any pending request counts.
-            // If we have a real record, only requests physically dated AFTER that record should override it.
-            return reqDate.getTime() > latestRealTime
+            // If we have a real record, only requests physically dated AFTER or AT that record should override it.
+            return reqDate.getTime() >= latestRealTime
         }).sort((a, b) => new Date(a.time || a.date).getTime() - new Date(b.time || b.date).getTime())
 
         // 3. Replay valid requests on top of current status
@@ -835,6 +841,8 @@ export default function UserPortal() {
 
                 if (res.ok) {
                     toast.success("Thank you! Your amendment request has been sent to your manager for review.")
+                    setCustomClockInTime("")
+                    setCustomReason("")
                     fetchMyLeaveRequests()
                     fetchAttendance()
                 } else {
@@ -1327,19 +1335,53 @@ export default function UserPortal() {
         })
     }, [myAttendanceRequests, userTimeZone])
 
-    // Sort logic for staff
-    const sortedStaff = myTeamList
-        .map((staff: any) => {
+    // Standardized Status Checker
+    const isStatus = (currentStatus: string, targetType: 'in' | 'break' | 'leave' | 'out') => {
+        const s = currentStatus?.toLowerCase() || ''
+        if (targetType === 'in') return s === 'present' || s === 'clocked-in' || s === 'working' || s === 'clock_in'
+        if (targetType === 'break') return s === 'break' || s === 'on-break' || s === 'on break'
+        if (targetType === 'leave') return s === 'on-leave' || s === 'on leave' || s === 'leave' || s === 'sick' || s === 'annual' || s === 'vacation'
+        if (targetType === 'out') return s === 'absent' || s === 'clocked-out' || s === 'off duty' || s === 'offline' || s === 'clock_out' || s === 'clocked_out'
+        return false
+    }
+
+    // 1. Data Enrichment (Source of truth for ALL employees)
+    const enrichedStaffList = useMemo(() => {
+        return myTeamList.map((staff: any) => {
+            const isMe = staff.id === userId
+            const myCurrent = isMe ? currentAttendance : null
+
             // Find live status from all Attendance (Server truth)
-            const attendanceRecord = allAttendance.find((a: any) => a.userId === staff.id)
+            const attendanceRecord = isMe
+                ? (myCurrent || allAttendance.find((a: any) => a.userId === staff.id))
+                : allAttendance.find((a: any) => a.userId === staff.id)
 
             // OPTIMISTIC OVERRIDE: If this is the current user, use the portal's calculated optimistic status.
-            // This ensures manual clock-in amendments show the user as "Clocked In" immediately in this view.
-            const isMe = staff.id === userId
-            const liveStatus = isMe ? optimisticStatus : (attendanceRecord ? attendanceRecord.status : 'clocked-out')
+            let liveStatus = isMe ? optimisticStatus : (attendanceRecord ? attendanceRecord.status : 'clocked-out')
 
-            // OPTIMISTIC LAST ACTIVE: Also show the pending time if applicable for display consistency
+            // LEAVE CHECK: If they are not clocked in, check if they are on leave today
+            if (isStatus(liveStatus, 'out')) {
+                const onLeaveToday = todayTeamLeaves.find((l: any) =>
+                    l.userId === staff.id &&
+                    isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
+                )
+                if (onLeaveToday) liveStatus = 'on-leave'
+            }
+
+            // LAST ACTIVE: Determine the most relevant timestamp for the current status
             let lastActive = attendanceRecord ? attendanceRecord.clockIn : (staff.lastAttendance ? staff.lastAttendance.clockIn : null)
+
+            // Refine lastActive based on status
+            if (attendanceRecord) {
+                if (isStatus(liveStatus, 'break') || attendanceRecord.status === 'on-break') {
+                    const activeBreak = attendanceRecord.breaks?.find((b: any) => !b.endTime)
+                    if (activeBreak) lastActive = activeBreak.startTime
+                } else if (isStatus(liveStatus, 'out') && attendanceRecord.clockOut) {
+                    lastActive = attendanceRecord.clockOut
+                }
+            }
+
+            // Specific override for pending amendments
             if (isMe && pendingClockInForDisplay && (liveStatus === 'clocked-in' || liveStatus === 'on-break')) {
                 lastActive = pendingClockInForDisplay.time || pendingClockInForDisplay.date
             }
@@ -1348,16 +1390,11 @@ export default function UserPortal() {
             let expectedReturnTime = null
             if (liveStatus === 'on-break' && attendanceRecord && attendanceRecord.breaks) {
                 const activeBreak = attendanceRecord.breaks.find((b: any) => !b.endTime)
-                if (activeBreak) {
-                    expectedReturnTime = activeBreak.expectedReturnTime
-                }
+                if (activeBreak) expectedReturnTime = activeBreak.expectedReturnTime
             }
             if (isMe && liveStatus === 'on-break' && !expectedReturnTime) {
-                // Try to find it in the optimistic record if it's me
                 const optimisticBreak = currentAttendance?.breaks?.find((b: any) => !b.endTime)
-                if (optimisticBreak) {
-                    expectedReturnTime = optimisticBreak.expectedReturnTime
-                }
+                if (optimisticBreak) expectedReturnTime = optimisticBreak.expectedReturnTime
             }
 
             return {
@@ -1369,102 +1406,126 @@ export default function UserPortal() {
                 selectedTimezone: staff.selectedTimezone
             }
         })
-        .filter((staff: any) => staff.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-        .filter((staff: any) => filterStatus === "all" || staff.status === filterStatus)
-        .filter((staff: any) => {
-            if (filterDepartment === "all") return true
-            const dept = typeof staff.department === 'string' ? staff.department : staff.department?.name
-            return dept === filterDepartment
+    }, [myTeamList, currentAttendance, allAttendance, userId, optimisticStatus, pendingClockInForDisplay])
+
+    // 2. Identify Managed Staff (Base for Stats & Table)
+    const managedStaffBase = useMemo(() => {
+        return enrichedStaffList.filter((s: any) => {
+            // STRICT MODE: Managers ONLY see direct reports + self
+            // We ignore department management for visibility - only direct reporting lines matter
+            const isDirectReport = s.managerId === userId
+            const isSelf = s.id === userId
+
+            return isDirectReport || isSelf
         })
-        .sort((a: any, b: any) => {
-            // Priority 1: Status Grouping (Clocked In / On Break > Others)
-            const priorityStatuses = ["clocked-in", "on-break"]
-            const aIsPriority = priorityStatuses.includes(a.status)
-            const bIsPriority = priorityStatuses.includes(b.status)
+    }, [enrichedStaffList, userId])
 
-            if (aIsPriority && !bIsPriority) return -1
-            if (!aIsPriority && bIsPriority) return 1
-
-            // Priority 2: Secondary sorting based on user selection
-            switch (sortBy) {
-                case "name": return (a.name || "").localeCompare(b.name || "")
-                case "department":
-                    const deptA = typeof a.department === 'string' ? a.department : a.department?.name || ""
-                    const deptB = typeof b.department === 'string' ? b.department : b.department?.name || ""
-                    return deptA.localeCompare(deptB)
-                case "status":
-                    const statusOrder: any = { "clocked-in": 0, "on-break": 1, "on-leave": 2, "clocked-out": 3 }
-                    return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4)
-                default: return 0
-            }
-        })
-
-    const departmentStaff = useMemo(() => {
-        if (!userDepartmentId) return sortedStaff
-        return sortedStaff.filter((s: any) =>
-            s.departmentId === userDepartmentId ||
-            (typeof s.department === 'object' && s.department?.id === userDepartmentId)
-        )
-    }, [sortedStaff, userDepartmentId])
-
-    const uniqueDepartments = Array.from(new Set(
-        employees
-            .filter((e: any) => !e.isArchived)
-            .map((e: any) => {
-                if (typeof e.department === 'string') return e.department
-                return e.department?.name
+    // 3. UI List (Filtered for the table) - GLOBAL DIRECTORY
+    const sortedStaff = useMemo(() => {
+        return enrichedStaffList
+            .filter((staff: any) => staff.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+            .filter((staff: any) => filterStatus === "all" || staff.status === filterStatus)
+            .filter((staff: any) => {
+                if (filterDepartment === "all") return true
+                const dObj = staff.department
+                const dept = typeof dObj === 'string' ? dObj : (dObj?.name || staff.departmentName)
+                return dept === filterDepartment
             })
-            .filter((d): d is string => typeof d === 'string' && d.length > 0)
-    )).sort()
+            .sort((a: any, b: any) => {
+                // Priority 1: Status Grouping (Clocked In / On Break > Others)
+                const priorityStatuses = ["clocked-in", "on-break"]
+                const aIsPriority = priorityStatuses.includes(a.status)
+                const bIsPriority = priorityStatuses.includes(b.status)
+
+                if (aIsPriority && !bIsPriority) return -1
+                if (!aIsPriority && bIsPriority) return 1
+
+                // Priority 2: Secondary sorting based on user selection
+                switch (sortBy) {
+                    case "name": return (a.name || "").localeCompare(b.name || "")
+                    case "department":
+                        const deptA = typeof a.department === 'string' ? a.department : a.department?.name || ""
+                        const deptB = typeof b.department === 'string' ? b.department : b.department?.name || ""
+                        return deptA.localeCompare(deptB)
+                    case "status":
+                        const statusOrder: any = { "clocked-in": 0, "on-break": 1, "on-leave": 2, "clocked-out": 3 }
+                        return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4)
+                    default: return 0
+                }
+            })
+    }, [enrichedStaffList, searchQuery, filterStatus, filterDepartment, sortBy])
+
+    // 4. Sidebar Stats List (Filters by department but NOT by status)
+    const departmentStaff = useMemo(() => {
+        // Sync with the active department filter in the view
+        const activeDept = filterDepartment !== 'all' ? filterDepartment : (calendarFilterDepartment !== 'all' ? calendarFilterDepartment : 'all')
+
+        // If in Staff Overview/Global filtering, use enrichedStaffList. 
+        // If in Calendar, keep it restricted to managed staff to match the calendar data.
+        const base = activeTab === 'overview' ? enrichedStaffList : managedStaffBase
+
+        if (activeDept === 'all') return base
+
+        return base.filter((s: any) => {
+            const dObj = s.department
+            const deptName = typeof dObj === 'string' ? dObj : (dObj?.name || s.departmentName || "Unassigned")
+            return deptName === activeDept
+        })
+    }, [enrichedStaffList, managedStaffBase, filterDepartment, calendarFilterDepartment, activeTab])
+
+    // Standardized Status Checker
+    const uniqueDepartments = useMemo(() => {
+        return Array.from(new Set(
+            enrichedStaffList
+                .map((e: any) => {
+                    const dObj = e.department
+                    return typeof dObj === 'string' ? dObj : (dObj?.name || e.departmentName || "Unassigned")
+                })
+                .filter((d): d is string => typeof d === 'string' && d.length > 0)
+        )).sort()
+    }, [enrichedStaffList])
 
     // --- Team Calendar Logic ---
     useEffect(() => {
-        if (userDepartmentId) {
+        if (userDepartmentId || managedDepartments.length > 0) {
             fetchMonthlyData()
         }
-    }, [userDepartmentId, currentMonth, userManagerId]) // Re-fetch when context changes
+    }, [userDepartmentId, managedDepartments, currentMonth, userManagerId, calendarFilterDepartment]) // Re-fetch when context or filter changes
 
     const fetchMonthlyData = async () => {
-        // Fetch Attendance and Leaves for the Department (+ Manager) for the current month
+        // Fetch Attendance and Leaves ONLY for staff you directly manage (by managerId)
         try {
             const start = startOfMonth(currentMonth)
             const end = endOfMonth(currentMonth)
 
-            // 1. Fetch Department Data
-            const deptQuery = new URLSearchParams({
-                departmentId: userDepartmentId,
-                startDate: start.toISOString(),
-                endDate: end.toISOString()
-            })
-
-            const [deptAttRes, deptLeaveRes] = await Promise.all([
-                fetch(`/api/attendance?${deptQuery.toString()}`),
-                fetch(`/api/leaves?${deptQuery.toString()}`)
-            ])
-
             let newMonthlyAttendance: any[] = []
             let newTeamLeaves: any[] = []
 
-            if (deptAttRes.ok) newMonthlyAttendance = await deptAttRes.json()
-            if (deptLeaveRes.ok) newTeamLeaves = await deptLeaveRes.json()
+            // 1. Collect all user IDs you manage (from managedStaffBase which already filters correctly)
+            const managedUserIds = managedStaffBase.map((s: any) => s.id)
 
-            // 2. Fetch Manager Data (if not in department)
-            // Note: Optimally we'd do this in one API call, but separate is easier for now
-            if (userManagerId) {
-                // Check if manager is already in the fetched data (by ID) to avoid duplicates
-                // But simpler to just fetch specific userId and merge, filtering duplicates later
-                const mgrQuery = new URLSearchParams({
-                    userId: userManagerId,
-                    startDate: start.toISOString(),
-                    endDate: end.toISOString()
-                })
-                const [mgrAttRes, mgrLeaveRes] = await Promise.all([
-                    fetch(`/api/attendance?${mgrQuery.toString()}`),
-                    fetch(`/api/leaves?${mgrQuery.toString()}`)
-                ])
+            // 2. Fetch data for each managed user
+            if (managedUserIds.length > 0) {
+                const userResults = await Promise.all(managedUserIds.map(async (userId: string) => {
+                    const userQuery = new URLSearchParams({
+                        userId: userId,
+                        startDate: start.toISOString(),
+                        endDate: end.toISOString()
+                    })
 
-                if (mgrAttRes.ok) newMonthlyAttendance = [...newMonthlyAttendance, ...(await mgrAttRes.json())]
-                if (mgrLeaveRes.ok) newTeamLeaves = [...newTeamLeaves, ...(await mgrLeaveRes.json())]
+                    const [attRes, leaveRes] = await Promise.all([
+                        fetch(`/api/attendance?${userQuery.toString()}`),
+                        fetch(`/api/leaves?${userQuery.toString()}`)
+                    ])
+
+                    return {
+                        attendance: attRes.ok ? await attRes.json() : [],
+                        leaves: leaveRes.ok ? await leaveRes.json() : []
+                    }
+                }))
+
+                newMonthlyAttendance = userResults.flatMap(r => r.attendance)
+                newTeamLeaves = userResults.flatMap(r => r.leaves)
             }
 
             // Deduplicate by ID
@@ -1505,23 +1566,44 @@ export default function UserPortal() {
     const getEventsForDay = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd')
 
-        // Leaves
-        const leaves = teamApprovedLeaves.filter((leave: any) =>
-            isWithinInterval(date, {
+        // 1. Leaves (Approved & Pending)
+        const leaves = teamApprovedLeaves.filter((leave: any) => {
+            const isMatch = isWithinInterval(date, {
                 start: parseISO(leave.startDate),
                 end: parseISO(leave.endDate)
             })
-        ).map((l: any) => ({ type: 'leave', data: l }))
+            if (!isMatch) return false
 
-        // Attendance (Present)
+            // Dept Filter
+            if (calendarFilterDepartment !== 'all') {
+                const staff = employees.find((e: any) => e.id === leave.userId)
+                const dept = staff?.department?.name || staff?.department || "Unassigned"
+                if (dept !== calendarFilterDepartment) return false
+            }
+            return true
+        }).map((l: any) => ({ type: l.status === 'APPROVED' ? 'leave-approved' : 'leave-pending', data: l }))
+
+        // 2. Attendance (Present)
         const attendance = monthlyAttendance.filter((a: any) => {
             const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
-            return attDate === dateStr
-        }).map((a: any) => ({ type: 'present', data: a }))
+            if (attDate !== dateStr) return false
+
+            // Dept Filter
+            if (calendarFilterDepartment !== 'all') {
+                const staff = employees.find((e: any) => e.id === a.userId)
+                const dept = staff?.department?.name || staff?.department || "Unassigned"
+                if (dept !== calendarFilterDepartment) return false
+            }
+            return true
+        }).map((a: any) => {
+            // Determine status for that day
+            const isBreak = a.breaks?.some((b: any) => b.startTime && !b.endTime) && isToday(date)
+            return { type: isBreak ? 'on-break' : 'present', data: a }
+        })
 
         const events: any[] = [...leaves, ...attendance]
 
-        // Holidays
+        // 3. Holidays
         if (NSW_HOLIDAYS_2026[dateStr]) {
             events.unshift({ type: 'holiday', name: NSW_HOLIDAYS_2026[dateStr], data: null })
         }
@@ -1907,7 +1989,7 @@ export default function UserPortal() {
                 </Card>
 
                 {/* Today's Activity Feed (Relocated) */}
-                <Card id="tour-activity-feed" className="xl:col-span-1 border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white flex flex-col">
+                <Card id="tour-activity-feed" className="xl:col-span-1 xl:h-[500px] border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white flex flex-col">
                     <CardHeader className="bg-white border-b border-slate-50 p-6 flex flex-row items-center justify-between">
                         <div>
                             <CardTitle className="text-lg font-bold text-foreground">Today's Activity</CardTitle>
@@ -2020,7 +2102,7 @@ export default function UserPortal() {
 
 
             {/* Dashboard Secondary Section: Staff Table / Calendar */}
-            <Tabs defaultValue="overview" className="space-y-6">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 
 
                 <TabsContent value="overview" className="animate-in fade-in-50 duration-500">
@@ -2094,7 +2176,7 @@ export default function UserPortal() {
                                     <TableRow className="hover:bg-transparent">
                                         <TableHead className="w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
-                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Base Location</TableHead>
+                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right pr-24">Last Active</TableHead>
                                     </TableRow>
@@ -2219,8 +2301,8 @@ export default function UserPortal() {
                 </TabsContent>
 
                 <TabsContent value="calendar" className="animate-in fade-in-50 duration-500">
-                    <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-                        <Card className="xl:col-span-3 border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
+                    <div className="flex flex-col gap-6">
+                        <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
                             <CardHeader className="border-b border-border p-6 bg-muted/40">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
@@ -2259,19 +2341,75 @@ export default function UserPortal() {
                                         </Button>
                                     </div>
                                 </div>
+                                {/* Team Status Summary - Integrated */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-border/50">
+                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                        <div className="p-2 rounded-lg bg-green-50 text-green-600">
+                                            <Users className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-black text-slate-800 leading-none">
+                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'in')).length}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked In</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                        <div className="p-2 rounded-lg bg-amber-50 text-amber-600">
+                                            <Coffee className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-black text-slate-800 leading-none">
+                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'break')).length}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Break</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                        <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                                            <CalendarDays className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-black text-slate-800 leading-none">
+                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'leave')).length}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Leave</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                        <div className="p-2 rounded-lg bg-slate-100 text-slate-500">
+                                            <LogOut className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-black text-slate-800 leading-none">
+                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'out')).length}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked Out</p>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Legend */}
-                                <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/50">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Approved Leave</span>
+                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 pt-4 border-t border-border/50">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Approved Leave</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pending Approval</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pending Leave</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Public Holiday</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">On Break</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-green-500" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Present</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-red-500" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Public Holiday</span>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -2321,7 +2459,29 @@ export default function UserPortal() {
                                             })
                                         }).map((l: any) => ({ type: 'leave-pending', data: l }))
 
-                                        const events: any[] = [...approvedLeaves, ...pendingLeaves]
+                                        // 3. Attendance (Present/On Break) - Filter Dept
+                                        const attendanceEvents = monthlyAttendance.filter((a: any) => {
+                                            const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
+                                            if (attDate !== dateStr) return false
+
+                                            // Dept Filter
+                                            if (calendarFilterDepartment !== 'all') {
+                                                const staff = employees.find((e: any) => e.id === a.userId)
+                                                const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                if (dept !== calendarFilterDepartment) return false
+                                            }
+                                            return true
+                                        }).reduce((acc: any[], a: any) => {
+                                            // Deduplicate: Only show one record per user per day (the most recent)
+                                            const existing = acc.find(item => item.data.userId === a.userId)
+                                            if (!existing) {
+                                                const isBreak = (a.status === 'on-break' || (a.breaks?.some((b: any) => !b.endTime)))
+                                                acc.push({ type: isBreak ? 'on-break' : 'present', data: a })
+                                            }
+                                            return acc
+                                        }, [])
+
+                                        const events: any[] = [...approvedLeaves, ...pendingLeaves, ...attendanceEvents]
 
                                         // Holidays
                                         if (NSW_HOLIDAYS_2026[dateStr]) {
@@ -2355,10 +2515,12 @@ export default function UserPortal() {
                                                             "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md truncate border",
                                                             event.type === 'holiday' ? "bg-red-50 text-red-600 border-red-100" :
                                                                 event.type === 'leave-approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                                                                    event.type === 'leave-pending' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                                                                        "bg-slate-50 text-slate-600 border-slate-100"
+                                                                    event.type === 'leave-pending' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
+                                                                        event.type === 'on-break' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                                                            event.type === 'present' ? "bg-green-50 text-green-600 border-green-100" :
+                                                                                "bg-slate-50 text-slate-600 border-slate-100"
                                                         )}>
-                                                            {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || 'Staff')}
+                                                            {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || event.data.user?.name || 'Staff')}
                                                         </div>
                                                     ))}
                                                     {events.length > 3 && (
@@ -2372,54 +2534,12 @@ export default function UserPortal() {
                             </CardContent>
                         </Card>
 
-                        <div className="flex flex-col gap-6 h-full">
-                            {/* Team Status Card inside Calendar Tab */}
-                            <Card className="border-2 border-border shadow-md rounded-[2rem] overflow-hidden bg-white h-full flex flex-col">
-                                <CardHeader className="bg-slate-50/50 border-b border-border p-5">
-                                    <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
-                                        <Users className="w-4 h-4 text-primary" />
-                                        Team Status
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="p-6 flex-1 flex flex-col justify-center">
-                                    {departmentStaff.length === 0 ? (
-                                        <div className="text-center py-12 px-4 space-y-3">
-                                            <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto border border-slate-100">
-                                                <Users className="w-6 h-6 text-slate-300" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-xs font-black uppercase tracking-widest text-slate-400">No Data Available</p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="p-6 rounded-[2rem] bg-green-50/50 border border-green-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-green-700">{departmentStaff.filter((s: any) => s.status === 'present' || s.status === 'clocked-in' || s.status === 'Working').length}</span>
-                                                <span className="text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mt-2">Clocked In</span>
-                                            </div>
-                                            <div className="p-6 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-amber-700">{departmentStaff.filter((s: any) => s.status === 'break' || s.status === 'on-break' || s.status === 'On Break').length}</span>
-                                                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-[0.2em] mt-2">On Break</span>
-                                            </div>
-                                            <div className="p-6 rounded-[2rem] bg-blue-50/50 border border-blue-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-blue-700">{departmentStaff.filter((s: any) => s.status === 'on-leave' || s.status === 'On Leave' || s.status === 'leave').length}</span>
-                                                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mt-2">On Leave</span>
-                                            </div>
-                                            <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 flex flex-col items-center justify-center shadow-sm">
-                                                <span className="text-3xl font-black text-slate-700">{departmentStaff.filter((s: any) => s.status === 'absent' || s.status === 'clocked-out' || s.status === 'Off Duty' || s.status === 'offline').length}</span>
-                                                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mt-2">Clocked Out</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </div>
                     </div>
                 </TabsContent>
             </Tabs>
 
             {/* Clock Out Confirmation Dialog */}
-            <Dialog open={showClockOutConfirm} onOpenChange={setShowClockOutConfirm}>
+            < Dialog open={showClockOutConfirm} onOpenChange={setShowClockOutConfirm} >
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className="bg-[#8B2323] p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
@@ -2457,10 +2577,10 @@ export default function UserPortal() {
                         </div>
                     </div>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             {/* Work Location Selection Dialog */}
-            <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
+            < Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog} >
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className="bg-[oklch(0.32_0.08_25)] p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
@@ -2618,10 +2738,10 @@ export default function UserPortal() {
                         </Button>
                     </div>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             {/* Leave Request Dialog */}
-            <Dialog open={isLeaveOpen} onOpenChange={setIsLeaveOpen}>
+            < Dialog open={isLeaveOpen} onOpenChange={setIsLeaveOpen} >
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className="bg-slate-900 p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
@@ -2703,7 +2823,7 @@ export default function UserPortal() {
             </Dialog >
 
             {/* Break Time Warning/Limit Dialog */}
-            <Dialog open={showBreakStartDialog} onOpenChange={setShowBreakStartDialog}>
+            < Dialog open={showBreakStartDialog} onOpenChange={setShowBreakStartDialog} >
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className="bg-[#D4A056] p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/20 to-transparent" />
@@ -2750,7 +2870,7 @@ export default function UserPortal() {
                         </div>
                     </div>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             <Dialog open={showBreakDialog} onOpenChange={setShowBreakDialog} >
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
@@ -2815,7 +2935,7 @@ export default function UserPortal() {
                     <div className="p-8 space-y-6 bg-white">
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label>Select Your Base Location</Label>
+                                <Label>Select Your Location</Label>
                                 <Select value={onboardingLocation} onValueChange={setOnboardingLocation}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Where are you based?" />
@@ -3004,24 +3124,71 @@ export default function UserPortal() {
                         {selectedDayDetail && (() => {
                             const events = getEventsForDay(selectedDayDetail!)
                             if (events.length === 0) return <p className="text-sm text-center text-muted-foreground italic">No events scheduled for this day.</p>
+
+                            // Group present events by user
+                            const groupedEvents: any[] = []
+                            const presentMap = new Map<string, any>()
+
+                            events.forEach((e: any) => {
+                                if (e.type === 'present' || e.type === 'on-break') {
+                                    const userName = e.data?.userName || e.data?.name || e.data?.user?.name || 'Staff'
+                                    const clockInTime = e.data?.clockIn ? new Date(e.data.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+                                    const clockOutTime = e.data?.clockOut ? new Date(e.data.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+                                    const timeRange = clockInTime ? `${clockInTime}${clockOutTime ? ` to ${clockOutTime}` : ''}` : ''
+
+                                    if (presentMap.has(userName)) {
+                                        const entry = presentMap.get(userName)
+                                        if (timeRange) entry.times.push(timeRange)
+                                        // Update to 'on-break' if any session is on break status, though usually latest status matters
+                                        if (e.type === 'on-break') entry.type = 'on-break'
+                                    } else {
+                                        const newEntry = {
+                                            type: e.type,
+                                            userName,
+                                            times: timeRange ? [timeRange] : [],
+                                            data: e.data
+                                        }
+                                        presentMap.set(userName, newEntry)
+                                        groupedEvents.push(newEntry)
+                                    }
+                                } else {
+                                    // Leaves, holidays, etc. - keep separate
+                                    groupedEvents.push({
+                                        type: e.type,
+                                        userName: e.type === 'holiday' ? e.name : (e.data?.userName || e.data?.name || e.data?.user?.name || 'Staff'),
+                                        times: [],
+                                        data: e.data
+                                    })
+                                }
+                            })
+
                             return (
                                 <div className="space-y-3">
-                                    {events.map((e: any, i: number) => (
-                                        <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                            <div className={cn("w-2 h-2 rounded-full",
-                                                e.type === 'leave' ? "bg-blue-500" :
-                                                    e.type === 'holiday' ? "bg-red-500" :
-                                                        "bg-green-500"
-                                            )} />
-                                            <div className="flex-1">
-                                                <p className="text-sm font-bold text-slate-800">
-                                                    {e.type === 'holiday' ? e.name : e.data.userName}
-                                                </p>
-                                                {e.type === 'leave' && <p className="text-xs text-slate-500 font-medium">On Leave ({e.data.type})</p>}
-                                                {e.type === 'present' && <p className="text-xs text-slate-500 font-medium">Present</p>}
+                                    {groupedEvents.map((e: any, i: number) => {
+                                        return (
+                                            <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                                <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm",
+                                                    e.type === 'leave-approved' ? "bg-blue-500" :
+                                                        e.type === 'leave-pending' ? "bg-amber-500" :
+                                                            e.type === 'holiday' ? "bg-red-500" :
+                                                                e.type === 'on-break' ? "bg-amber-600" :
+                                                                    "bg-green-500"
+                                                )} />
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-bold text-slate-800">
+                                                        {e.userName}
+                                                    </p>
+                                                    {e.type === 'leave-approved' && <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">On Leave ({e.data.type})</p>}
+                                                    {e.type === 'leave-pending' && <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Leave Pending Approval</p>}
+                                                    {(e.type === 'present' || e.type === 'on-break') && (
+                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                                            {e.type === 'on-break' ? 'Running Break' : 'Present'} • {e.times.length > 0 ? e.times.join(' / ') : 'No Time Data'}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
                             )
                         })()}
@@ -3029,6 +3196,6 @@ export default function UserPortal() {
                 </DialogContent>
             </Dialog>
 
-        </div>
+        </div >
     )
 }

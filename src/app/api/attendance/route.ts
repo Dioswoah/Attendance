@@ -527,23 +527,21 @@ export async function GET(req: Request) {
                 return dateB - dateA
             })
         } else {
-            // Admin Dashboard: Return one record per user (Latest Status)
-            const map = new Map()
+            // Admin Dashboard: Return ALL records to support full activity feed history
+            // Previously we deduplicated, which hid intermediate clock-outs.
+            const att = attendance.map(transformRecord)
+            const lvs = leaves.map(transformLeave)
 
-            // Attendance is sorted desc by clockIn, so first encounter is latest
-            attendance.forEach(a => {
-                if (!map.has(a.userId)) {
-                    map.set(a.userId, transformRecord(a))
-                }
+            // Combine
+            transformed = [...att, ...lvs]
+
+            // Sort by latest activity so that the dashboard table (which uses .find)
+            // successfully finds the LATEST status for each user.
+            transformed.sort((a, b) => {
+                const dateA = a.clockIn ? new Date(a.clockIn).getTime() : new Date(a.date).getTime()
+                const dateB = b.clockIn ? new Date(b.clockIn).getTime() : new Date(b.date).getTime()
+                return dateB - dateA
             })
-
-            leaves.forEach(l => {
-                if (!map.has(l.userId)) {
-                    map.set(l.userId, transformLeave(l))
-                }
-            })
-
-            transformed = Array.from(map.values())
         }
 
         return NextResponse.json(transformed)

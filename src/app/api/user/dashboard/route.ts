@@ -29,14 +29,16 @@ export async function GET() {
             allAttendanceToday,
             myLeaves,
             myAttendanceRequests,
-            employees
+            employees,
+            teamLeavesApproved
         ] = await Promise.all([
             // 1. Profile
             prisma.user.findUnique({
                 where: { id: userId },
                 include: {
                     manager: { select: { id: true, name: true, email: true } },
-                    department: true
+                    department: true,
+                    managedDepartments: true
                 }
             }),
             // 2. My Recent Attendance (limit to 20 for history)
@@ -72,6 +74,7 @@ export async function GET() {
                     id: true,
                     name: true,
                     email: true,
+                    managerId: true,
                     image: true,
                     departmentId: true,
                     department: { select: { id: true, name: true } },
@@ -87,6 +90,14 @@ export async function GET() {
                     }
                 },
                 orderBy: { name: 'asc' }
+            }),
+            // 7. Today's Team Leaves (for status indicator)
+            prisma.leave.findMany({
+                where: {
+                    status: 'APPROVED',
+                    endDate: { gte: safetyStart },
+                    deletedAt: null
+                }
             })
         ])
 
@@ -126,7 +137,8 @@ export async function GET() {
             },
             leaves: myLeaves,
             attendanceRequests: myAttendanceRequests,
-            staff: detailedEmployees
+            staff: detailedEmployees,
+            teamLeaves: teamLeavesApproved
         })
 
     } catch (error) {

@@ -26,10 +26,9 @@ export function ScrollIndicator({ offset, variant = "primary" }: ScrollIndicator
             document.documentElement.offsetHeight
         )
 
-        // Show "Scroll to Top" ONLY if we are at the bottom (as requested)
-        // "if the user is on the top or bottom then it will appear"
-        const isNearBottom = scrolled + viewportHeight >= fullHeight - 100
-        setShowTop(isNearBottom)
+        // Show "Scroll to Top" whenever we have scrolled down a bit
+        // This ensures the button is available as soon as the "Scroll to Bottom" button disappears
+        setShowTop(scrolled > 100)
 
         // Show "Scroll to Bottom" ONLY if we are at the top
         // "remove the scroll down button if the user is in the center"
