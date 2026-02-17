@@ -2085,21 +2085,7 @@ export default function UserPortal() {
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <div className="ml-auto flex items-center gap-2">
-                                        <Select value={sortBy} onValueChange={setSortBy}>
-                                            <SelectTrigger className="h-9 w-[120px] bg-transparent border-transparent hover:bg-slate-200/50 rounded-lg text-xs font-bold text-slate-500 shadow-none focus:ring-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[9px] font-black uppercase text-slate-300">Sort:</span>
-                                                    <SelectValue />
-                                                </div>
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="name">Name</SelectItem>
-                                                <SelectItem value="status">Status</SelectItem>
-                                                <SelectItem value="department">Department</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+
                                 </div>
                             </div>
 
@@ -2159,7 +2145,14 @@ export default function UserPortal() {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        {getStaffStatusBadge(staff.status)}
+                                                        <div className="flex flex-col gap-1">
+                                                            {getStaffStatusBadge(staff.status)}
+                                                            {staff.status === 'on-break' && staff.expectedReturnTime && (
+                                                                <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1">
+                                                                    Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-col gap-1">
@@ -2184,16 +2177,9 @@ export default function UserPortal() {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <div className="flex flex-col gap-1">
-                                                            <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
-                                                                {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
-                                                            </Badge>
-                                                            {staff.status === 'on-break' && staff.expectedReturnTime && (
-                                                                <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1">
-                                                                    Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                                        <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
+                                                            {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
+                                                        </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right pr-24">
                                                         {staff.lastActive ? (
