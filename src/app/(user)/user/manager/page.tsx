@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { StaffPerformanceCard } from "@/components/performance/StaffPerformanceCard"
 import { calculateTardiness, calculateUserPerformanceMetrics } from "@/lib/performance-utils"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell } from 'recharts'
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface Request {
     id: string
@@ -564,16 +565,8 @@ export default function ManagerControlPage() {
 
 
 
-    if (status === "loading" || isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                    <p className="text-sm font-medium text-muted-foreground animate-pulse">Loading Manager Dashboard...</p>
-                </div>
-            </div>
-        )
-    }
+    // Loading check removed to allow Skeleton UI rendering
+    // if (status === "loading" || isLoading) { ... } removed
 
     return (
         <div className="space-y-8 w-full">
@@ -666,7 +659,34 @@ export default function ManagerControlPage() {
                     </div>
 
                     <div className="grid gap-4">
-                        {filteredRequests.length === 0 ? (
+                        {isLoading ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <Card key={i} className="border-border bg-white overflow-hidden">
+                                    <div className="flex flex-col lg:flex-row">
+                                        <div className="lg:w-1 bg-slate-200" />
+                                        <CardContent className="flex-1 p-6">
+                                            <div className="flex flex-col lg:flex-row gap-6 items-start">
+                                                <Skeleton className="h-12 w-12 rounded-full" />
+                                                <div className="flex-1 space-y-4 w-full">
+                                                    <div className="flex justify-between w-full">
+                                                        <div className="space-y-2">
+                                                            <Skeleton className="h-6 w-32" />
+                                                            <Skeleton className="h-4 w-24" />
+                                                        </div>
+                                                        <Skeleton className="h-6 w-24" />
+                                                    </div>
+                                                    <div className="grid sm:grid-cols-4 gap-4">
+                                                        <Skeleton className="h-16 w-full rounded-lg" />
+                                                        <Skeleton className="h-16 w-full rounded-lg" />
+                                                        <Skeleton className="h-16 w-full rounded-lg col-span-2" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </div>
+                                </Card>
+                            ))
+                        ) : filteredRequests.length === 0 ? (
                             <Card className="border-dashed shadow-none bg-muted/30">
                                 <CardContent className="flex flex-col items-center justify-center py-20 text-center">
                                     <div className="h-16 w-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
@@ -861,7 +881,34 @@ export default function ManagerControlPage() {
                     </div>
 
                     <div className="grid gap-4">
-                        {filteredHistory.length === 0 ? (
+                        {isLoading ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <Card key={i} className="border-border bg-white overflow-hidden">
+                                    <div className="flex flex-col lg:flex-row">
+                                        <div className="lg:w-1 bg-slate-200" />
+                                        <CardContent className="flex-1 p-6">
+                                            <div className="flex flex-col lg:flex-row gap-6 items-start">
+                                                <Skeleton className="h-12 w-12 rounded-full" />
+                                                <div className="flex-1 space-y-4 w-full">
+                                                    <div className="flex justify-between w-full">
+                                                        <div className="space-y-2">
+                                                            <Skeleton className="h-6 w-32" />
+                                                            <Skeleton className="h-4 w-24" />
+                                                        </div>
+                                                        <Skeleton className="h-6 w-24" />
+                                                    </div>
+                                                    <div className="grid sm:grid-cols-4 gap-4">
+                                                        <Skeleton className="h-16 w-full rounded-lg" />
+                                                        <Skeleton className="h-16 w-full rounded-lg" />
+                                                        <Skeleton className="h-16 w-full rounded-lg col-span-2" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </div>
+                                </Card>
+                            ))
+                        ) : filteredHistory.length === 0 ? (
                             <Card className="border-dashed shadow-none bg-muted/30">
                                 <CardContent className="flex flex-col items-center justify-center py-20 text-center">
                                     <h3 className="text-lg font-semibold">No History</h3>
@@ -1005,84 +1052,99 @@ export default function ManagerControlPage() {
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0 overflow-x-auto">
-                                <div className="min-w-[800px]">
-                                    <div className="grid grid-cols-7 border-b border-border bg-slate-50">
-                                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                                            <div key={day} className="py-2 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                {day}
-                                            </div>
-                                        ))}
+                                {isLoading ? (
+                                    <div className="p-6">
+                                        <div className="grid grid-cols-7 gap-4 mb-4">
+                                            {Array.from({ length: 7 }).map((_, i) => (
+                                                <Skeleton key={i} className="h-6 w-full rounded-md" />
+                                            ))}
+                                        </div>
+                                        <div className="grid grid-cols-7 gap-4 auto-rows-fr">
+                                            {Array.from({ length: 35 }).map((_, i) => (
+                                                <Skeleton key={i} className="h-24 w-full rounded-xl" />
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-7 auto-rows-fr">
-                                        {calendarDays.map((day, i) => {
-                                            const events = getEventsForDay(day)
-                                            const isCurrentMonth = isSameMonth(day, currentMonth)
-                                            const isTodayDate = isToday(day)
-
-                                            return (
-                                                <div
-                                                    key={day.toISOString()}
-                                                    onClick={() => setSelectedDayDetail(day)}
-                                                    className={cn(
-                                                        "min-h-[120px] p-2 border-b border-r border-border transition-all hover:bg-muted/50 cursor-pointer active:scale-[0.98] relative",
-                                                        !isSameMonth(day, currentMonth) && "opacity-40 bg-muted/5",
-                                                        isToday(day) && "bg-blue-50/20"
-                                                    )}
-                                                >
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className={cn(
-                                                            "text-xs font-bold h-6 w-6 flex items-center justify-center rounded-full transition-colors",
-                                                            isToday(day) ? "bg-primary text-white shadow-sm" : "text-muted-foreground group-hover:text-foreground"
-                                                        )}>
-                                                            {format(day, 'd')}
-                                                        </span>
-                                                        {isToday(day) && (
-                                                            <Badge variant="outline" className="text-[9px] px-1 h-4 bg-primary/10 text-primary border-primary/20 font-bold uppercase tracking-wider">Today</Badge>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="space-y-1 overflow-hidden">
-                                                        {/* Prioritize Holiday */}
-                                                        {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')] && (
-                                                            <div className="text-[10px] bg-red-50 text-red-600 px-1.5 py-1 rounded border border-red-100 truncate font-bold flex items-center gap-1">
-                                                                <div className="w-1 h-1 rounded-full bg-red-600" />
-                                                                {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')]}
-                                                            </div>
-                                                        )}
-
-                                                        {/* Show up to 2 personnel events */}
-                                                        {events.filter(e => e.type !== 'holiday').slice(0, 2).map((event: any, idx: number) => (
-                                                            <div
-                                                                key={idx}
-                                                                className={cn(
-                                                                    "text-[10px] px-1.5 py-1 rounded border truncate font-medium flex items-center gap-1",
-                                                                    event.type === 'leave' ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                                                )}
-                                                            >
-                                                                <div className={cn("w-1 h-1 rounded-full", event.type === 'leave' ? "bg-blue-600" : "bg-emerald-600")} />
-                                                                {event.data.userName.split(' ')[0]}
-                                                                {event.type === 'leave' && <span className="opacity-60 text-[8px]">({event.data.type === 'ANNUAL' ? 'AL' : 'SL'})</span>}
-                                                            </div>
-                                                        ))}
-
-                                                        {/* +N More logic */}
-                                                        {events.filter(e => e.type !== 'holiday').length > 2 && (
-                                                            <div className="text-[10px] font-bold text-muted-foreground flex items-center justify-center py-1 bg-muted/30 rounded-md border border-dashed border-border mt-1">
-                                                                +{events.filter(e => e.type !== 'holiday').length - 2} Staff
-                                                            </div>
-                                                        )}
-
-                                                        {['Sat', 'Sun'].includes(format(day, 'EEE')) && events.length === 0 && (
-                                                            <div className="text-[10px] text-center text-muted-foreground/50 font-medium py-1">
-                                                                Weekend
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                ) : (
+                                    <div className="min-w-[800px]">
+                                        <div className="grid grid-cols-7 border-b border-border bg-slate-50">
+                                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                                <div key={day} className="py-2 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                                    {day}
                                                 </div>
-                                            )
-                                        })}
+                                            ))}
+                                        </div>
+                                        <div className="grid grid-cols-7 auto-rows-fr">
+                                            {calendarDays.map((day, i) => {
+                                                const events = getEventsForDay(day)
+                                                const isCurrentMonth = isSameMonth(day, currentMonth)
+                                                const isTodayDate = isToday(day)
+
+                                                return (
+                                                    <div
+                                                        key={day.toISOString()}
+                                                        onClick={() => setSelectedDayDetail(day)}
+                                                        className={cn(
+                                                            "min-h-[120px] p-2 border-b border-r border-border transition-all hover:bg-muted/50 cursor-pointer active:scale-[0.98] relative",
+                                                            !isSameMonth(day, currentMonth) && "opacity-40 bg-muted/5",
+                                                            isToday(day) && "bg-blue-50/20"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className={cn(
+                                                                "text-xs font-bold h-6 w-6 flex items-center justify-center rounded-full transition-colors",
+                                                                isToday(day) ? "bg-primary text-white shadow-sm" : "text-muted-foreground group-hover:text-foreground"
+                                                            )}>
+                                                                {format(day, 'd')}
+                                                            </span>
+                                                            {isToday(day) && (
+                                                                <Badge variant="outline" className="text-[9px] px-1 h-4 bg-primary/10 text-primary border-primary/20 font-bold uppercase tracking-wider">Today</Badge>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="space-y-1 overflow-hidden">
+                                                            {/* Prioritize Holiday */}
+                                                            {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')] && (
+                                                                <div className="text-[10px] bg-red-50 text-red-600 px-1.5 py-1 rounded border border-red-100 truncate font-bold flex items-center gap-1">
+                                                                    <div className="w-1 h-1 rounded-full bg-red-600" />
+                                                                    {NSW_HOLIDAYS_2026[format(day, 'yyyy-MM-dd')]}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Show up to 2 personnel events */}
+                                                            {events.filter(e => e.type !== 'holiday').slice(0, 2).map((event: any, idx: number) => (
+                                                                <div
+                                                                    key={idx}
+                                                                    className={cn(
+                                                                        "text-[10px] px-1.5 py-1 rounded border truncate font-medium flex items-center gap-1",
+                                                                        event.type === 'leave' ? "bg-blue-50 text-blue-700 border-blue-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                                    )}
+                                                                >
+                                                                    <div className={cn("w-1 h-1 rounded-full", event.type === 'leave' ? "bg-blue-600" : "bg-emerald-600")} />
+                                                                    {event.data.userName.split(' ')[0]}
+                                                                    {event.type === 'leave' && <span className="opacity-60 text-[8px]">({event.data.type === 'ANNUAL' ? 'AL' : 'SL'})</span>}
+                                                                </div>
+                                                            ))}
+
+                                                            {/* +N More logic */}
+                                                            {events.filter(e => e.type !== 'holiday').length > 2 && (
+                                                                <div className="text-[10px] font-bold text-muted-foreground flex items-center justify-center py-1 bg-muted/30 rounded-md border border-dashed border-border mt-1">
+                                                                    +{events.filter(e => e.type !== 'holiday').length - 2} Staff
+                                                                </div>
+                                                            )}
+
+                                                            {['Sat', 'Sun'].includes(format(day, 'EEE')) && events.length === 0 && (
+                                                                <div className="text-[10px] text-center text-muted-foreground/50 font-medium py-1">
+                                                                    Weekend
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </CardContent>
                         </Card>
 
@@ -1111,7 +1173,18 @@ export default function ManagerControlPage() {
                                 </CardHeader>
                                 <CardContent className="p-0 flex-1 overflow-y-auto max-h-[600px]">
                                     <div className="divide-y divide-border">
-                                        {sortedTeam.length === 0 ? (
+                                        {isLoading ? (
+                                            Array.from({ length: 5 }).map((_, i) => (
+                                                <div key={i} className="p-4 flex items-center gap-3">
+                                                    <Skeleton className="h-9 w-9 rounded-full" />
+                                                    <div className="flex-1 space-y-2">
+                                                        <Skeleton className="h-4 w-24" />
+                                                        <Skeleton className="h-3 w-32" />
+                                                    </div>
+                                                    <Skeleton className="h-5 w-16 rounded-md" />
+                                                </div>
+                                            ))
+                                        ) : sortedTeam.length === 0 ? (
                                             <div className="p-8 text-center text-muted-foreground text-sm">
                                                 No team members found.
                                             </div>
@@ -1203,9 +1276,12 @@ export default function ManagerControlPage() {
                         </CardHeader>
                         <CardContent className="p-8">
                             {isFetchingPerformance ? (
-                                <div className="h-[400px] flex flex-col items-center justify-center space-y-4">
-                                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground animate-pulse">Analyzing Data...</p>
+                                <div className="space-y-8">
+                                    <Skeleton className="h-[350px] w-full rounded-xl" />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <Skeleton className="h-[300px] w-full rounded-xl" />
+                                        <Skeleton className="h-[300px] w-full rounded-xl" />
+                                    </div>
                                 </div>
                             ) : performanceData.length > 0 ? (
                                 <div className="space-y-8">
@@ -1511,7 +1587,13 @@ export default function ManagerControlPage() {
                                             )}
                                         </div>
                                         <div className="border border-border rounded-xl bg-muted/20 p-3 max-h-[200px] overflow-y-auto space-y-2 custom-scrollbar">
-                                            {filteredTeam.length === 0 ? (
+                                            {isLoading ? (
+                                                <div className="space-y-2">
+                                                    {Array.from({ length: 3 }).map((_, i) => (
+                                                        <Skeleton key={i} className="h-10 w-full rounded-lg" />
+                                                    ))}
+                                                </div>
+                                            ) : filteredTeam.length === 0 ? (
                                                 <p className="text-xs text-center py-4 text-muted-foreground italic">No staff found in this scope</p>
                                             ) : (
                                                 <div className="grid grid-cols-1 gap-1">

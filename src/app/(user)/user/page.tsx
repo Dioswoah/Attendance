@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users, Edit, Briefcase, MoreHorizontal } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -1270,7 +1271,7 @@ export default function UserPortal() {
         switch (optimisticStatus) {
             case "clocked-in": return "Working"
             case "on-break": return "On Break"
-            default: return "Off Duty"
+            default: return "Not Working"
         }
     }
 
@@ -1747,24 +1748,8 @@ export default function UserPortal() {
     }, [searchParams, session, hasAutoActionRun])
 
 
-    if (isLoading) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6">
-                <div className="h-20 w-20 rounded-[2.5rem] bg-[#8B2323] flex items-center justify-center shadow-2xl border-4 border-white/20 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-black/20 to-transparent" />
-                    <Loader2 className="h-10 w-10 animate-spin text-white relative z-10" />
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-[#8B2323] animate-pulse">
-                        Synchronizing Systems
-                    </p>
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest opacity-50">
-                        Preparing your workspace
-                    </p>
-                </div>
-            </div>
-        )
-    }
+    // Loading check removed to allow Skeleton UI rendering
+    // if (isLoading) { return (...) } removed
 
     return (
         <div className="space-y-8 w-full">
@@ -1797,212 +1782,240 @@ export default function UserPortal() {
 
                     {/* Left Panel: Tracker & Controls */}
                     <div className="w-full xl:w-[58%] p-6 md:p-8 flex flex-col relative bg-white min-h-[500px]">
-                        {/* Decorative BG */}
-                        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-red-50/50 via-transparent to-transparent opacity-50 pointer-events-none" />
-
-                        {/* Top Bar: Info Chips */}
-                        <div className="flex flex-wrap items-center justify-between gap-4 relative z-10 mb-6">
-                            <div className="flex items-center gap-2 text-slate-400">
-                                <LayoutDashboard className="w-4 h-4" />
-                                <span className="text-xs font-bold uppercase tracking-widest">Daily Command Center</span>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                {/* Current Time Chip */}
-                                <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-full">
-                                    <Globe className="w-3 h-3 text-slate-400" />
-                                    <span className="text-xs font-mono font-bold text-slate-600">
-                                        {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true, timeZone: userTimeZone }) : "--:--:--"}
-                                    </span>
-                                </div>
-                                {/* Work Hours Chip */}
-                                {userProfile?.shiftStartTime && userProfile?.shiftEndTime && (
-                                    <div
-                                        className="flex items-center gap-2 bg-red-50 border border-red-100 px-3 py-1.5 rounded-full cursor-pointer hover:bg-red-100 transition-colors group"
-                                        onClick={() => setShowScheduleInput(true)}
-                                    >
-                                        <Briefcase className="w-3 h-3 text-red-400 group-hover:text-red-500" />
-                                        <span className="text-xs font-mono font-bold text-red-700">
-                                            {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
-                                        </span>
-                                        <Edit className="w-3 h-3 text-red-300 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Edit Work Hours Modal */}
-                        <Dialog open={showScheduleInput} onOpenChange={setShowScheduleInput}>
-                            <DialogContent className="sm:max-w-md">
-                                <DialogHeader>
-                                    <DialogTitle>Edit Standard Schedule</DialogTitle>
-                                    <DialogDescription>
-                                        Set your expected shift times. This helps calculate overtime and late arrivals.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Start Time</Label>
-                                            <Input type="time" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>End Time</Label>
-                                            <Input type="time" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} />
-                                        </div>
+                        {isLoading ? (
+                            <div className="space-y-8 animate-pulse">
+                                <div className="flex justify-between items-center mb-6">
+                                    <Skeleton className="h-4 w-32" />
+                                    <div className="flex gap-2">
+                                        <Skeleton className="h-8 w-24 rounded-full" />
+                                        <Skeleton className="h-8 w-32 rounded-full" />
                                     </div>
                                 </div>
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setShowScheduleInput(false)}>Cancel</Button>
-                                    <Button onClick={() => { handleUpdateWorkHours(); setShowScheduleInput(false); }} className="bg-[#8B2323] hover:bg-[#701c1c]">Save Changes</Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                                <div className="flex flex-col items-center justify-center space-y-4 py-12">
+                                    <Skeleton className="h-20 w-20 rounded-[2rem]" />
+                                    <Skeleton className="h-8 w-48" />
+                                    <Skeleton className="h-4 w-32" />
+                                </div>
+                                <div className="flex justify-center gap-4 mt-8">
+                                    <Skeleton className="h-14 w-40 rounded-2xl" />
+                                    <Skeleton className="h-14 w-40 rounded-2xl" />
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 mt-auto pt-6 border-t border-slate-100">
+                                    <Skeleton className="h-16 w-full rounded-2xl" />
+                                    <Skeleton className="h-16 w-full rounded-2xl" />
+                                    <Skeleton className="h-16 w-full rounded-2xl" />
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Decorative BG */}
+                                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-red-50/50 via-transparent to-transparent opacity-50 pointer-events-none" />
 
-                        {/* Main Action Area */}
-                        <div className="flex-1 flex flex-col justify-center gap-6 relative z-10 my-4">
-                            {/* Status Visualization */}
-                            <div className="text-center space-y-2">
-                                {optimisticStatus === 'clocked-out' && (
-                                    <>
-                                        <div className="w-20 h-20 mx-auto bg-slate-50 rounded-[2rem] flex items-center justify-center mb-4 shadow-inner">
-                                            <LogOut className="w-8 h-8 text-slate-300" />
-                                        </div>
-                                        <h2 className="text-2xl font-black tracking-tight text-foreground">Ready to start?</h2>
-                                        <p className="text-muted-foreground font-medium text-sm">Clock in to begin your session</p>
-                                    </>
-                                )}
-                                {optimisticStatus === 'clocked-in' && (
-                                    <>
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-green-600 mb-1">Currently Working</p>
-                                        <div className="text-5xl sm:text-6xl font-black tabular-nums tracking-tighter text-foreground">
-                                            {currentTime && formatTime(currentTime).replace(/(AM|PM|am|pm)/, '')}
-                                            <span className="text-xl text-muted-foreground ml-2 font-bold align-top mt-1 inline-block">
-                                                {currentTime && formatTime(currentTime).split(' ')[1]}
+                                {/* Top Bar: Info Chips */}
+                                <div className="flex flex-wrap items-center justify-between gap-4 relative z-10 mb-6">
+                                    <div className="flex items-center gap-2 text-slate-400">
+                                        <LayoutDashboard className="w-4 h-4" />
+                                        <span className="text-xs font-bold uppercase tracking-widest">Time Tracker</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                        {/* Current Time Chip */}
+                                        <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-full">
+                                            <Globe className="w-3 h-3 text-slate-400" />
+                                            <span className="text-xs font-mono font-bold text-slate-600">
+                                                {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true, timeZone: userTimeZone }) : "--:--:--"}
                                             </span>
                                         </div>
-                                        <div className="flex items-center justify-center gap-2 mt-3 text-xs font-medium text-slate-500 bg-green-50/50 py-1.5 px-3 rounded-full w-fit mx-auto border border-green-100">
-                                            <LogIn className="w-3 h-3 text-green-600" />
-                                            Started at {pendingClockInForDisplay
-                                                ? formatTime(new Date(pendingClockInForDisplay.time || pendingClockInForDisplay.date))
-                                                : currentAttendance?.clockIn ? formatTime(new Date(currentAttendance.clockIn)) : "--:--"}
-                                        </div>
-                                    </>
-                                )}
-                                {optimisticStatus === 'on-break' && (
-                                    <>
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600 mb-1 animate-pulse">Break in Progress</p>
-                                        <div className="text-5xl sm:text-6xl font-black tabular-nums tracking-tighter text-[#D4A056]">
-                                            {breakTime}
-                                        </div>
-                                        <p className="text-xs font-medium text-slate-400 mt-1">Recharging...</p>
-                                        {/* Expected Return */}
-                                        {(() => {
-                                            const activeBreak = currentAttendance?.breaks?.find((b: any) => !b.endTime)
-                                            if (activeBreak?.expectedReturnTime) {
-                                                return (
-                                                    <div className="inline-flex items-center gap-2 mt-3 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100">
-                                                        <Clock className="w-3 h-3 text-amber-600" />
-                                                        <span className="text-xs font-bold text-amber-800">
-                                                            Expected Back: {new Date(activeBreak.expectedReturnTime).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: userTimeZone })}
-                                                        </span>
-                                                    </div>
-                                                )
-                                            }
-                                            return null
-                                        })()}
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Controls */}
-                            <div className="flex flex-wrap justify-center gap-3 max-w-lg mx-auto w-full">
-                                {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
-                                    <div className="flex w-full sm:w-auto items-center shadow-2xl shadow-green-900/20 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 bg-gradient-to-b from-[#009B5A] to-[#00874e] group p-1">
-                                        <Button onClick={handleClockInClick} disabled={isProcessing} className="flex-1 gap-3 bg-transparent hover:bg-transparent text-white h-14 px-8 text-base font-bold border-r border-green-600/30 rounded-r-none focus:ring-0 uppercase tracking-widest">
-                                            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-                                            Clock In
-                                        </Button>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <Button disabled={isProcessing} className="px-4 h-14 bg-transparent hover:bg-[#007041] text-white rounded-l-none focus:ring-0 rounded-r-xl">
-                                                    <ChevronDown className="h-5 w-5" />
-                                                </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-80 p-0 rounded-2xl shadow-xl border-border overflow-hidden" align="end">
-                                                <div className="bg-[#8B2323] p-4 text-center relative overflow-hidden">
-                                                    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
-                                                    <p className="text-white font-black uppercase tracking-widest text-[10px] relative z-10">Request Amendment</p>
-                                                </div>
-                                                <div className="p-4 space-y-4 bg-white">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Time of Entry</Label>
-                                                        <Input type="time" value={customClockInTime} onChange={(e) => setCustomClockInTime(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg font-mono font-bold text-base" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Reason</Label>
-                                                        <Input placeholder="Reason for adjustment..." value={customReason} onChange={(e) => setCustomReason(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg text-xs" />
-                                                    </div>
-                                                    <Button onClick={() => setShowLocationDialog(true)} className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-widest rounded-lg shadow-md transition-all active:scale-95">Continue</Button>
-                                                </div>
-                                            </PopoverContent>
-                                        </Popover>
+                                        {/* Work Hours Chip */}
+                                        {userProfile?.shiftStartTime && userProfile?.shiftEndTime && (
+                                            <div
+                                                className="flex items-center gap-2 bg-red-50 border border-red-100 px-3 py-1.5 rounded-full cursor-pointer hover:bg-red-100 transition-colors group"
+                                                onClick={() => setShowScheduleInput(true)}
+                                            >
+                                                <Briefcase className="w-3 h-3 text-red-400 group-hover:text-red-500" />
+                                                <span className="text-xs font-mono font-bold text-red-700">
+                                                    {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
+                                                </span>
+                                                <Edit className="w-3 h-3 text-red-300 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-
-                                {optimisticStatus === 'clocked-in' && (
-                                    <>
-                                        <Button onClick={breakStart} disabled={isProcessing} size="lg" variant="outline" className="flex-1 sm:flex-initial gap-2 border-2 border-[#D4A056]/20 text-[#9A7033] bg-[#FEF9F0] hover:bg-[#D4A056] hover:text-white h-14 px-6 text-sm font-bold rounded-2xl uppercase tracking-wider transition-all">
-                                            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Coffee className="w-5 h-5" />} Start Break
-                                        </Button>
-                                        <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing} size="lg" className="flex-1 sm:flex-initial gap-2 h-14 px-6 text-sm font-bold rounded-2xl shadow-xl shadow-red-900/10 bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-wider transition-all hover:scale-[1.02]">
-                                            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="w-5 h-5" />} Clock Out
-                                        </Button>
-                                    </>
-                                )}
-
-                                {optimisticStatus === 'on-break' && (
-                                    <Button onClick={breakEnd} disabled={isProcessing} size="lg" className="w-full sm:w-auto gap-2 bg-[#D4A056] hover:bg-[#b88640] text-white h-14 px-10 text-sm font-bold rounded-2xl shadow-xl shadow-amber-900/10 uppercase tracking-wider transition-all hover:scale-[1.02]">
-                                        {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Timer className="w-5 h-5" />} End Break
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Footer Stats Grid */}
-                        <div className="grid grid-cols-3 gap-4 mt-auto pt-6 border-t border-slate-100">
-                            {/* Hours Worked Stats */}
-                            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
-                                <div className="p-1.5 rounded-lg bg-green-100 text-green-600 mb-2">
-                                    <TrendingUp className="w-3.5 h-3.5" />
                                 </div>
-                                <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{workedTime}</span>
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Hours</span>
-                            </div>
 
-                            {/* Break Time Stats */}
-                            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
-                                <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 mb-2">
-                                    <Coffee className="w-3.5 h-3.5" />
-                                </div>
-                                <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{breakTime}</span>
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Break</span>
-                            </div>
+                                {/* Edit Work Hours Modal */}
+                                <Dialog open={showScheduleInput} onOpenChange={setShowScheduleInput}>
+                                    <DialogContent className="sm:max-w-md">
+                                        <DialogHeader>
+                                            <DialogTitle>Edit Standard Schedule</DialogTitle>
+                                            <DialogDescription>
+                                                Set your expected shift times. This helps calculate overtime and late arrivals.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="grid gap-4 py-4">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>Start Time</Label>
+                                                    <Input type="time" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>End Time</Label>
+                                                    <Input type="time" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button variant="outline" onClick={() => setShowScheduleInput(false)}>Cancel</Button>
+                                            <Button onClick={() => { handleUpdateWorkHours(); setShowScheduleInput(false); }} className="bg-[#8B2323] hover:bg-[#701c1c]">Save Changes</Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
 
-                            {/* Pending Requests Stats */}
-                            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
-                                <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600 mb-2">
-                                    <FileText className="w-3.5 h-3.5" />
+                                {/* Main Action Area */}
+                                <div className="flex-1 flex flex-col justify-center gap-6 relative z-10 my-4">
+                                    {/* Status Visualization */}
+                                    <div className="text-center space-y-2">
+                                        {optimisticStatus === 'clocked-out' && (
+                                            <>
+                                                <div className="w-20 h-20 mx-auto bg-slate-50 rounded-[2rem] flex items-center justify-center mb-4 shadow-inner">
+                                                    <LogOut className="w-8 h-8 text-slate-300" />
+                                                </div>
+                                                <h2 className="text-2xl font-black tracking-tight text-foreground">Ready to start?</h2>
+                                                <p className="text-muted-foreground font-medium text-sm">Clock in to begin your session</p>
+                                            </>
+                                        )}
+                                        {optimisticStatus === 'clocked-in' && (
+                                            <>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-green-600 mb-1">Currently Working</p>
+                                                <div className="text-5xl sm:text-6xl font-black tabular-nums tracking-tighter text-foreground">
+                                                    {currentTime && formatTime(currentTime).replace(/(AM|PM|am|pm)/, '')}
+                                                    <span className="text-xl text-muted-foreground ml-2 font-bold align-top mt-1 inline-block">
+                                                        {currentTime && formatTime(currentTime).split(' ')[1]}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-center gap-2 mt-3 text-xs font-medium text-slate-500 bg-green-50/50 py-1.5 px-3 rounded-full w-fit mx-auto border border-green-100">
+                                                    <LogIn className="w-3 h-3 text-green-600" />
+                                                    Started at {pendingClockInForDisplay
+                                                        ? formatTime(new Date(pendingClockInForDisplay.time || pendingClockInForDisplay.date))
+                                                        : currentAttendance?.clockIn ? formatTime(new Date(currentAttendance.clockIn)) : "--:--"}
+                                                </div>
+                                            </>
+                                        )}
+                                        {optimisticStatus === 'on-break' && (
+                                            <>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600 mb-1 animate-pulse">Break in Progress</p>
+                                                <div className="text-5xl sm:text-6xl font-black tabular-nums tracking-tighter text-[#D4A056]">
+                                                    {breakTime}
+                                                </div>
+                                                <p className="text-xs font-medium text-slate-400 mt-1">Recharging...</p>
+                                                {/* Expected Return */}
+                                                {(() => {
+                                                    const activeBreak = currentAttendance?.breaks?.find((b: any) => !b.endTime)
+                                                    if (activeBreak?.expectedReturnTime) {
+                                                        return (
+                                                            <div className="inline-flex items-center gap-2 mt-3 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100">
+                                                                <Clock className="w-3 h-3 text-amber-600" />
+                                                                <span className="text-xs font-bold text-amber-800">
+                                                                    Expected Back: {new Date(activeBreak.expectedReturnTime).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: userTimeZone })}
+                                                                </span>
+                                                            </div>
+                                                        )
+                                                    }
+                                                    return null
+                                                })()}
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Controls */}
+                                    <div className="flex flex-wrap justify-center gap-3 max-w-lg mx-auto w-full">
+                                        {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
+                                            <div className="flex w-full sm:w-auto items-center shadow-2xl shadow-green-900/20 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 bg-gradient-to-b from-[#009B5A] to-[#00874e] group p-1">
+                                                <Button onClick={handleClockInClick} disabled={isProcessing} className="flex-1 gap-3 bg-transparent hover:bg-transparent text-white h-14 px-8 text-base font-bold border-r border-green-600/30 rounded-r-none focus:ring-0 uppercase tracking-widest">
+                                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+                                                    Clock In
+                                                </Button>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <Button disabled={isProcessing} className="px-4 h-14 bg-transparent hover:bg-[#007041] text-white rounded-l-none focus:ring-0 rounded-r-xl">
+                                                            <ChevronDown className="h-5 w-5" />
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-80 p-0 rounded-2xl shadow-xl border-border overflow-hidden" align="end">
+                                                        <div className="bg-[#8B2323] p-4 text-center relative overflow-hidden">
+                                                            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                                                            <p className="text-white font-black uppercase tracking-widest text-[10px] relative z-10">Request Amendment</p>
+                                                        </div>
+                                                        <div className="p-4 space-y-4 bg-white">
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Time of Entry</Label>
+                                                                <Input type="time" value={customClockInTime} onChange={(e) => setCustomClockInTime(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg font-mono font-bold text-base" />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Reason</Label>
+                                                                <Input placeholder="Reason for adjustment..." value={customReason} onChange={(e) => setCustomReason(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg text-xs" />
+                                                            </div>
+                                                            <Button onClick={() => setShowLocationDialog(true)} className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-widest rounded-lg shadow-md transition-all active:scale-95">Continue</Button>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                        )}
+
+                                        {optimisticStatus === 'clocked-in' && (
+                                            <>
+                                                <Button onClick={breakStart} disabled={isProcessing} size="lg" variant="outline" className="flex-1 sm:flex-initial gap-2 border-2 border-[#D4A056]/20 text-[#9A7033] bg-[#FEF9F0] hover:bg-[#D4A056] hover:text-white h-14 px-6 text-sm font-bold rounded-2xl uppercase tracking-wider transition-all">
+                                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Coffee className="w-5 h-5" />} Start Break
+                                                </Button>
+                                                <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing} size="lg" className="flex-1 sm:flex-initial gap-2 h-14 px-6 text-sm font-bold rounded-2xl shadow-xl shadow-red-900/10 bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-wider transition-all hover:scale-[1.02]">
+                                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="w-5 h-5" />} Clock Out
+                                                </Button>
+                                            </>
+                                        )}
+
+                                        {optimisticStatus === 'on-break' && (
+                                            <Button onClick={breakEnd} disabled={isProcessing} size="lg" className="w-full sm:w-auto gap-2 bg-[#D4A056] hover:bg-[#b88640] text-white h-14 px-10 text-sm font-bold rounded-2xl shadow-xl shadow-amber-900/10 uppercase tracking-wider transition-all hover:scale-[1.02]">
+                                                {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Timer className="w-5 h-5" />} End Break
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
-                                <span className="text-xl font-black text-slate-800 tracking-tight">
-                                    {(() => {
-                                        const pendingLeaves = myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length
-                                        return pendingLeaves + myAttendanceRequests.length
-                                    })()}
-                                </span>
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Pending</span>
-                            </div>
-                        </div>
+
+                                {/* Footer Stats Grid */}
+                                <div className="grid grid-cols-3 gap-4 mt-auto pt-6 border-t border-slate-100">
+                                    {/* Hours Worked Stats */}
+                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
+                                        <div className="p-1.5 rounded-lg bg-green-100 text-green-600 mb-2">
+                                            <TrendingUp className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{workedTime}</span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Hours</span>
+                                    </div>
+
+                                    {/* Break Time Stats */}
+                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
+                                        <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 mb-2">
+                                            <Coffee className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{breakTime}</span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Break</span>
+                                    </div>
+
+                                    {/* Pending Requests Stats */}
+                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
+                                        <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600 mb-2">
+                                            <FileText className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="text-xl font-black text-slate-800 tracking-tight">
+                                            {(() => {
+                                                const pendingLeaves = myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length
+                                                return pendingLeaves + myAttendanceRequests.length
+                                            })()}
+                                        </span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Pending</span>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {/* Right Panel: Activity Feed */}
@@ -2018,76 +2031,90 @@ export default function UserPortal() {
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 relative scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                            {activityFeed.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
-                                    <div className="p-4 bg-slate-100 rounded-full mb-3">
-                                        <CalendarOff className="w-6 h-6 text-slate-400" />
-                                    </div>
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No activity recorded today</p>
+                            {isLoading ? (
+                                <div className="space-y-6 pl-3 pt-2">
+                                    {[1, 2, 3, 4, 5].map((i) => (
+                                        <div key={i} className="relative pl-10">
+                                            <Skeleton className="absolute left-0 top-0 w-8 h-8 rounded-full" />
+                                            <div className="flex flex-col gap-2 p-3 -mt-2">
+                                                <Skeleton className="h-4 w-32" />
+                                                <Skeleton className="h-3 w-24" />
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             ) : (
-                                <div className="relative pl-3 pt-2">
-                                    {/* Continuous Line */}
-                                    <div className="absolute left-[15px] top-0 bottom-0 w-[2px] bg-slate-200/60" />
+                                activityFeed.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
+                                        <div className="p-4 bg-slate-100 rounded-full mb-3">
+                                            <CalendarOff className="w-6 h-6 text-slate-400" />
+                                        </div>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No activity recorded today</p>
+                                    </div>
+                                ) : (
+                                    <div className="relative pl-3 pt-2">
+                                        {/* Continuous Line */}
+                                        <div className="absolute left-[15px] top-0 bottom-0 w-[2px] bg-slate-200/60" />
 
-                                    {activityFeed.map((event: any, index: number) => {
-                                        const timeString = (() => {
-                                            try { return event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '--:--' } catch (e) { return '--:--' }
-                                        })()
+                                        {activityFeed.map((event: any, index: number) => {
+                                            const timeString = (() => {
+                                                try { return event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '--:--' } catch (e) { return '--:--' }
+                                            })()
 
-                                        let dotColorClass = "bg-slate-400";
-                                        let labelClass = "text-slate-700";
-                                        let icon = <Check className="w-3 h-3 text-white" />
+                                            let dotColorClass = "bg-slate-400";
+                                            let labelClass = "text-slate-700";
+                                            let icon = <Check className="w-3 h-3 text-white" />
 
-                                        if (event.type.includes('clock-in')) {
-                                            dotColorClass = "bg-[#009B5A] ring-4 ring-green-100";
-                                            labelClass = "text-[#009B5A]";
-                                            icon = <LogIn className="w-3 h-3 text-white" />
-                                        }
-                                        else if (event.type.includes('clock-out')) {
-                                            dotColorClass = "bg-[#8B2323] ring-4 ring-red-100";
-                                            labelClass = "text-[#8B2323]";
-                                            icon = <LogOut className="w-3 h-3 text-white" />
-                                        }
-                                        else if (event.type.includes('break-start')) {
-                                            dotColorClass = "bg-amber-400 ring-4 ring-amber-100";
-                                            labelClass = "text-amber-600";
-                                            icon = <Coffee className="w-3 h-3 text-white" />
-                                        }
-                                        else if (event.type.includes('break-end')) {
-                                            dotColorClass = "bg-blue-400 ring-4 ring-blue-100";
-                                            labelClass = "text-blue-600";
-                                            icon = <Check className="w-3 h-3 text-white" />
-                                        }
+                                            if (event.type.includes('clock-in')) {
+                                                dotColorClass = "bg-[#009B5A] ring-4 ring-green-100";
+                                                labelClass = "text-[#009B5A]";
+                                                icon = <LogIn className="w-3 h-3 text-white" />
+                                            }
+                                            else if (event.type.includes('clock-out')) {
+                                                dotColorClass = "bg-[#8B2323] ring-4 ring-red-100";
+                                                labelClass = "text-[#8B2323]";
+                                                icon = <LogOut className="w-3 h-3 text-white" />
+                                            }
+                                            else if (event.type.includes('break-start')) {
+                                                dotColorClass = "bg-amber-400 ring-4 ring-amber-100";
+                                                labelClass = "text-amber-600";
+                                                icon = <Coffee className="w-3 h-3 text-white" />
+                                            }
+                                            else if (event.type.includes('break-end')) {
+                                                dotColorClass = "bg-blue-400 ring-4 ring-blue-100";
+                                                labelClass = "text-blue-600";
+                                                icon = <Check className="w-3 h-3 text-white" />
+                                            }
 
-                                        return (
-                                            <div key={index} className="relative pl-10 group mb-8 last:mb-0">
-                                                {/* Timeline Node */}
-                                                <div className={cn("absolute left-0 top-0 w-8 h-8 rounded-full flex items-center justify-center z-10 transition-transform group-hover:scale-110 shadow-sm border border-white", dotColorClass)}>
-                                                    {icon}
-                                                </div>
-
-                                                {/* Content Bubble */}
-                                                <div className="flex flex-col items-start gap-1 p-3 -mt-2 rounded-2xl hover:bg-white hover:shadow-sm hover:border-slate-100 border border-transparent transition-all duration-300">
-                                                    <div className="flex flex-row items-center gap-2">
-                                                        <span className={cn("text-sm font-black tracking-tight", labelClass)}>
-                                                            {event.label}
-                                                        </span>
-                                                        <span className="text-[10px] font-bold text-slate-300 bg-slate-50 px-2 py-0.5 rounded-full">{timeString}</span>
+                                            return (
+                                                <div key={index} className="relative pl-10 group mb-8 last:mb-0">
+                                                    {/* Timeline Node */}
+                                                    <div className={cn("absolute left-0 top-0 w-8 h-8 rounded-full flex items-center justify-center z-10 transition-transform group-hover:scale-110 shadow-sm border border-white", dotColorClass)}>
+                                                        {icon}
                                                     </div>
 
-                                                    {event.mode && (
-                                                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                                            <MapPin className="w-3 h-3" />
-                                                            {event.mode.replace('_', ' ')}
-                                                            {event.locationDetails && <span className="normal-case text-slate-500">• {event.locationDetails}</span>}
+                                                    {/* Content Bubble */}
+                                                    <div className="flex flex-col items-start gap-1 p-3 -mt-2 rounded-2xl hover:bg-white hover:shadow-sm hover:border-slate-100 border border-transparent transition-all duration-300">
+                                                        <div className="flex flex-row items-center gap-2">
+                                                            <span className={cn("text-sm font-black tracking-tight", labelClass)}>
+                                                                {event.label}
+                                                            </span>
+                                                            <span className="text-[10px] font-bold text-slate-300 bg-slate-50 px-2 py-0.5 rounded-full">{timeString}</span>
                                                         </div>
-                                                    )}
+
+                                                        {event.mode && (
+                                                            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                                <MapPin className="w-3 h-3" />
+                                                                {event.mode.replace('_', ' ')}
+                                                                {event.locationDetails && <span className="normal-case text-slate-500">• {event.locationDetails}</span>}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )
                             )}
                         </div>
                     </div>
@@ -2125,172 +2152,200 @@ export default function UserPortal() {
                             </div>
                         </CardHeader>
                         <CardContent className="p-0">
-
-                            <div className="p-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center gap-4">
-                                <div className="relative w-full sm:w-72">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <Input
-                                        placeholder="Search staff..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="pl-9 h-9 bg-white border-slate-200 rounded-lg text-xs font-medium focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
-                                    />
+                            {isLoading ? (
+                                <div className="p-6 space-y-6">
+                                    <div className="flex gap-4">
+                                        <Skeleton className="h-9 w-72" />
+                                        <Skeleton className="h-9 w-32" />
+                                        <Skeleton className="h-9 w-48" />
+                                    </div>
+                                    <div className="space-y-4">
+                                        {[1, 2, 3, 4, 5].map((i) => (
+                                            <div key={i} className="flex justify-between items-center py-2">
+                                                <div className="flex items-center gap-3">
+                                                    <Skeleton className="h-9 w-9 rounded-full" />
+                                                    <div className="space-y-1">
+                                                        <Skeleton className="h-4 w-32" />
+                                                        <Skeleton className="h-3 w-24" />
+                                                    </div>
+                                                </div>
+                                                <Skeleton className="h-6 w-20 rounded-full" />
+                                                <Skeleton className="h-4 w-24" />
+                                                <Skeleton className="h-4 w-32" />
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
+                            ) : (
+                                <>
 
-                                <div className="flex-1 flex flex-wrap items-center gap-2">
-                                    <Select value={filterStatus} onValueChange={setFilterStatus}>
-                                        <SelectTrigger className="h-9 w-[130px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
-                                            <SelectValue placeholder="Status" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Statuses</SelectItem>
-                                            <SelectItem value="clocked-in">Clocked In</SelectItem>
-                                            <SelectItem value="on-break">On Break</SelectItem>
-                                            <SelectItem value="clocked-out">Clocked Out</SelectItem>
-                                            <SelectItem value="on-leave">On Leave</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <div className="p-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center gap-4">
+                                        <div className="relative w-full sm:w-72">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                            <Input
+                                                placeholder="Search staff..."
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                className="pl-9 h-9 bg-white border-slate-200 rounded-lg text-xs font-medium focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
+                                            />
+                                        </div>
 
-                                    <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                                        <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
-                                            <SelectValue placeholder="Department" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Departments</SelectItem>
-                                            {uniqueDepartments.map((dept: any) => (
-                                                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        <div className="flex-1 flex flex-wrap items-center gap-2">
+                                            <Select value={filterStatus} onValueChange={setFilterStatus}>
+                                                <SelectTrigger className="h-9 w-[130px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
+                                                    <SelectValue placeholder="Status" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">Statuses</SelectItem>
+                                                    <SelectItem value="clocked-in">Clocked In</SelectItem>
+                                                    <SelectItem value="on-break">On Break</SelectItem>
+                                                    <SelectItem value="clocked-out">Clocked Out</SelectItem>
+                                                    <SelectItem value="on-leave">On Leave</SelectItem>
+                                                </SelectContent>
+                                            </Select>
 
-                                </div>
-                            </div>
+                                            <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                                                <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
+                                                    <SelectValue placeholder="Department" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">Departments</SelectItem>
+                                                    {uniqueDepartments.map((dept: any) => (
+                                                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
 
-                            <Table>
-                                <TableHeader className="bg-slate-50">
-                                    <TableRow className="hover:bg-transparent">
-                                        <TableHead className="w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
-                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
-                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
-                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
-                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right pr-24">Last Active</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {sortedStaff.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm italic font-medium">
-                                                No staff found matching your criteria
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        sortedStaff.map((staff: any) => {
-                                            const isOnline = staff.status === 'clocked-in' || staff.status === 'on-break'
-                                            // Ensure we check availabilityStatus existence, default to AVAILABLE if online
-                                            const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
-                                            const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+                                        </div>
+                                    </div>
 
-                                            return (
-                                                <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
-                                                    <TableCell className="pl-6 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="relative">
-                                                                <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
-                                                                    <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
-                                                                        {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
-                                                                    </AvatarFallback>
-                                                                </Avatar>
-                                                                {/* Status Dot */}
-                                                                {statusConfigItem && (
-                                                                    <div className={`absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10`} title={statusConfigItem.label}>
-                                                                        <statusConfigItem.icon className={`h-3 w-3 ${statusConfigItem.color}`} />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
-                                                                    {/* Custom Status Message */}
-                                                                    {(isOnline && (staff.customStatusMessage || (statusConfigItem && statusConfigItem.label !== 'Active'))) && (
-                                                                        <span className="text-[10px] text-muted-foreground/80 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
-                                                                            {staff.customStatusMessage || statusConfigItem?.label}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                                <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
-                                                            </div>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="flex flex-col gap-1">
-                                                            {getStaffStatusBadge(staff.status)}
-                                                            {staff.status === 'on-break' && staff.expectedReturnTime && (
-                                                                <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1">
-                                                                    Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <div className="flex flex-col gap-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <MapPin className="h-3 w-3 text-slate-400" />
-                                                                <span className="text-sm font-semibold text-slate-600">
-                                                                    {staff.location || 'N/A'}
-                                                                </span>
-                                                            </div>
-                                                            {isOnline && staff.record?.mode && (
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-500 uppercase px-1.5 h-5">
-                                                                        {staff.record.mode}
-                                                                    </Badge>
-                                                                    {staff.record.locationDetails && (
-                                                                        <span className="text-[10px] font-medium text-slate-400 truncate max-w-[100px]" title={staff.record.locationDetails}>
-                                                                            {staff.record.locationDetails}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
-                                                            {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell className="text-right pr-24">
-                                                        {staff.lastActive ? (
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-xs font-bold text-slate-600 font-mono">
-                                                                    {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: staff.selectedTimezone || userTimeZone })}
-                                                                </span>
-                                                                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                                                                    {new Date(staff.lastActive).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })}
-                                                                    {staff.selectedTimezone && (
-                                                                        <span className="ml-1 text-[9px] font-black text-slate-300">
-                                                                            {(() => {
-                                                                                try {
-                                                                                    const parts = new Intl.DateTimeFormat('en-US', { timeZone: staff.selectedTimezone, timeZoneName: 'short' }).formatToParts(new Date())
-                                                                                    const tz = parts.find(p => p.type === 'timeZoneName')?.value
-                                                                                    // Strip "Standard Time" or "Daylight Time" if it's too long, or just keep initials if possible.
-                                                                                    // Usually 'short' gives PST, EST, GMT+8 etc.
-                                                                                    return tz || 'Local'
-                                                                                } catch (e) { return 'Local' }
-                                                                            })()}
-                                                                        </span>
-                                                                    )}
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
-                                                        )}
+                                    <Table>
+                                        <TableHeader className="bg-slate-50">
+                                            <TableRow className="hover:bg-transparent">
+                                                <TableHead className="w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
+                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
+                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
+                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
+                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right pr-24">Last Active</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {sortedStaff.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm italic font-medium">
+                                                        No staff found matching your criteria
                                                     </TableCell>
                                                 </TableRow>
-                                            )
-                                        })
-                                    )}
-                                </TableBody>
-                            </Table>
+                                            ) : (
+                                                sortedStaff.map((staff: any) => {
+                                                    const isOnline = staff.status === 'clocked-in' || staff.status === 'on-break'
+                                                    // Ensure we check availabilityStatus existence, default to AVAILABLE if online
+                                                    const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                                    const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+
+                                                    return (
+                                                        <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
+                                                            <TableCell className="pl-6 py-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="relative">
+                                                                        <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
+                                                                            <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
+                                                                                {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
+                                                                            </AvatarFallback>
+                                                                        </Avatar>
+                                                                        {/* Status Dot */}
+                                                                        {statusConfigItem && (
+                                                                            <div className={`absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10`} title={statusConfigItem.label}>
+                                                                                <statusConfigItem.icon className={`h-3 w-3 ${statusConfigItem.color}`} />
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
+                                                                            {/* Custom Status Message */}
+                                                                            {(isOnline && (staff.customStatusMessage || (statusConfigItem && statusConfigItem.label !== 'Active'))) && (
+                                                                                <span className="text-[10px] text-muted-foreground/80 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
+                                                                                    {staff.customStatusMessage || statusConfigItem?.label}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="flex flex-col gap-1">
+                                                                    {getStaffStatusBadge(staff.status)}
+                                                                    {staff.status === 'on-break' && staff.expectedReturnTime && (
+                                                                        <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1">
+                                                                            Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="flex flex-col gap-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <MapPin className="h-3 w-3 text-slate-400" />
+                                                                        <span className="text-sm font-semibold text-slate-600">
+                                                                            {staff.location || 'N/A'}
+                                                                        </span>
+                                                                    </div>
+                                                                    {isOnline && staff.record?.mode && (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-500 uppercase px-1.5 h-5">
+                                                                                {staff.record.mode}
+                                                                            </Badge>
+                                                                            {staff.record.locationDetails && (
+                                                                                <span className="text-[10px] font-medium text-slate-400 truncate max-w-[100px]" title={staff.record.locationDetails}>
+                                                                                    {staff.record.locationDetails}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
+                                                                    {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-right pr-24">
+                                                                {staff.lastActive ? (
+                                                                    <div className="flex flex-col items-end">
+                                                                        <span className="text-xs font-bold text-slate-600 font-mono">
+                                                                            {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: staff.selectedTimezone || userTimeZone })}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                                                                            {new Date(staff.lastActive).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })}
+                                                                            {staff.selectedTimezone && (
+                                                                                <span className="ml-1 text-[9px] font-black text-slate-300">
+                                                                                    {(() => {
+                                                                                        try {
+                                                                                            const parts = new Intl.DateTimeFormat('en-US', { timeZone: staff.selectedTimezone, timeZoneName: 'short' }).formatToParts(new Date())
+                                                                                            const tz = parts.find(p => p.type === 'timeZoneName')?.value
+                                                                                            // Strip "Standard Time" or "Daylight Time" if it's too long, or just keep initials if possible.
+                                                                                            // Usually 'short' gives PST, EST, GMT+8 etc.
+                                                                                            return tz || 'Local'
+                                                                                        } catch (e) { return 'Local' }
+                                                                                    })()}
+                                                                                </span>
+                                                                            )}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
+                                                                )}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -2409,123 +2464,140 @@ export default function UserPortal() {
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
-                                <div className="grid grid-cols-7 border-b border-border bg-slate-50/50">
-                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                                        <div key={day} className="py-3 text-[10px] font-black uppercase tracking-[0.2em] text-center text-slate-400">
-                                            {day}
+                                {isLoading ? (
+                                    <div className="p-6">
+                                        <div className="grid grid-cols-7 gap-4 mb-4">
+                                            {Array.from({ length: 7 }).map((_, i) => (
+                                                <Skeleton key={i} className="h-6 w-full rounded-md" />
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
-                                <div className="grid grid-cols-7 auto-rows-fr">
-                                    {calendarDays.map((day, i) => {
-                                        const dateStr = format(day, 'yyyy-MM-dd')
-
-                                        // 1. Paid Leaves (Approved) - Exclude SICK, Filter Dept
-                                        const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
-                                            if (leave.type === 'SICK' || leave.status !== 'APPROVED') return false
-
-                                            // Dept Filter
-                                            if (calendarFilterDepartment !== 'all') {
-                                                const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
-                                                const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                if (dept !== calendarFilterDepartment) return false
-                                            }
-
-                                            return isWithinInterval(day, {
-                                                start: parseISO(leave.startDate),
-                                                end: parseISO(leave.endDate)
-                                            })
-                                        }).map((l: any) => ({ type: 'leave-approved', data: l }))
-
-                                        // 2. Pending Leaves - Exclude SICK, Filter Dept
-                                        const pendingLeaves = teamApprovedLeaves.filter((leave: any) => {
-                                            if (leave.type === 'SICK' || leave.status !== 'PENDING') return false
-
-                                            // Dept Filter
-                                            if (calendarFilterDepartment !== 'all') {
-                                                const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
-                                                const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                if (dept !== calendarFilterDepartment) return false
-                                            }
-
-                                            return isWithinInterval(day, {
-                                                start: parseISO(leave.startDate),
-                                                end: parseISO(leave.endDate)
-                                            })
-                                        }).map((l: any) => ({ type: 'leave-pending', data: l }))
-
-                                        // 3. Attendance (Present/On Break) - Filter Dept
-                                        const attendanceEvents = monthlyAttendance.filter((a: any) => {
-                                            const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
-                                            if (attDate !== dateStr) return false
-
-                                            // Dept Filter
-                                            if (calendarFilterDepartment !== 'all') {
-                                                const staff = employees.find((e: any) => e.id === a.userId)
-                                                const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                if (dept !== calendarFilterDepartment) return false
-                                            }
-                                            return true
-                                        }).reduce((acc: any[], a: any) => {
-                                            // Deduplicate: Only show one record per user per day (the most recent)
-                                            const existing = acc.find(item => item.data.userId === a.userId)
-                                            if (!existing) {
-                                                const isBreak = (a.status === 'on-break' || (a.breaks?.some((b: any) => !b.endTime)))
-                                                acc.push({ type: isBreak ? 'on-break' : 'present', data: a })
-                                            }
-                                            return acc
-                                        }, [])
-
-                                        const events: any[] = [...approvedLeaves, ...pendingLeaves, ...attendanceEvents]
-
-                                        // Holidays
-                                        if (NSW_HOLIDAYS_2026[dateStr]) {
-                                            events.unshift({ type: 'holiday', name: NSW_HOLIDAYS_2026[dateStr], data: null })
-                                        }
-
-                                        const isCurrentMonth = isSameMonth(day, currentMonth)
-                                        const isTodayDay = isToday(day)
-
-                                        return (
-                                            <div
-                                                key={i}
-                                                onClick={() => setSelectedDayDetail(day)}
-                                                className={cn(
-                                                    "min-h-[100px] p-2 border-r border-b border-border transition-colors hover:bg-slate-50 cursor-pointer relative",
-                                                    !isCurrentMonth && "bg-slate-50/30 opacity-40"
-                                                )}
-                                            >
-                                                <div className="flex justify-between items-start mb-1">
-                                                    <span className={cn(
-                                                        "text-xs font-bold",
-                                                        isTodayDay ? "bg-[#8B2323] text-white w-6 h-6 rounded-full flex items-center justify-center shadow-md scale-110" : "text-slate-500",
-                                                        !isCurrentMonth && "text-slate-300"
-                                                    )}>
-                                                        {format(day, 'd')}
-                                                    </span>
+                                        <div className="grid grid-cols-7 gap-4 auto-rows-fr">
+                                            {Array.from({ length: 35 }).map((_, i) => (
+                                                <Skeleton key={i} className="h-24 w-full rounded-xl" />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="grid grid-cols-7 border-b border-border bg-slate-50/50">
+                                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                                <div key={day} className="py-3 text-[10px] font-black uppercase tracking-[0.2em] text-center text-slate-400">
+                                                    {day}
                                                 </div>
-                                                <div className="space-y-1 overflow-hidden">
-                                                    {events.slice(0, 3).map((event: any, idx: number) => (
-                                                        <div key={idx} className={cn(
-                                                            "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md truncate border",
-                                                            event.type === 'holiday' ? "bg-red-50 text-red-600 border-red-100" :
-                                                                event.type === 'leave-approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                                                                    event.type === 'leave-pending' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
-                                                                        event.type === 'on-break' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                                                                            event.type === 'present' ? "bg-green-50 text-green-600 border-green-100" :
-                                                                                "bg-slate-50 text-slate-600 border-slate-100"
-                                                        )}>
-                                                            {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || event.data.user?.name || 'Staff')}
+                                            ))}
+                                        </div>
+                                        <div className="grid grid-cols-7 auto-rows-fr">
+                                            {calendarDays.map((day, i) => {
+                                                const dateStr = format(day, 'yyyy-MM-dd')
+
+                                                // 1. Paid Leaves (Approved) - Exclude SICK, Filter Dept
+                                                const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
+                                                    if (leave.type === 'SICK' || leave.status !== 'APPROVED') return false
+
+                                                    // Dept Filter
+                                                    if (calendarFilterDepartment !== 'all') {
+                                                        const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
+                                                        const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                        if (dept !== calendarFilterDepartment) return false
+                                                    }
+
+                                                    return isWithinInterval(day, {
+                                                        start: parseISO(leave.startDate),
+                                                        end: parseISO(leave.endDate)
+                                                    })
+                                                }).map((l: any) => ({ type: 'leave-approved', data: l }))
+
+                                                // 2. Pending Leaves - Exclude SICK, Filter Dept
+                                                const pendingLeaves = teamApprovedLeaves.filter((leave: any) => {
+                                                    if (leave.type === 'SICK' || leave.status !== 'PENDING') return false
+
+                                                    // Dept Filter
+                                                    if (calendarFilterDepartment !== 'all') {
+                                                        const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
+                                                        const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                        if (dept !== calendarFilterDepartment) return false
+                                                    }
+
+                                                    return isWithinInterval(day, {
+                                                        start: parseISO(leave.startDate),
+                                                        end: parseISO(leave.endDate)
+                                                    })
+                                                }).map((l: any) => ({ type: 'leave-pending', data: l }))
+
+                                                // 3. Attendance (Present/On Break) - Filter Dept
+                                                const attendanceEvents = monthlyAttendance.filter((a: any) => {
+                                                    const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
+                                                    if (attDate !== dateStr) return false
+
+                                                    // Dept Filter
+                                                    if (calendarFilterDepartment !== 'all') {
+                                                        const staff = employees.find((e: any) => e.id === a.userId)
+                                                        const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                        if (dept !== calendarFilterDepartment) return false
+                                                    }
+                                                    return true
+                                                }).reduce((acc: any[], a: any) => {
+                                                    // Deduplicate: Only show one record per user per day (the most recent)
+                                                    const existing = acc.find(item => item.data.userId === a.userId)
+                                                    if (!existing) {
+                                                        const isBreak = (a.status === 'on-break' || (a.breaks?.some((b: any) => !b.endTime)))
+                                                        acc.push({ type: isBreak ? 'on-break' : 'present', data: a })
+                                                    }
+                                                    return acc
+                                                }, [])
+
+                                                const events: any[] = [...approvedLeaves, ...pendingLeaves, ...attendanceEvents]
+
+                                                // Holidays
+                                                if (NSW_HOLIDAYS_2026[dateStr]) {
+                                                    events.unshift({ type: 'holiday', name: NSW_HOLIDAYS_2026[dateStr], data: null })
+                                                }
+
+                                                const isCurrentMonth = isSameMonth(day, currentMonth)
+                                                const isTodayDay = isToday(day)
+
+                                                return (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => setSelectedDayDetail(day)}
+                                                        className={cn(
+                                                            "min-h-[100px] p-2 border-r border-b border-border transition-colors hover:bg-slate-50 cursor-pointer relative",
+                                                            !isCurrentMonth && "bg-slate-50/30 opacity-40"
+                                                        )}
+                                                    >
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <span className={cn(
+                                                                "text-xs font-bold",
+                                                                isTodayDay ? "bg-[#8B2323] text-white w-6 h-6 rounded-full flex items-center justify-center shadow-md scale-110" : "text-slate-500",
+                                                                !isCurrentMonth && "text-slate-300"
+                                                            )}>
+                                                                {format(day, 'd')}
+                                                            </span>
                                                         </div>
-                                                    ))}
-                                                    {events.length > 3 && (
-                                                        <p className="text-[8px] font-bold text-slate-400 pl-1">+{events.length - 3} more...</p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
+                                                        <div className="space-y-1 overflow-hidden">
+                                                            {events.slice(0, 3).map((event: any, idx: number) => (
+                                                                <div key={idx} className={cn(
+                                                                    "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md truncate border",
+                                                                    event.type === 'holiday' ? "bg-red-50 text-red-600 border-red-100" :
+                                                                        event.type === 'leave-approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
+                                                                            event.type === 'leave-pending' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
+                                                                                event.type === 'on-break' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                                                                    event.type === 'present' ? "bg-green-50 text-green-600 border-green-100" :
+                                                                                        "bg-slate-50 text-slate-600 border-slate-100"
+                                                                )}>
+                                                                    {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || event.data.user?.name || 'Staff')}
+                                                                </div>
+                                                            ))}
+                                                            {events.length > 3 && (
+                                                                <p className="text-[8px] font-bold text-slate-400 pl-1">+{events.length - 3} more...</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </>
+                                )}
                             </CardContent>
                         </Card>
 

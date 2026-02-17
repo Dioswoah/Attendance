@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Calendar, Clock, LogIn, LogOut, Coffee, FileText, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { getBrowserTimezone } from "@/lib/timezone"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface ActivityLog {
     id: string
@@ -170,13 +171,8 @@ export default function ActivityLogsPage() {
         {} as Record<string, ActivityLog[]>
     )
 
-    if (status === "loading" || isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="h-8 w-8 animate-spin text-red-600" />
-            </div>
-        )
-    }
+    // Loading check removed to allow Skeleton UI rendering
+    // if (status === "loading" || isLoading) { ... } removed
 
     return (
         <div className="space-y-8 w-full">
@@ -236,44 +232,69 @@ export default function ActivityLogsPage() {
 
             {/* Logs Timeline */}
             <div id="tour-activity-list" className="space-y-8">
-                {Object.entries(groupedLogs).map(([date, logs]) => (
-                    <div key={date} className="space-y-4">
+                {isLoading ? (
+                    <div className="space-y-4">
                         <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-primary" />
-                            <h3 className="text-sm font-semibold text-foreground">
-                                {format(new Date(date), "EEEE, MMMM d, yyyy")}
-                            </h3>
+                            <Skeleton className="h-5 w-5 rounded-full" />
+                            <Skeleton className="h-5 w-48" />
                         </div>
                         <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                             <CardContent className="p-0">
-                                <div className="max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
-                                    <div className="divide-y divide-border/50">
-                                        {logs.map((log) => (
-                                            <div key={log.id} className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
-                                                <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground">
-                                                    {getTypeIcon(log.type)}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-3 flex-wrap mb-1">
-                                                        <span className="text-sm font-medium text-foreground">{log.details}</span>
-                                                        {getTypeBadge(log.type)}
-                                                    </div>
-                                                    {log.employeeName && (
-                                                        <p className="text-xs text-muted-foreground">{log.employeeName}</p>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                                                    <Clock className="w-3.5 h-3.5" />
-                                                    {log.time}
-                                                </div>
+                                <div className="p-4 space-y-6">
+                                    {Array.from({ length: 5 }).map((_, i) => (
+                                        <div key={i} className="flex items-center gap-4">
+                                            <Skeleton className="h-10 w-10 rounded-full flex-shrink-0" />
+                                            <div className="space-y-2 flex-1">
+                                                <Skeleton className="h-4 w-1/3" />
+                                                <Skeleton className="h-3 w-1/4" />
                                             </div>
-                                        ))}
-                                    </div>
+                                            <Skeleton className="h-4 w-16" />
+                                        </div>
+                                    ))}
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
-                ))}
+                ) : (
+                    Object.entries(groupedLogs).map(([date, logs]) => (
+                        <div key={date} className="space-y-4">
+                            <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-primary" />
+                                <h3 className="text-sm font-semibold text-foreground">
+                                    {format(new Date(date), "EEEE, MMMM d, yyyy")}
+                                </h3>
+                            </div>
+                            <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                                <CardContent className="p-0">
+                                    <div className="max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                                        <div className="divide-y divide-border/50">
+                                            {logs.map((log) => (
+                                                <div key={log.id} className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
+                                                    <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground">
+                                                        {getTypeIcon(log.type)}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-3 flex-wrap mb-1">
+                                                            <span className="text-sm font-medium text-foreground">{log.details}</span>
+                                                            {getTypeBadge(log.type)}
+                                                        </div>
+                                                        {log.employeeName && (
+                                                            <p className="text-xs text-muted-foreground">{log.employeeName}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                                                        <Clock className="w-3.5 h-3.5" />
+                                                        {log.time}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    ))
+                )}
 
                 {Object.keys(groupedLogs).length === 0 && (
                     <Card className="border border-border shadow-sm rounded-xl bg-white">

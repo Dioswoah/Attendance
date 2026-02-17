@@ -15,6 +15,7 @@ import { Plus, Calendar, Clock, FileText, X, Loader2, Pencil, Trash2, Archive, A
 import { format, isSameDay, subDays } from "date-fns"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type LeaveStatus = "PENDING" | "APPROVED" | "DECLINED"
 type DurationType = "Full Day" | "Half Day" | "Part Day"
@@ -276,13 +277,8 @@ export default function LeaveRequestsPage() {
         setReason("")
     }
 
-    if (status === "loading" || isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="h-8 w-8 animate-spin text-red-600" />
-            </div>
-        )
-    }
+    // Loading check removed to allow Skeleton UI rendering
+    // if (status === "loading" || isLoading) { ... } removed
 
     if (status === "unauthenticated") {
         return (
@@ -521,11 +517,20 @@ export default function LeaveRequestsPage() {
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
-                            <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center">
-                                    <div className="flex justify-center"><Loader2 className="animate-spin text-red-600" /></div>
-                                </TableCell>
-                            </TableRow>
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                    <TableCell>
+                                        <div className="space-y-2">
+                                            <Skeleton className="h-5 w-40" />
+                                            <Skeleton className="h-3 w-32" />
+                                        </div>
+                                    </TableCell>
+                                    <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
+                                    <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                                    <TableCell className="text-right"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
+                                </TableRow>
+                            ))
                         ) : filteredRequests.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">

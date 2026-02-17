@@ -15,6 +15,7 @@ import { Plus, Clock, FileText, Loader2, Calendar, UserMinus, Pencil, Trash2, Ar
 import { format, subDays, isSameDay, parseISO, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type RequestStatus = "PENDING" | "APPROVED" | "DECLINED"
 
@@ -489,11 +490,16 @@ export default function AmendRecordsPage() {
                         </TableHeader>
                         <TableBody>
                             {isLoadingRecords ? (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center">
-                                        <div className="flex justify-center"><Loader2 className="animate-spin text-red-600" /></div>
-                                    </TableCell>
-                                </TableRow>
+                                Array.from({ length: 5 }).map((_, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                                        <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
+                                        <TableCell className="text-center"><Skeleton className="h-4 w-12 mx-auto" /></TableCell>
+                                        <TableCell className="text-center"><Skeleton className="h-10 w-24 mx-auto" /></TableCell>
+                                        <TableCell className="text-right"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
+                                    </TableRow>
+                                ))
                             ) : (() => {
                                 const allDays = eachDayOfInterval({
                                     start: startOfDay(parseISO(dateFilter.start)),
@@ -711,11 +717,19 @@ export default function AmendRecordsPage() {
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
-                            <TableRow>
-                                <TableCell colSpan={4} className="h-24 text-center">
-                                    <div className="flex justify-center"><Loader2 className="animate-spin text-red-600" /></div>
-                                </TableCell>
-                            </TableRow>
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                    <TableCell>
+                                        <div className="space-y-2">
+                                            <Skeleton className="h-5 w-40" />
+                                            <Skeleton className="h-3 w-32" />
+                                        </div>
+                                    </TableCell>
+                                    <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                                    <TableCell className="text-right"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
+                                </TableRow>
+                            ))
                         ) : filteredRequests.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
