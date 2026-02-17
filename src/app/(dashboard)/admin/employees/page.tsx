@@ -600,7 +600,7 @@ export default function EmployeesPage() {
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Work Hours</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Location</TableHead>
-                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Email</TableHead>
+
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Roles</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Assigned Manager</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Actions</TableHead>
@@ -641,6 +641,10 @@ export default function EmployeesPage() {
                                                         </span>
                                                     )}
                                                 </span>
+                                                <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                    <Mail className="h-3 w-3 opacity-70" />
+                                                    {emp.email}
+                                                </span>
                                             </div>
                                         </div>
                                     </TableCell>
@@ -662,12 +666,7 @@ export default function EmployeesPage() {
                                             {emp.location || 'N/A'}
                                         </div>
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Mail className="h-3.5 w-3.5" />
-                                            {emp.email}
-                                        </div>
-                                    </TableCell>
+
                                     <TableCell className="py-4 px-6">
                                         <div className="flex flex-wrap gap-1">
                                             {(emp.roles || [emp.role]).map((role: string) => (

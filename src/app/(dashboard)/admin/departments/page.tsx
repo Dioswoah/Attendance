@@ -98,6 +98,7 @@ export default function DepartmentsPage() {
     const handleDeleteDept = (id: string) => {
         toast("Delete Department?", {
             description: "Are you sure you want to delete this department? Employees will be unassigned.",
+            duration: Infinity,
             action: {
                 label: "Delete",
                 onClick: () => performDeleteDept(id)
@@ -131,6 +132,7 @@ export default function DepartmentsPage() {
     const handleUnassignStaff = (empId: string) => {
         toast("Unassign Staff?", {
             description: "Are you sure you want to remove this staff from the department?",
+            duration: Infinity,
             action: {
                 label: "Unassign",
                 onClick: () => performUnassignStaff(empId)
