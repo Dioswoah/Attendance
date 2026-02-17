@@ -373,7 +373,7 @@ export default function AdminDashboard() {
                                                             'Clocked Out'}
                                             </Badge>
                                             <p className="text-xs text-muted-foreground font-mono">
-                                                {log.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                {log.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone, timeZoneName: 'short' })}
                                             </p>
                                         </div>
                                     </div>
