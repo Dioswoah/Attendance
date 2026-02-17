@@ -456,6 +456,97 @@ Content-Type: text/html; charset=utf-8
   }
 }
 
+interface BreakExpectedReturnEmailProps {
+  userName: string;
+  userEmail: string;
+  userAccessToken: string;
+  expectedReturnTime: string;
+  actionLink: string;
+  refreshToken?: string;
+}
+
+export async function sendBreakExpectedReturnEmail({
+  userName,
+  userEmail,
+  userAccessToken,
+  expectedReturnTime,
+  actionLink,
+  refreshToken
+}: BreakExpectedReturnEmailProps): Promise<boolean> {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.AUTH_GOOGLE_ID,
+      process.env.AUTH_GOOGLE_SECRET
+    );
+    oauth2Client.setCredentials({
+      access_token: userAccessToken,
+      refresh_token: refreshToken
+    });
+
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh token", e);
+      }
+    }
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const subject = "Friendly Reminder: Are you still on break? ☕";
+    const headerColor = '#FBBF24'; // Amber/Yellow
+
+    const emailContent = `From: "Attendance System" <${userEmail}>
+To: ${userEmail}
+Subject: ${subject}
+Content-Type: text/html; charset=utf-8
+
+<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
+  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 12px;">☕</div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Status Check</h2>
+  </div>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
+    
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+      Just a friendly check-in! Your break's expected return time was <strong>${expectedReturnTime}</strong>.
+    </p>
+    
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
+      If you're already back at your desk and ready to resume work, you can easily end your break using the button below.
+    </p>
+
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(251, 191, 36, 0.4);">
+        End Break Now
+      </a>
+    </div>
+
+    <p style="font-size: 14px; color: #6b7280; text-align: center;">
+      If you need more time, no problem! We just wanted to help you stay on track.
+    </p>
+  </div>
+</div>`;
+
+    const encodedMessage = Buffer.from(emailContent)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: encodedMessage },
+    });
+    console.log(`[Email Service] Sent break return reminder email to ${userEmail}`);
+    return true;
+  } catch (error) {
+    console.error("[Email Service] FAILED to send break return reminder email:", error);
+    return false;
+  }
+}
+
 interface ForgottenClockOutEmailProps {
   userName: string;
   userEmail: string;

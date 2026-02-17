@@ -181,6 +181,7 @@ model Break {
   startTime    DateTime
   endTime      DateTime?
   expectedReturnTime DateTime?
+  breakExpectedReturnEmailSent Boolean @default(false)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?

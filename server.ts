@@ -47,7 +47,7 @@ app.prepare().then(() => {
         try {
             // Dynamic import to avoid build-time issues
             const { prisma } = await import("./src/lib/prisma");
-            const { sendBreakLimitEmail, sendLateArrivalEmail, sendOverdueDepartureEmail } = await import("./src/lib/email");
+            const { sendBreakLimitEmail, sendLateArrivalEmail, sendOverdueDepartureEmail, sendBreakExpectedReturnEmail } = await import("./src/lib/email");
             const { generateMagicLink } = await import("./src/lib/magic-link");
 
             const startOfDay = new Date();
@@ -146,6 +146,40 @@ app.prepare().then(() => {
                                 data: { breakWarningSent: true }
                             });
                             console.log(`[Break Check] Sent Warning Email to ${att.user.email}`);
+                        }
+                    }
+                }
+
+                // ============================================================
+                // 1b. Expected Return Time Check (Friendly Reminder)
+                // ============================================================
+                if (hasActiveBreak) {
+                    const activeBreak = att.breaks.find(b => !b.endTime && !b.deletedAt);
+                    if (activeBreak && activeBreak.expectedReturnTime && !activeBreak.breakExpectedReturnEmailSent) {
+                        const now = new Date();
+                        const expected = new Date(activeBreak.expectedReturnTime);
+
+                        // If past expected return time (with a 2-minute grace period to avoid being too aggressive)
+                        if (now.getTime() > expected.getTime() + (2 * 60000)) {
+                            if (accessToken) {
+                                const actionLink = generateMagicLink(att.userId, 'end-break');
+                                const sent = await sendBreakExpectedReturnEmail({
+                                    userName: att.user.name || "Employee",
+                                    userEmail: att.user.email,
+                                    userAccessToken: accessToken,
+                                    expectedReturnTime: expected.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                                    actionLink,
+                                    refreshToken
+                                });
+
+                                if (sent) {
+                                    await prisma.break.update({
+                                        where: { id: activeBreak.id },
+                                        data: { breakExpectedReturnEmailSent: true }
+                                    });
+                                    console.log(`[Break Check] Sent Expected Return Reminder to ${att.user.email}`);
+                                }
+                            }
                         }
                     }
                 }
