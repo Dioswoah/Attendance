@@ -98,7 +98,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                                 title: "Leave Approved",
                                 message: `Manager ${session.user.name} has approved a leave request for ${updatedRequest.user.name} (${updatedRequest.type}).`,
                                 accessToken: session.accessToken,
-                                link: `${process.env.NEXTAUTH_URL}/admin/leaves`
+                                link: `https://attendance-app-712513641417.us-central1.run.app/admin/leaves`
                             });
                         }
                     }

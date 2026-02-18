@@ -58,7 +58,7 @@ export async function POST(req: Request) {
 
         // 3. Send email for both Warning and Exceeded types (with check)
         if (session.accessToken) {
-            const actionLink = `${process.env.NEXTAUTH_URL}/user?action=endBreak`;
+            const actionLink = `https://attendance-app-712513641417.us-central1.run.app/user?action=endBreak`;
             await sendBreakLimitEmail({
                 userName: userName || "Employee",
                 userEmail: userEmail,

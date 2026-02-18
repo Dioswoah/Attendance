@@ -180,7 +180,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         title: "Record Updated",
                         message: `Your attendance record for ${attendance.date.toLocaleDateString()} has been modified by ${session.user.name || "an administrator"}.`,
                         accessToken: session.accessToken,
-                        link: `${process.env.NEXTAUTH_URL}/user`
+                        link: `https://attendance-app-712513641417.us-central1.run.app/user`
                     });
                 }
 
@@ -280,7 +280,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
                         title: "Record Deleted",
                         message: `Your attendance record for ${existing.date.toLocaleDateString()} has been deleted by ${session.user.name || "an administrator"}.`,
                         accessToken: session.accessToken,
-                        link: `${process.env.NEXTAUTH_URL}/user`
+                        link: `https://attendance-app-712513641417.us-central1.run.app/user`
                     });
                 }
 

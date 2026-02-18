@@ -66,7 +66,7 @@ Content-Type: text/html; charset=utf-8
     </div>
 
     <p>This is a reminder that there is a pending approval for this request.</p>
-    <p>Please log in to the <a href="${process.env.NEXTAUTH_URL}" style="color: #d32f2f; text-decoration: none; font-weight: bold;">User Portal</a> to review and take action.</p>
+    <p>Please log in to the <a href="https://attendance-app-712513641417.us-central1.run.app" style="color: #d32f2f; text-decoration: none; font-weight: bold;">User Portal</a> to review and take action.</p>
   </div>
   <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
     <p style="margin: 0;">This is an automated message. Please do not reply directly to this email unless you intend to contact the employee.</p>
@@ -160,7 +160,7 @@ Content-Type: text/html; charset=utf-8
       ${status === 'DECLINED' && declineReason ? `<p style="margin: 8px 0; color: #4a5568;"><strong>Note from Manager:</strong> ${declineReason}</p>` : ''}
     </div>
 
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Please check the <a href="${process.env.NEXTAUTH_URL}" style="color: ${color}; text-decoration: none; font-weight: bold;">User Portal</a> for full details.</p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Please check the <a href="https://attendance-app-712513641417.us-central1.run.app" style="color: ${color}; text-decoration: none; font-weight: bold;">User Portal</a> for full details.</p>
   </div>
 </div>`;
 
@@ -242,7 +242,7 @@ Content-Type: text/html; charset=utf-8
       ${action === 'UPDATED' ? '<p style="margin: 5px 0; font-style: italic;">The request details have been modified.</p>' : ''}
     </div>
 
-    <p>Please log in to the <a href="${process.env.NEXTAUTH_URL}" style="color: ${color}; text-decoration: none; font-weight: bold;">Admin Portal</a> to review.</p>
+    <p>Please log in to the <a href="https://attendance-app-712513641417.us-central1.run.app" style="color: ${color}; text-decoration: none; font-weight: bold;">Admin Portal</a> to review.</p>
   </div>
   <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
     <p style="margin: 0;">This is an automated message.</p>
@@ -335,7 +335,7 @@ Content-Type: text/html; charset=utf-8
     </p>
 
     <div style="text-align: center;">
-      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: ${themeColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
+      <a href="https://attendance-app-712513641417.us-central1.run.app" style="display: inline-block; background-color: ${themeColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -401,7 +401,7 @@ export async function sendBreakLimitEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = "Quick Check-in: Break Status ☕";
+    const subject = "Quick Check-in: Break Status";
     // Soft, friendly colors
     const headerColor = '#60A5FA'; // Soft Blue
 
@@ -493,7 +493,7 @@ export async function sendBreakExpectedReturnEmail({
     }
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const subject = "Friendly Reminder: Are you still on break? ☕";
+    const subject = "Friendly Reminder: Are you still on break?";
     const headerColor = '#FBBF24'; // Amber/Yellow
 
     const emailContent = `From: "Attendance System" <${userEmail}>
@@ -600,7 +600,7 @@ Content-Type: text/html; charset=utf-8
     </p>
 
     <div style="text-align: center;">
-      <a href="${process.env.NEXTAUTH_URL}" style="display: inline-block; background-color: #64748b; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Attendance Records</a>
+      <a href="https://attendance-app-712513641417.us-central1.run.app" style="display: inline-block; background-color: #64748b; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Attendance Records</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -682,7 +682,7 @@ export async function sendLateArrivalEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = "Check In: Start Your Shift? ⏰";
+    const subject = "Check In: Start Your Shift?";
     const headerColor = '#F59E0B'; // Amber
 
     const emailContent = `From: "Attendance System" <${userEmail}>
@@ -771,7 +771,7 @@ export async function sendOverdueDepartureEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = "Check Out Reminder: Shift Ended? 🌙";
+    const subject = "Check Out Reminder: Shift Ended?";
     const headerColor = '#6366F1'; // Indigo
 
     const emailContent = `From: "Attendance System" <${userEmail}>
