@@ -1871,7 +1871,7 @@ export default function UserPortal() {
                                 </Dialog>
 
                                 {/* Main Action Area */}
-                                <div className="flex-1 flex flex-col justify-center gap-6 relative z-10 my-4">
+                                <div id="tour-time-tracker" className="flex-1 flex flex-col justify-center gap-6 relative z-10 my-4">
                                     {/* Status Visualization */}
                                     <div className="text-center space-y-2">
                                         {optimisticStatus === 'clocked-out' && (
@@ -1927,7 +1927,7 @@ export default function UserPortal() {
                                     </div>
 
                                     {/* Controls */}
-                                    <div className="flex flex-wrap justify-center gap-3 max-w-lg mx-auto w-full">
+                                    <div id="tour-action-buttons" className="flex flex-wrap justify-center gap-3 max-w-lg mx-auto w-full">
                                         {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
                                             <div className="flex w-full sm:w-auto items-center shadow-2xl shadow-green-900/20 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 bg-gradient-to-b from-[#009B5A] to-[#00874e] group p-1">
                                                 <Button onClick={handleClockInClick} disabled={isProcessing} className="flex-1 gap-3 bg-transparent hover:bg-transparent text-white h-14 px-8 text-base font-bold border-r border-green-600/30 rounded-r-none focus:ring-0 uppercase tracking-widest">
@@ -1983,7 +1983,7 @@ export default function UserPortal() {
                                 {/* Footer Stats Grid */}
                                 <div className="grid grid-cols-3 gap-4 mt-auto pt-6 border-t border-slate-100">
                                     {/* Hours Worked Stats */}
-                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
+                                    <div id="tour-stats-worked" className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
                                         <div className="p-1.5 rounded-lg bg-green-100 text-green-600 mb-2">
                                             <TrendingUp className="w-3.5 h-3.5" />
                                         </div>
@@ -1992,7 +1992,7 @@ export default function UserPortal() {
                                     </div>
 
                                     {/* Break Time Stats */}
-                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
+                                    <div id="tour-stats-break" className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
                                         <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 mb-2">
                                             <Coffee className="w-3.5 h-3.5" />
                                         </div>
@@ -2001,7 +2001,7 @@ export default function UserPortal() {
                                     </div>
 
                                     {/* Pending Requests Stats */}
-                                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
+                                    <div id="tour-stats-pending" className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
                                         <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600 mb-2">
                                             <FileText className="w-3.5 h-3.5" />
                                         </div>
@@ -2019,7 +2019,7 @@ export default function UserPortal() {
                     </div>
 
                     {/* Right Panel: Activity Feed */}
-                    <div className="w-full xl:w-[42%] bg-slate-50/50 flex flex-col min-h-[500px] xl:min-h-0 xl:absolute xl:top-0 xl:right-0 xl:bottom-0 border-l border-slate-100">
+                    <div id="tour-activity-feed" className="w-full xl:w-[42%] bg-slate-50/50 flex flex-col min-h-[500px] xl:min-h-0 xl:absolute xl:top-0 xl:right-0 xl:bottom-0 border-l border-slate-100">
                         <div className="p-6 border-b border-slate-200/50 bg-white/50 backdrop-blur-sm flex items-center justify-between sticky top-0 z-10">
                             <div>
                                 <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Today's Activity</h3>
@@ -2141,7 +2141,7 @@ export default function UserPortal() {
                                     </div>
                                 </div>
 
-                                <TabsList className="bg-slate-100 p-1 rounded-xl h-9 self-start sm:self-center">
+                                <TabsList id="tour-staff-status" className="bg-slate-100 p-1 rounded-xl h-9 self-start sm:self-center">
                                     <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
                                         Staff Overview
                                     </TabsTrigger>

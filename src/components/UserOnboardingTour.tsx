@@ -20,14 +20,14 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
     // Define steps for each route
     const tourConfig: Record<string, { title: string, description: string, steps: any[] }> = {
         '/user': {
-            title: "Dashboard Overview",
-            description: "Your personal attendance command center",
+            title: "Daily Command Center",
+            description: "Your unified workspace for attendance and team tracking",
             steps: [
                 {
                     element: '#tour-header',
                     popover: {
-                        title: 'Dashboard Overview',
-                        description: 'Your personal command center. View your daily greeting, today\'s date, and your current work status at a glance.',
+                        title: 'Daily Command Center',
+                        description: 'Welcome to your new unified dashboard! View your greeting, date, and live status at a glance.',
                         side: "bottom", align: 'start'
                     }
                 },
@@ -35,64 +35,64 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
                     element: '#tour-status-badge',
                     popover: {
                         title: 'Live Status Indicator',
-                        description: 'Always know your state. This badge updates in real-time to show if you are Clocked In, On Break, or Offline.',
+                        description: 'Always know your current state. This badge remains in sync with your clocking actions in real-time.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-time-tracker',
                     popover: {
-                        title: 'Smart Time Tracker',
-                        description: 'The core of your attendance. Use the large buttons here to Clock In, Switch to Break, or Clock Out for the day.',
+                        title: 'Precision Time Tracker',
+                        description: 'The heart of your dashboard. Track your session time, view your schedule, and monitor your current status visualization.',
                         side: "right", align: 'start'
                     }
                 },
                 {
                     element: '#tour-action-buttons',
                     popover: {
-                        title: 'Action Controls',
-                        description: 'Interactive buttons appear here based on your status.',
+                        title: 'Interactive Controls',
+                        description: 'One-click actions to Clock In, Start Break, or Clock Out. Use the dropdown on Clock In to request manual time adjustments.',
                         side: "top", align: 'center'
                     }
                 },
                 {
                     element: '#tour-stats-worked',
                     popover: {
-                        title: 'Performance Metrics',
-                        description: 'This card sums up your total productive hours for the current session.',
+                        title: 'Worked Time',
+                        description: 'Your total logged work hours for the current day, calculated to the minute.',
                         side: "top"
                     }
                 },
                 {
                     element: '#tour-stats-break',
                     popover: {
-                        title: 'Break Monitor',
-                        description: 'Keeps track of your break usage to help you stay within the 1-hour daily limit.',
+                        title: 'Break Usage',
+                        description: 'Monitor your total break time here. Remember to keep it within the 1-hour daily limit!',
                         side: "top"
                     }
                 },
                 {
                     element: '#tour-stats-pending',
                     popover: {
-                        title: 'Request Tracker',
-                        description: 'Status updates on your Leave or Attendance Amendment requests appear here instantly.',
+                        title: 'Task Queue',
+                        description: 'Quickly see how many of your Leave or Attendance requests are currently awaiting manager approval.',
                         side: "top"
-                    }
-                },
-                {
-                    element: '#tour-staff-status',
-                    popover: {
-                        title: 'Team Pulse',
-                        description: 'See which of your colleagues are online, on break, or out of office in real-time.',
-                        side: "left", align: 'start'
                     }
                 },
                 {
                     element: '#tour-activity-feed',
                     popover: {
-                        title: 'Daily Timeline',
-                        description: 'A chronological log of all your actions today.',
+                        title: 'Session Timeline',
+                        description: 'A beautiful chronological feed of everything you\'ve done today, including locations and timestamps.',
                         side: "left", align: 'start'
+                    }
+                },
+                {
+                    element: '#tour-staff-status',
+                    popover: {
+                        title: 'Team Intelligence',
+                        description: 'Switch between Staff Overview and the Leave Calendar to stay informed about your colleagues\' availability.',
+                        side: "top", align: 'start'
                     }
                 }
             ]
@@ -104,100 +104,100 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
                 {
                     element: '#tour-leaves-header',
                     popover: {
-                        title: 'Leave Requests',
-                        description: 'Manage all your leave applications from this dedicated dashboard.',
+                        title: 'Leave Portal',
+                        description: 'Everything related to your time off is managed right here.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-leaves-request-btn',
                     popover: {
-                        title: 'New Request',
-                        description: 'Click here to open the form and submit a new leave application.',
+                        title: 'Request Leave',
+                        description: 'Start a new application for Sick Leave, VL, or other categories.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-leaves-filter',
                     popover: {
-                        title: 'Filters',
-                        description: 'Use these controls to view Past (Archived), Pending, Approved, or Declined requests.',
+                        title: 'Smart Filters',
+                        description: 'Toggle between Active and Archived requests to keep your workspace clean.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-leaves-grid',
                     popover: {
-                        title: 'Request History',
-                        description: 'Your requests appear here as cards. You can edit pending requests or view details of past ones.',
+                        title: 'Application History',
+                        description: 'Detailed cards for every request. You can edit pending ones or see reasons for declines.',
                         side: "top", align: 'center'
                     }
                 }
             ]
         },
         '/user/amend-records': {
-            title: "Amend Records",
-            description: "Correct your attendance logs",
+            title: "Record Amendments",
+            description: "Correct your attendance logs with precision",
             steps: [
                 {
                     element: '#tour-amend-header',
                     popover: {
                         title: 'Amend Records',
-                        description: 'Need to fix a mistake? Use this page to request corrections for missed clock-ins or wrong times.',
+                        description: 'Fixing mistakes is easy. Request corrections for missed logs or incorrect timestamps here.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-amend-new-btn',
                     popover: {
-                        title: 'Submit Correction',
-                        description: 'Start a new correction request for clock-in/out or break times.',
+                        title: 'Smart Amending',
+                        description: 'Click "Amend" on any record row to open our new precision correction tool.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-amend-log',
                     popover: {
-                        title: 'Request Log',
-                        description: 'Keep track of all your amendment requests and their approval status.',
+                        title: 'Amendment Status',
+                        description: 'Track the progress of your correction requests. Approved changes update your logs instantly.',
                         side: "top", align: 'start'
                     }
                 },
                 {
                     element: '#tour-amend-grid',
                     popover: {
-                        title: 'History',
-                        description: 'Your recent correction requests are listed here.',
+                        title: 'Historical Log',
+                        description: 'A dedicated audit trail of all your submitted adjustments.',
                         side: "top", align: 'center'
                     }
                 }
             ]
         },
         '/user/activity': {
-            title: "Activity Logs",
-            description: "Your comprehensive history",
+            title: "Detailed Activity",
+            description: "Your full attendance audit trail",
             steps: [
                 {
                     element: '#tour-activity-header',
                     popover: {
-                        title: 'Activity Logs',
-                        description: 'A complete audit trail of your attendance and activity timestamps.',
+                        title: 'Full Audit Log',
+                        description: 'View every single timestamp across your entire employment history.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-activity-filters',
                     popover: {
-                        title: 'Search & Filter',
-                        description: 'Find exactly what you need by searching text, filtering by type (Attendance/Leave), or selecting a date range.',
+                        title: 'Deep Search',
+                        description: 'Filter by date range, specific events, or keywords to find past records.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-activity-list',
                     popover: {
-                        title: 'Timeline',
-                        description: 'A detailed chronological list of all your recorded activities.',
+                        title: 'Master Timeline',
+                        description: 'The definitive record of your attendance history.',
                         side: "top", align: 'center'
                     }
                 }
@@ -205,45 +205,61 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
         },
         '/user/manager': {
             title: "Manager Control",
-            description: "Oversee your team's performance",
+            description: "Command center for team leadership",
             steps: [
                 {
                     element: '#tour-manager-header',
                     popover: {
-                        title: 'Manager Dashboard',
-                        description: 'Your central hub for managing team requests and availability.',
+                        title: 'Management Suite',
+                        description: 'Your central hub for overseeing team performance and requests.',
                         side: "bottom", align: 'start'
                     }
                 },
                 {
                     element: '#tour-manager-tab-requests',
                     popover: {
-                        title: 'Pending Approvals',
-                        description: 'Review and action pending leave and attendance amendment requests here.',
+                        title: 'Approval Center',
+                        description: 'Process pending team requests with bulk-action support.',
                         side: "bottom", align: 'center'
                     }
                 },
                 {
                     element: '#tour-manager-tab-history',
                     popover: {
-                        title: 'History',
-                        description: 'View a log of your past approvals and denials.',
+                        title: 'Approval History',
+                        description: 'Review your past management decisions and audit trails.',
                         side: "bottom", align: 'center'
                     }
                 },
                 {
                     element: '#tour-manager-tab-calendar',
                     popover: {
-                        title: 'Team Calendar',
-                        description: 'Check who is working, on leave, or off-duty for the entire month.',
+                        title: 'Strategic Calendar',
+                        description: 'Visualize team availability across the month for better planning.',
+                        side: "bottom", align: 'center'
+                    }
+                },
+                {
+                    element: '#tour-manager-tab-performance',
+                    popover: {
+                        title: 'Performance Analytics',
+                        description: 'Track punctuality, variance, and work-hour trends for your team.',
+                        side: "bottom", align: 'center'
+                    }
+                },
+                {
+                    element: '#tour-manager-tab-reports',
+                    popover: {
+                        title: 'Exports & Reports',
+                        description: 'Generate and download professional Excel reports for payroll or review.',
                         side: "bottom", align: 'center'
                     }
                 },
                 {
                     element: '#tour-manager-pending',
                     popover: {
-                        title: 'Action Queue',
-                        description: 'Items requiring your immediate attention will be listed here.',
+                        title: 'Urgent Actions',
+                        description: 'A summary of items requiring your immediate attention is grouped here.',
                         side: "top", align: 'center'
                     }
                 }

@@ -765,6 +765,7 @@ export default function AmendRecordsPage() {
                                             </TableCell>
                                             <TableCell className="text-right align-middle border-l border-border/50 bg-muted/5">
                                                 <Button
+                                                    id={isSameDay(day, new Date()) ? "tour-amend-new-btn" : undefined}
                                                     variant="ghost"
                                                     size="sm"
                                                     className="text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-[10px] uppercase tracking-widest h-7 px-2"
