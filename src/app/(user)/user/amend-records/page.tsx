@@ -152,7 +152,11 @@ export default function AmendRecordsPage() {
 
         // Find record for selected date
         // Find all records for selected date
-        const dayRecords = attendanceHistory.filter(a => a.date === selectedDateOption)
+        // Try actualRecords first (matches table view), fallback to history
+        let dayRecords = actualRecords.filter(a => a.date === selectedDateOption)
+        if (dayRecords.length === 0) {
+            dayRecords = attendanceHistory.filter(a => a.date === selectedDateOption)
+        }
 
         if (dayRecords.length === 0) {
             setReferenceTime("No record found for this date")
@@ -421,7 +425,12 @@ export default function AmendRecordsPage() {
                                 <Label className="text-xs font-bold text-foreground">Select Entry to Amend</Label>
                                 <div className="grid grid-cols-1 gap-2">
                                     {(() => {
-                                        const dayRecords = attendanceHistory.filter(a => a.date === selectedDateOption)
+                                        // Try actualRecords first, fallback to history
+                                        let dayRecords = actualRecords.filter(a => a.date === selectedDateOption)
+                                        if (dayRecords.length === 0) {
+                                            dayRecords = attendanceHistory.filter(a => a.date === selectedDateOption)
+                                        }
+
                                         let entries: any[] = []
 
                                         if (recordType === 'CLOCK_IN') {
