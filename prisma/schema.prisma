@@ -44,6 +44,9 @@ model User {
   manager             User?               @relation("UserManager", fields: [managerId], references: [id])
   managedUsers        User[]              @relation("UserManager")
   team                Team?               @relation(fields: [teamId], references: [id])
+  @@index([departmentId])
+  @@index([teamId])
+  @@index([managerId])
 }
 
 model Account {
@@ -96,6 +99,7 @@ model Department {
   manager        User?     @relation("DepartmentManager", fields: [managerId], references: [id])
   teams          Team[]
   users          User[]
+  @@index([managerId])
 }
 
 model Team {
@@ -109,6 +113,8 @@ model Team {
   department   Department @relation(fields: [departmentId], references: [id])
   leader       User?      @relation("TeamLeader", fields: [leaderId], references: [id])
   users        User[]
+  @@index([departmentId])
+  @@index([leaderId])
 }
 
 model Attendance {
@@ -154,6 +160,8 @@ model Leave {
   deletedAt     DateTime?
   isArchived    Boolean   @default(false)
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, startDate, endDate])
+  @@index([status])
 }
 
 model LeaveRequest {
@@ -173,6 +181,8 @@ model LeaveRequest {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, status])
+  @@index([startTime, endTime])
 }
 
 model Break {
@@ -224,6 +234,8 @@ model AttendanceRequest {
   isArchived    Boolean   @default(false)
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetId      String?
+  @@index([userId, status])
+  @@index([date])
 }
 
 model ChatSession {

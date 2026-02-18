@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useSession, signIn, signOut } from "next-auth/react"
+import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -115,21 +116,33 @@ export default function UserPortal() {
     const isFirstTimezoneSync = useRef(true)
 
     // --- CONSOLIDATED QUICK LOAD ---
-    const fetchDashboardData = async () => {
-        if (status !== 'authenticated' || !session?.user?.id) return
+    // --- CONSOLIDATED QUICK LOAD (SWR) ---
+    // Fetcher function for SWR
+    const fetcher = (url: string) => fetch(url).then(async res => {
+        if (!res.ok) throw new Error("Failed to load dashboard")
+        return res.json()
+    })
 
-        // Show loading only on first run
-        if (!userProfile) setIsLoading(true)
+    const { data: dashboardData, error: dashboardError, mutate: mutateDashboard } = useSWR(
+        status === 'authenticated' && session?.user?.id ? '/api/user/dashboard' : null,
+        fetcher,
+        {
+            revalidateOnFocus: true, // Refresh when user switches back to tab (instant feel)
+            refreshInterval: 0, // We rely on SSE for realtime updates
+            keepPreviousData: true // Prevent flickering
+        }
+    )
 
-        try {
-            const res = await fetch('/api/user/dashboard')
-            if (!res.ok) throw new Error("Failed to load dashboard")
-
-            const data = await res.json()
+    // Sync SWR Data to Local State
+    useEffect(() => {
+        if (dashboardData && !dashboardError) {
+            const data = dashboardData
 
             // 1. Set Profile & Timezone
-            setUserProfile(data.user)
             if (data.user) {
+                // Only update userProfile if it changed deeply (optional, but React handles shallow eq)
+                setUserProfile(data.user)
+
                 if (data.user.useCurrentTimezone) {
                     setUserTimeZone(getBrowserTimezone())
                 } else if (data.user.selectedTimezone) {
@@ -145,10 +158,21 @@ export default function UserPortal() {
                 setUserManagerId(data.user.managerId || null)
 
                 // Handle Manager/Admin extra data
+                // Note: fetchPendingLeaves is defined below, but effects run after mount/render so it is safe
                 if (data.user.roles.includes('MANAGER') || data.user.roles.includes('ADMIN')) {
-                    fetchPendingLeaves(data.user.id)
-                    // Fetch full department list for filtering/managed dept logic
-                    fetch('/api/departments').then(r => r.ok && r.json()).then(depts => depts && setDepartmentList(depts))
+                    // Start async fetches
+                    const loadManagerData = async () => {
+                        // We defer this call slightly to ensure function is defined if using const
+                        // However, since this is an effect, all consts in component body are initialized
+                        if (typeof fetchPendingLeaves === 'function') fetchPendingLeaves(data.user.id)
+
+                        const res = await fetch('/api/departments')
+                        if (res.ok) {
+                            const depts = await res.json()
+                            if (depts) setDepartmentList(depts)
+                        }
+                    }
+                    loadManagerData()
                 }
             }
 
@@ -157,13 +181,16 @@ export default function UserPortal() {
                 const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
                 if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
                     setIsOnboardingOpen(true)
-                    const [mRes, dRes] = await Promise.all([
-                        fetch('/api/managers'),
-                        fetch('/api/departments')
-                    ]).catch(() => [null, null])
+                    const loadOnboarding = async () => {
+                        const [mRes, dRes] = await Promise.all([
+                            fetch('/api/managers'),
+                            fetch('/api/departments')
+                        ]).catch(() => [null, null])
 
-                    if (mRes && mRes.ok) setManagerList(await mRes.json())
-                    if (dRes && dRes.ok) setDepartmentList(await dRes.json())
+                        if (mRes && mRes.ok) setManagerList(await mRes.json())
+                        if (dRes && dRes.ok) setDepartmentList(await dRes.json())
+                    }
+                    loadOnboarding()
                 }
             }
 
@@ -180,11 +207,17 @@ export default function UserPortal() {
             setEmployees(data.staff)
             if (data.teamLeaves) setTodayTeamLeaves(data.teamLeaves)
 
-        } catch (e) {
-            console.error("Dashboard Quick Load Error:", e)
-        } finally {
+            setIsLoading(false)
+        } else if (dashboardError) {
+            console.error("Dashboard Quick Load Error:", dashboardError)
             setIsLoading(false)
         }
+
+    }, [dashboardData, dashboardError])
+
+    // Alias for legacy interaction handlers
+    const fetchDashboardData = async () => {
+        await mutateDashboard()
     }
 
     // Aliases for legacy interaction handlers to prevent refactoring every button
@@ -193,11 +226,12 @@ export default function UserPortal() {
     const fetchMyLeaveRequests = fetchDashboardData
     const fetchUserDetails = fetchDashboardData
 
-    useEffect(() => {
-        if (status === 'authenticated' && session?.user?.id) {
-            fetchDashboardData()
-        }
-    }, [status, session?.user?.id])
+    // Initial fetch handled by SWR
+    // useEffect(() => {
+    //    if (status === 'authenticated' && session?.user?.id) {
+    //        fetchDashboardData()
+    //    }
+    // }, [status, session?.user?.id])
 
     useEffect(() => {
         if (status === 'unauthenticated') {

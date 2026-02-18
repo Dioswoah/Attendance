@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
+import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -97,47 +98,54 @@ export default function AmendRecordsPage() {
     const [referenceTime, setReferenceTime] = useState<string | null>(null)
 
 
-    useEffect(() => {
-        if (session?.user?.id) {
-            fetchRequests()
-            fetchAttendanceHistory()
-            fetchActualRecords()
-        }
-    }, [session, dateFilter])
+    // --- SWR Hooks ---
+    const fetcher = (url: string) => fetch(url).then(res => res.json())
+    const uid = session?.user?.id
 
-    const fetchActualRecords = async () => {
-        if (!session?.user?.id) return
-        setIsLoadingRecords(true)
-        try {
-            const res = await fetch(`/api/attendance?userId=${session.user.id}&startDate=${dateFilter.start}&endDate=${dateFilter.end}`)
-            if (res.ok) {
-                setActualRecords(await res.json())
-            }
-        } catch (error) {
-            console.error(error)
-        } finally {
+    // 1. Attendance Requests
+    const { data: requestsData, mutate: mutateRequests } = useSWR(uid ? `/api/attendance-requests?userId=${uid}` : null, fetcher)
+
+    // 2. Actual Records (Table)
+    const { data: actualRecordsData, mutate: mutateActualRecords, isLoading: isActualLoading } = useSWR(
+        uid ? `/api/attendance?userId=${uid}&startDate=${dateFilter.start}&endDate=${dateFilter.end}` : null,
+        fetcher
+    )
+
+    // 3. Attendance History (Last 3 days for Reference)
+    const historyEnd = new Date().toISOString()
+    const historyStart = subDays(new Date(), 3).toISOString()
+    const { data: historyData, mutate: mutateHistory } = useSWR(
+        uid ? `/api/attendance?userId=${uid}&startDate=${historyStart}&endDate=${historyEnd}` : null,
+        fetcher
+    )
+
+    // Sync SWR Data to State
+    useEffect(() => {
+        if (requestsData) {
+            setRequests(requestsData)
+            setIsLoading(false)
+        }
+    }, [requestsData])
+
+    useEffect(() => {
+        if (actualRecordsData) {
+            setActualRecords(actualRecordsData)
             setIsLoadingRecords(false)
         }
-    }
+    }, [actualRecordsData])
+
+    useEffect(() => {
+        if (historyData) setAttendanceHistory(historyData)
+    }, [historyData])
+
+    // Legacy functions replaced by SWR, keeping empty to avoid breaking refs if any
+    const fetchRequests = () => mutateRequests()
+    const fetchActualRecords = () => mutateActualRecords()
+    const fetchAttendanceHistory = () => mutateHistory()
 
     useEffect(() => {
         updateReferenceTime()
     }, [selectedDateOption, recordType, attendanceHistory])
-
-    const fetchAttendanceHistory = async () => {
-        if (!session?.user?.id) return
-        try {
-            // Fetch last few days
-            const end = new Date()
-            const start = subDays(end, 3)
-            const res = await fetch(`/api/attendance?userId=${session.user.id}&startDate=${start.toISOString()}&endDate=${end.toISOString()}`)
-            if (res.ok) {
-                setAttendanceHistory(await res.json())
-            }
-        } catch (error) {
-            // Error handled
-        }
-    }
 
     const updateReferenceTime = () => {
         if (!attendanceHistory.length) return
@@ -189,20 +197,7 @@ export default function AmendRecordsPage() {
         setReferenceTime(`Current: ${timeStr}`)
     }
 
-    const fetchRequests = async () => {
-        if (!session?.user?.id) return
-        setIsLoading(true)
-        try {
-            const res = await fetch(`/api/attendance-requests?userId=${session.user.id}`)
-            if (res.ok) {
-                setRequests(await res.json())
-            }
-        } catch (error) {
-            // Error handled
-        } finally {
-            setIsLoading(false)
-        }
-    }
+    // fetchRequests replaced by SWR logic above
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()

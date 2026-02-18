@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
+import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -58,27 +59,26 @@ export default function LeaveRequestsPage() {
         end: format(new Date(), 'yyyy-MM-dd')
     })
 
-    useEffect(() => {
-        if (session?.user?.id) {
-            fetchLeaveRequests()
-        }
-    }, [session])
+    // SWR Fetcher
+    const fetcher = (url: string) => fetch(url).then(async res => {
+        if (!res.ok) throw new Error('Failed to fetch')
+        return res.json()
+    })
 
-    const fetchLeaveRequests = async () => {
-        if (!session?.user?.id) return
-        setIsLoading(true)
-        try {
-            const res = await fetch(`/api/leaves?userId=${session.user.id}`)
-            if (res.ok) {
-                const data = await res.json()
-                setRequests(data)
-            }
-        } catch (error) {
-            // Error
-        } finally {
+    const { data: requestsData, mutate: mutateRequests, isLoading: isSwrLoading } = useSWR(
+        session?.user?.id ? `/api/leaves?userId=${session.user.id}` : null,
+        fetcher
+    )
+
+    useEffect(() => {
+        if (requestsData) {
+            setRequests(requestsData)
             setIsLoading(false)
         }
-    }
+    }, [requestsData])
+
+    // Legacy function support (now just triggers revalidation)
+    const fetchLeaveRequests = () => mutateRequests()
 
     const getStatusBadge = (status: LeaveStatus) => {
         switch (status) {

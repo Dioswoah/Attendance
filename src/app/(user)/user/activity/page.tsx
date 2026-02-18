@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
+import useSWR from "swr"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -40,34 +41,28 @@ export default function ActivityLogsPage() {
         }
     }, [session])
 
+    // SWR Fetcher
+    const fetcher = (url: string) => fetch(url).then(res => res.json())
+
+    // Construct SWR Key dynamically
+    const swrKey = session?.user?.id
+        ? `/api/attendance?userId=${session.user.id}${startDate && endDate ? `&startDate=${startDate}&endDate=${endDate}` : ''}`
+        : null
+
+    const { data: attendanceData, isLoading: isSwrLoading } = useSWR(swrKey, fetcher, {
+        keepPreviousData: true
+    })
+
     useEffect(() => {
-        if (session?.user?.id) {
-            fetchActivityLogs()
-        }
-    }, [session, startDate, endDate, userTimeZone])
-
-    const fetchActivityLogs = async () => {
-        if (!session?.user?.id) return
-        setIsLoading(true)
-        try {
-            let url = `/api/attendance?userId=${session.user.id}`
-
-            if (startDate && endDate) {
-                url += `&startDate=${startDate}&endDate=${endDate}`
-            }
-
-            const res = await fetch(url)
-            if (res.ok) {
-                const attendanceData = await res.json()
-                const activityLogs = convertAttendanceToLogs(attendanceData)
-                setLogs(activityLogs)
-            }
-        } catch (error) {
-            // Error
-        } finally {
+        if (attendanceData) {
+            const activityLogs = convertAttendanceToLogs(attendanceData)
+            setLogs(activityLogs)
             setIsLoading(false)
         }
-    }
+    }, [attendanceData, userTimeZone]) // Re-run if data or timezone changes
+
+    // Removed manual fetch logic
+    const fetchActivityLogs = async () => { }
 
     const convertAttendanceToLogs = (attendanceData: any[]): ActivityLog[] => {
         const logs: ActivityLog[] = []

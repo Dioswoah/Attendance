@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useSession } from "next-auth/react"
+import useSWR, { mutate } from "swr"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -99,18 +100,21 @@ export default function ManagerControlPage() {
     // Report Selection State
     const [reportSelectedStaff, setReportSelectedStaff] = useState<string[]>([])
 
-    useEffect(() => {
-        if (session?.user?.id) {
-            fetchInitialData()
-        }
-    }, [session])
+    // fetchInitialData removed
+    // useEffect(() => {
+    //    if (session?.user?.id) {
+    //        fetchInitialData()
+    //    }
+    // }, [session])
 
     // Re-fetch calendar data when month changes
-    useEffect(() => {
-        if (session?.user?.id) {
-            fetchMonthlyAttendance()
-        }
-    }, [currentMonth, session])
+    // Re-fetch calendar data when month changes
+    // AUTOMATED BY SWR DEPENDENCY ON currentMonth
+    // useEffect(() => {
+    //    if (session?.user?.id) {
+    //        fetchMonthlyAttendance()
+    //    }
+    // }, [currentMonth, session])
 
     useEffect(() => {
         if (session?.user) {
@@ -121,30 +125,80 @@ export default function ManagerControlPage() {
         }
     }, [session])
 
-    const fetchInitialData = async () => {
-        if (!session?.user?.id) return
-        setIsLoading(true)
-        try {
-            // Parallel fetch for all needed data
-            const [pendingLeaveRes, pendingAttRes, approvedRes, employeesRes, attendanceRes, historyRes, departmentsRes] = await Promise.all([
-                fetch(`/api/leaves?managerId=${session.user.id}&status=PENDING`),
-                fetch(`/api/attendance-requests?managerId=${session.user.id}&status=PENDING`),
-                fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED`),
-                fetch('/api/employees'),
-                fetch('/api/attendance'), // For today's sidebar status
-                fetch(`/api/leaves?managerId=${session.user.id}&status=APPROVED,DECLINED`),
-                fetch('/api/departments')
-            ])
+    // --- SWR Hooks for Data Fetching ---
+    const fetcher = (url: string) => fetch(url).then(async res => {
+        if (!res.ok) throw new Error('Failed to fetch')
+        return res.json()
+    })
 
-            let combinedPending: Request[] = []
+    const uid = session?.user?.id
 
-            if (pendingLeaveRes.ok) {
-                const leaves = await pendingLeaveRes.json()
-                combinedPending = [...combinedPending, ...leaves.map((l: any) => ({ ...l, kind: 'LEAVE' }))]
+    // 1. Departments
+    const { data: departmentsData } = useSWR(uid ? '/api/departments' : null, fetcher)
+
+    // 2. Employees (Staff)
+    const { data: employeesData } = useSWR(uid ? '/api/employees' : null, fetcher)
+
+    // 3. Pending Leaves
+    const { data: pendingLeavesData, mutate: mutatePendingLeaves } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=PENDING` : null, fetcher)
+
+    // 4. Pending Attendance Requests
+    const { data: pendingAttendanceData, mutate: mutatePendingAttendance } = useSWR(uid ? `/api/attendance-requests?managerId=${uid}&status=PENDING` : null, fetcher)
+
+    // 5. Approved Leaves
+    const { data: approvedLeavesData, mutate: mutateApprovedLeaves } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=APPROVED` : null, fetcher)
+
+    // 6. Request History
+    const { data: historyLeavesData, mutate: mutateHistory } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=APPROVED,DECLINED` : null, fetcher)
+
+    // 7. Today's Attendance (for sidebar status)
+    const { data: todayAttendanceData } = useSWR(uid ? '/api/attendance' : null, fetcher)
+
+    // 8. Monthly Attendance (Calendar)
+    const monthlyStart = startOfMonth(currentMonth).toISOString()
+    const monthlyEnd = endOfMonth(currentMonth).toISOString()
+    const { data: monthlyAttendanceData } = useSWR(
+        uid ? `/api/attendance?managerId=${uid}&startDate=${monthlyStart}&endDate=${monthlyEnd}` : null,
+        fetcher
+    )
+
+    // --- State Synchronization Effects ---
+
+    // Sync Departments & Manager Departments
+    useEffect(() => {
+        if (departmentsData && uid) {
+            const myDepts = departmentsData.filter((dept: any) => dept.managerId === uid)
+            setManagerDepartments(myDepts)
+        }
+    }, [departmentsData, uid])
+
+    // Sync My Team (depends on Employees + Manager Departments)
+    useEffect(() => {
+        if (employeesData && uid) {
+            // We need managedDeptIds to perform the filter
+            // If departmentsData is not loaded yet, this might run with empty, but that's fine as it will re-run
+            const managedDeptIds = departmentsData
+                ? departmentsData.filter((d: any) => d.managerId === uid).map((d: any) => d.id)
+                : []
+
+            const myStaff = employeesData.filter((emp: any) =>
+                emp.managerId === uid ||
+                (emp.departmentId && managedDeptIds.includes(emp.departmentId))
+            )
+            setMyTeam(myStaff)
+        }
+    }, [employeesData, departmentsData, uid])
+
+    // Sync Pending Requests (Combine Leaves + Attendance)
+    useEffect(() => {
+        if (pendingLeavesData || pendingAttendanceData) {
+            let combined: Request[] = []
+
+            if (pendingLeavesData) {
+                combined = [...combined, ...pendingLeavesData.map((l: any) => ({ ...l, kind: 'LEAVE' }))]
             }
-            if (pendingAttRes.ok) {
-                const attRequests = await pendingAttRes.json()
-                combinedPending = [...combinedPending, ...attRequests.map((r: any) => ({
+            if (pendingAttendanceData) {
+                combined = [...combined, ...pendingAttendanceData.map((r: any) => ({
                     ...r,
                     kind: 'ATTENDANCE',
                     userName: r.user.name,
@@ -152,56 +206,45 @@ export default function ManagerControlPage() {
                     department: r.user.department?.name,
                     startDate: r.date,
                     endDate: r.date,
-                    duration: 'Correction', // or show time
+                    duration: 'Correction',
                     type: r.type
                 }))]
             }
-
-            setPendingRequests(combinedPending)
-
-            if (historyRes.ok) {
-                const history = await historyRes.json()
-                setRequestHistory(history.map((l: any) => ({ ...l, kind: 'LEAVE' })))
-            }
-
-            if (approvedRes.ok) setApprovedLeaves(await approvedRes.json()) // Only leaves affect calendar for now, or maybe approved attendance requests should trigger re-fetch of attendance data
-
-            let allEmployees = []
-            let managedDeptIds: string[] = []
-
-            // Fetch manager's departments first to broaden staff scope
-            if (departmentsRes.ok) {
-                const allDepts = await departmentsRes.json()
-                const myDepts = allDepts.filter((dept: any) => dept.managerId === session.user?.id)
-                setManagerDepartments(myDepts)
-                managedDeptIds = myDepts.map((d: any) => d.id)
-            }
-
-            if (employeesRes.ok) {
-                allEmployees = await employeesRes.json()
-                // Filter for my managed staff: either direct reports OR staff in managed departments
-                const myStaff = allEmployees.filter((emp: any) =>
-                    emp.managerId === session.user?.id ||
-                    (emp.departmentId && managedDeptIds.includes(emp.departmentId))
-                )
-                setMyTeam(myStaff)
-            }
-
-            if (attendanceRes.ok) {
-                const attData = await attendanceRes.json()
-                setTodaysAttendance(attData)
-            }
-
-            fetchPerformanceData()
-            // Initial monthly fetch
-            fetchMonthlyAttendance()
-
-        } catch (error) {
-            // Error
-        } finally {
-            setIsLoading(false)
+            setPendingRequests(combined)
+            // If we have data, we are not loading anymore
+            if (pendingLeavesData && pendingAttendanceData) setIsLoading(false)
         }
-    }
+    }, [pendingLeavesData, pendingAttendanceData])
+
+    // Sync History
+    useEffect(() => {
+        if (historyLeavesData) {
+            setRequestHistory(historyLeavesData.map((l: any) => ({ ...l, kind: 'LEAVE' })))
+        }
+    }, [historyLeavesData])
+
+    // Sync Approved Leaves
+    useEffect(() => {
+        if (approvedLeavesData) setApprovedLeaves(approvedLeavesData)
+    }, [approvedLeavesData])
+
+    // Sync Today's Attendance
+    useEffect(() => {
+        if (todayAttendanceData) setTodaysAttendance(todayAttendanceData)
+    }, [todayAttendanceData])
+
+    // Sync Monthly Attendance
+    useEffect(() => {
+        if (monthlyAttendanceData) setMonthlyAttendance(monthlyAttendanceData)
+    }, [monthlyAttendanceData])
+
+
+    // Manually trigger performance fetch when myTeam is ready (kept as manual/effect-based for now)
+    // useEffect(() => { ... } is already handling this below
+
+    // Legacy support functions
+    const fetchMonthlyAttendance = () => { } // Handled by SWR
+    const fetchInitialData = () => { } // Handled by SWR and Effects
 
     useEffect(() => {
         if (session?.user?.id && myTeam.length > 0) {
@@ -288,25 +331,7 @@ export default function ManagerControlPage() {
         }
     }
 
-    const fetchMonthlyAttendance = async () => {
-        if (!session?.user?.id) return
-        try {
-            const start = startOfMonth(currentMonth)
-            const end = endOfMonth(currentMonth)
-            const query = new URLSearchParams({
-                managerId: session.user.id,
-                startDate: start.toISOString(),
-                endDate: end.toISOString()
-            })
-
-            const res = await fetch(`/api/attendance?${query.toString()}`)
-            if (res.ok) {
-                setMonthlyAttendance(await res.json())
-            }
-        } catch (error) {
-            // Error
-        }
-    }
+    // fetchMonthlyAttendance replaced by SWR logic above
 
     // --- Action Handlers ---
     const handleAction = (request: Request, action: "approve" | "deny") => {
@@ -350,6 +375,12 @@ export default function ManagerControlPage() {
                 }
                 setSelectedRequest(null)
                 setActionType(null)
+
+                // Trigger Background Revalidation
+                if (request.kind === 'ATTENDANCE') mutatePendingAttendance()
+                else mutatePendingLeaves()
+                mutateHistory()
+                mutateApprovedLeaves()
             } else {
                 alert("Failed to update request")
             }
