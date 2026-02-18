@@ -1,5 +1,20 @@
 
 import { google } from 'googleapis';
+import { prisma } from '@/lib/prisma'; // Added prisma import
+
+// Helper to check if emails are enabled
+async function isEmailEnabled(): Promise<boolean> {
+  try {
+    const setting = await prisma.systemSettings.findUnique({
+      where: { key: 'email_notifications_enabled' }
+    });
+    // Default to true if setting doesn't exist yet
+    return setting ? setting.value === 'true' : true;
+  } catch (error) {
+    console.warn("Failed to check email settings, defaulting to true:", error);
+    return true;
+  }
+}
 
 interface LeaveRequestEmailProps {
   managerName: string;
@@ -29,6 +44,12 @@ export async function sendLeaveRequestEmail({
   reason,
 }: LeaveRequestEmailProps) {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending email to ${managerEmail} (Global setting disabled)`);
+      return;
+    }
+
     console.log(`[Email Service] Attempting to send email to ${managerEmail} from ${userEmail} using Gmail API`);
 
     // Set up OAuth2 client with the user's access token
@@ -124,6 +145,12 @@ export async function sendLeaveStatusUpdateEmail({
   declineReason
 }: LeaveStatusUpdateEmailProps) {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending STATUS UPDATE email (Global setting disabled)`);
+      return;
+    }
+
     console.log(`[Email Service] Attempting to send STATUS UPDATE email from ${managerEmail} to ${userEmail}`);
 
     const oauth2Client = new google.auth.OAuth2(
@@ -206,6 +233,12 @@ export async function sendLeaveActionEmail({
   action,
 }: LeaveActionEmailProps) {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending ${action} email (Global setting disabled)`);
+      return;
+    }
+
     console.log(`[Email Service] Sending ${action} email to ${managerEmail} from ${userEmail}`);
 
     const oauth2Client = new google.auth.OAuth2(
@@ -288,6 +321,12 @@ export async function sendAdminActionEmail({
   date
 }: AdminActionEmailProps) {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending Admin Action (${actionType}) email (Global setting disabled)`);
+      return;
+    }
+
     console.log(`[Email Service] Sending Admin Action (${actionType}) email to ${userEmail}`);
 
     const oauth2Client = new google.auth.OAuth2(
@@ -380,6 +419,12 @@ export async function sendBreakLimitEmail({
   refreshToken
 }: BreakLimitEmailProps): Promise<boolean> {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending break limit email (Global setting disabled)`);
+      return true;
+    }
+
     const oauth2Client = new google.auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
@@ -474,6 +519,12 @@ export async function sendBreakExpectedReturnEmail({
   refreshToken
 }: BreakExpectedReturnEmailProps): Promise<boolean> {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending break return reminder email (Global setting disabled)`);
+      return true;
+    }
+
     const oauth2Client = new google.auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
@@ -561,6 +612,12 @@ export async function sendForgottenClockOutEmail({
   date
 }: ForgottenClockOutEmailProps) {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending forgotten clock-out email (Global setting disabled)`);
+      return;
+    }
+
     const oauth2Client = new google.auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
@@ -661,6 +718,12 @@ export async function sendLateArrivalEmail({
   refreshToken
 }: LateArrivalEmailProps): Promise<boolean> {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending late arrival email (Global setting disabled)`);
+      return true;
+    }
+
     const oauth2Client = new google.auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
@@ -750,6 +813,12 @@ export async function sendOverdueDepartureEmail({
   refreshToken
 }: OverdueDepartureEmailProps): Promise<boolean> {
   try {
+    const enabled = await isEmailEnabled();
+    if (!enabled) {
+      console.log(`[Email Service] SKIPPED sending overdue departure email (Global setting disabled)`);
+      return true;
+    }
+
     const oauth2Client = new google.auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET

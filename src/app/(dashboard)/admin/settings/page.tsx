@@ -2,7 +2,7 @@
 
 import { toast } from "sonner"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,6 +34,42 @@ export default function SettingsPage() {
     const [saving, setSaving] = useState(false)
     const [activeTab, setActiveTab] = useState('General Configuration')
     const [notImplemented, setNotImplemented] = useState<{ title: string; desc: string } | null>(null)
+    const [emailEnabled, setEmailEnabled] = useState(true)
+
+    useEffect(() => {
+        // Fetch initial settings
+        const fetchSettings = async () => {
+            try {
+                const res = await fetch('/api/settings')
+                if (res.ok) {
+                    const data = await res.json()
+                    if (data.email_notifications_enabled !== undefined) {
+                        setEmailEnabled(data.email_notifications_enabled === 'true')
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to load settings", error)
+            }
+        }
+        fetchSettings()
+    }, [])
+
+    const toggleEmail = async (checked: boolean) => {
+        // Optimistic update
+        setEmailEnabled(checked)
+        try {
+            const res = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: 'email_notifications_enabled', value: checked })
+            })
+            if (!res.ok) throw new Error("Failed to save")
+            toast.success(checked ? "Email notifications enabled" : "Email notifications disabled")
+        } catch (error) {
+            toast.error("Failed to update setting")
+            setEmailEnabled(!checked) // Revert
+        }
+    }
 
     const handleSave = () => {
         setSaving(true)
@@ -187,9 +223,9 @@ export default function SettingsPage() {
                                     <div className="flex items-center justify-between p-4 rounded-xl border border-border bg-white hover:bg-muted/20 transition-all">
                                         <div className="space-y-1">
                                             <p className="text-sm font-medium text-foreground">E-mail Notifications</p>
-                                            <p className="text-xs text-muted-foreground">Send summary reports to department heads</p>
+                                            <p className="text-xs text-muted-foreground">Global toggle for all system emails</p>
                                         </div>
-                                        <Switch defaultChecked />
+                                        <Switch checked={emailEnabled} onCheckedChange={toggleEmail} />
                                     </div>
                                 </CardContent>
                             </Card>
