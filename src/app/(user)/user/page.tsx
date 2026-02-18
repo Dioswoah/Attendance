@@ -1929,14 +1929,14 @@ export default function UserPortal() {
                                     {/* Controls */}
                                     <div id="tour-action-buttons" className="flex flex-wrap justify-center gap-3 max-w-lg mx-auto w-full">
                                         {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
-                                            <div className="flex w-full sm:w-auto items-center shadow-2xl shadow-green-900/20 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 bg-gradient-to-b from-[#009B5A] to-[#00874e] group p-1">
-                                                <Button onClick={handleClockInClick} disabled={isProcessing} className="flex-1 gap-3 bg-transparent hover:bg-transparent text-white h-14 px-8 text-base font-bold border-r border-green-600/30 rounded-r-none focus:ring-0 uppercase tracking-widest">
+                                            <div className="flex w-full sm:w-auto items-center shadow-2xl shadow-green-900/10 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 bg-green-600 group p-1 z-20">
+                                                <Button onClick={handleClockInClick} disabled={isProcessing} className="flex-1 gap-3 bg-transparent hover:bg-green-700/20 text-white h-14 px-8 text-base font-bold border-r border-white/20 rounded-r-none focus:ring-0 uppercase tracking-widest">
                                                     {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
                                                     Clock In
                                                 </Button>
                                                 <Popover>
                                                     <PopoverTrigger asChild>
-                                                        <Button disabled={isProcessing} className="px-4 h-14 bg-transparent hover:bg-[#007041] text-white rounded-l-none focus:ring-0 rounded-r-xl">
+                                                        <Button disabled={isProcessing} className="px-4 h-14 bg-transparent hover:bg-green-700/20 text-white rounded-l-none focus:ring-0 rounded-r-xl">
                                                             <ChevronDown className="h-5 w-5" />
                                                         </Button>
                                                     </PopoverTrigger>
