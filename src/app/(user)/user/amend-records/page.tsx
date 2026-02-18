@@ -427,13 +427,17 @@ export default function AmendRecordsPage() {
                                         if (recordType === 'CLOCK_IN') {
                                             entries = dayRecords.map(r => ({ id: r.id, time: r.clockIn, label: 'Clock In' })).filter(e => e.time)
                                         } else if (recordType === 'CLOCK_OUT') {
-                                            entries = dayRecords.map(r => ({ id: r.id, time: r.clockOut, label: 'Clock Out' })).filter(e => e.time)
+                                            // Include records even if they don't have a clock out time yet (so we can add one)
+                                            entries = dayRecords.map(r => ({ id: r.id, time: r.clockOut, label: 'Clock Out' }))
                                         } else if (recordType === 'BREAK_START' || recordType === 'BREAK_END') {
                                             dayRecords.forEach(r => {
                                                 if (r.breaks) {
                                                     r.breaks.forEach((b: any) => {
                                                         const bTime = recordType === 'BREAK_START' ? b.startTime : b.endTime
-                                                        if (bTime) entries.push({ id: b.id, time: bTime, label: recordType === 'BREAK_START' ? 'Break Start' : 'Break End' })
+                                                        // For Break End, include even if missing (so we can add one)
+                                                        if (bTime || recordType === 'BREAK_END') {
+                                                            entries.push({ id: b.id, time: bTime, label: recordType === 'BREAK_START' ? 'Break Start' : 'Break End' })
+                                                        }
                                                     })
                                                 }
                                             })
@@ -446,7 +450,7 @@ export default function AmendRecordsPage() {
                                                         key={e.id}
                                                         onClick={() => {
                                                             setSelectedEntryId(e.id)
-                                                            setTime(format(new Date(e.time), 'HH:mm'))
+                                                            setTime(e.time ? format(new Date(e.time), 'HH:mm') : "")
                                                         }}
                                                         className={cn(
                                                             "flex items-center justify-between p-3 rounded-xl border-2 transition-all cursor-pointer group",
@@ -464,7 +468,9 @@ export default function AmendRecordsPage() {
                                                             </div>
                                                             <div className="flex flex-col">
                                                                 <span className="text-sm font-bold capitalize">{e.label}</span>
-                                                                <span className="text-xs font-mono text-muted-foreground">Recorded at {format(new Date(e.time), 'hh:mm a')}</span>
+                                                                <span className="text-xs font-mono text-muted-foreground">
+                                                                    {e.time ? `Recorded at ${format(new Date(e.time), 'hh:mm a')}` : 'Not recorded yet'}
+                                                                </span>
                                                             </div>
                                                         </div>
                                                         {selectedEntryId === e.id && (
