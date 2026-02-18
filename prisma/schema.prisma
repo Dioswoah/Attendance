@@ -223,6 +223,7 @@ model AttendanceRequest {
   deletedAt     DateTime?
   isArchived    Boolean   @default(false)
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetId      String?
 }
 
 model ChatSession {

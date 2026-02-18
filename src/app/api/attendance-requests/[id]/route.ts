@@ -48,52 +48,72 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const declineReason = updatedRequest.declineReason
 
         if (status === 'APPROVED') {
-            // Update Attendance
-            const startDate = new Date(request.date)
-            startDate.setHours(0, 0, 0, 0)
-            const endDate = new Date(startDate)
-            endDate.setDate(endDate.getDate() + 1)
-
-            let attendance = await prisma.attendance.findFirst({
-                where: {
-                    userId: request.userId,
-                    date: {
-                        gte: startDate,
-                        lt: endDate
-                    }
+            // Precise Update if targetId exists
+            if (request.targetId) {
+                if (['CLOCK_IN', 'CLOCK_OUT'].includes(request.type)) {
+                    await prisma.attendance.update({
+                        where: { id: request.targetId },
+                        data: {
+                            [request.type === 'CLOCK_IN' ? 'clockIn' : 'clockOut']: request.time,
+                            status: 'PRESENT'
+                        }
+                    })
+                } else if (['BREAK_START', 'BREAK_END'].includes(request.type)) {
+                    await prisma.break.update({
+                        where: { id: request.targetId },
+                        data: {
+                            [request.type === 'BREAK_START' ? 'startTime' : 'endTime']: request.time
+                        }
+                    })
                 }
-            })
-
-            const updateData: any = {}
-
-            // PROVISIONAL CLEANUP (ON APPROVE): 
-            if (attendance && attendance.notes === `PROVISIONAL_REQUEST:${request.id}`) {
-                updateData.notes = null
-            }
-
-            if (request.type === 'CLOCK_IN') updateData.clockIn = request.time
-            if (request.type === 'CLOCK_OUT') updateData.clockOut = request.time
-            if (request.type === 'BREAK_START') updateData.breakStart = request.time
-            if (request.type === 'BREAK_END') updateData.breakEnd = request.time
-
-            if (request.type === 'CLOCK_IN' && (!attendance || attendance.status === 'ABSENT')) {
-                updateData.status = 'PRESENT'
-            }
-
-            if (attendance) {
-                await prisma.attendance.update({
-                    where: { id: attendance.id },
-                    data: updateData
-                })
             } else {
-                await prisma.attendance.create({
-                    data: {
+                // Fallback: Date-based logic for older requests or missing targetId
+                const startDate = new Date(request.date)
+                startDate.setHours(0, 0, 0, 0)
+                const endDate = new Date(startDate)
+                endDate.setDate(endDate.getDate() + 1)
+
+                let attendance = await prisma.attendance.findFirst({
+                    where: {
                         userId: request.userId,
-                        date: startDate,
-                        status: updateData.status || 'PRESENT',
-                        ...updateData
+                        date: {
+                            gte: startDate,
+                            lt: endDate
+                        }
                     }
                 })
+
+                const updateData: any = {}
+
+                // PROVISIONAL CLEANUP (ON APPROVE): 
+                if (attendance && attendance.notes === `PROVISIONAL_REQUEST:${request.id}`) {
+                    updateData.notes = null
+                }
+
+                if (request.type === 'CLOCK_IN') updateData.clockIn = request.time
+                if (request.type === 'CLOCK_OUT') updateData.clockOut = request.time
+                if (request.type === 'BREAK_START') updateData.breakStart = request.time
+                if (request.type === 'BREAK_END') updateData.breakEnd = request.time
+
+                if (request.type === 'CLOCK_IN' && (!attendance || attendance.status === 'ABSENT')) {
+                    updateData.status = 'PRESENT'
+                }
+
+                if (attendance) {
+                    await prisma.attendance.update({
+                        where: { id: attendance.id },
+                        data: updateData
+                    })
+                } else {
+                    await prisma.attendance.create({
+                        data: {
+                            userId: request.userId,
+                            date: startDate,
+                            status: updateData.status || 'PRESENT',
+                            ...updateData
+                        }
+                    })
+                }
             }
         } else if (status === 'DECLINED' && request.type === 'CLOCK_IN') {
             // PROVISIONAL CLEANUP (ON DECLINE):

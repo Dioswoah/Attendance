@@ -40,7 +40,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { userId, type, time, reason } = body
+        const { userId, type, time, reason, targetId } = body
 
         // Fetch User to determine timezone for proper date normalization
         const user = await prisma.user.findUnique({
@@ -67,7 +67,8 @@ export async function POST(req: Request) {
                 type,
                 time: eventTime,
                 reason,
-                status: 'PENDING'
+                status: 'PENDING',
+                targetId
             }
         })
 

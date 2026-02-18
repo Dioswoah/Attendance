@@ -41,7 +41,7 @@ export default function UserLayout({
             const leaveRes = await fetch(`/api/leaves?userId=${session.user.id}&status=PENDING`)
             if (leaveRes.ok) {
                 const leaves = await leaveRes.json()
-                const pending = Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING') : []
+                const pending = Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING' && !l.isArchived) : []
                 setPendingLeaveCount(pending.length)
             }
 
@@ -53,6 +53,7 @@ export default function UserLayout({
                     // Count total pending requests
                     const filteredReqs = reqs.filter((r: any) => {
                         if (r.status !== 'PENDING') return false
+                        if (r.isArchived) return false
 
                         // Removed hidden logic for cascaded requests to match Amend Records page
                         return true

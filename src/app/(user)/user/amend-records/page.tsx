@@ -29,6 +29,7 @@ interface AttendanceRequest {
     createdAt: string
     declineReason?: string
     isArchived?: boolean
+    targetId?: string
 }
 
 export default function AmendRecordsPage() {
@@ -40,6 +41,7 @@ export default function AmendRecordsPage() {
     const [editingId, setEditingId] = useState<string | null>(null)
     const [showArchived, setShowArchived] = useState(false)
     const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
+    const [selectedEntryId, setSelectedEntryId] = useState<string | "new" | null>(null)
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -67,6 +69,9 @@ export default function AmendRecordsPage() {
     const filteredRequests = requests.filter(r => {
         const matchesArchive = showArchived ? r.isArchived : !r.isArchived
         if (!matchesArchive) return false
+
+        // Show PENDING requests regardless of date filter, so they don't "disappear" from the log
+        if (r.status === 'PENDING') return true
 
         // Date Range Filter
         const reqDate = new Date(r.date).setHours(0, 0, 0, 0)
@@ -138,37 +143,46 @@ export default function AmendRecordsPage() {
         if (!attendanceHistory.length) return
 
         // Find record for selected date
-        // Note: attendanceHistory dates are usually YYYY-MM-DD strings from API transform
-        const record = attendanceHistory.find(a => a.date === selectedDateOption)
+        // Find all records for selected date
+        const dayRecords = attendanceHistory.filter(a => a.date === selectedDateOption)
 
-        if (!record) {
+        if (dayRecords.length === 0) {
             setReferenceTime("No record found for this date")
             return
         }
 
-        let timeStr = "Not recorded"
+        let timeStr = ""
 
         switch (recordType) {
             case "CLOCK_IN":
-                if (record.clockIn) timeStr = new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
+                const ins = dayRecords.map(r => r.clockIn).filter(Boolean)
+                timeStr = ins.length > 0 ? ins.map(t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })).join(', ') : "Not recorded"
                 break
             case "CLOCK_OUT":
-                if (record.clockOut) timeStr = new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
+                const outs = dayRecords.map(r => r.clockOut).filter(Boolean)
+                timeStr = outs.length > 0 ? outs.map(t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })).join(', ') : "Not recorded"
                 break
             case "BREAK_START":
-                // Check breaks array for latest or just show main if simplified
-                if (record.breaks && record.breaks.length > 0) {
-                    timeStr = record.breaks.map((b: any) => new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })).join(', ')
-                } else if (record.breakStart) {
-                    timeStr = new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
-                }
+                const allBreakStarts: string[] = []
+                dayRecords.forEach(r => {
+                    if (r.breaks && r.breaks.length > 0) {
+                        r.breaks.forEach((b: any) => allBreakStarts.push(new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })))
+                    } else if (r.breakStart) {
+                        allBreakStarts.push(new Date(r.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }))
+                    }
+                })
+                timeStr = allBreakStarts.length > 0 ? allBreakStarts.join(', ') : "Not recorded"
                 break
             case "BREAK_END":
-                if (record.breaks && record.breaks.length > 0) {
-                    timeStr = record.breaks.map((b: any) => b.endTime ? new Date(b.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : 'Active').join(', ')
-                } else if (record.breakEnd) {
-                    timeStr = new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })
-                }
+                const allBreakEnds: string[] = []
+                dayRecords.forEach(r => {
+                    if (r.breaks && r.breaks.length > 0) {
+                        r.breaks.forEach((b: any) => allBreakEnds.push(b.endTime ? new Date(b.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : 'Active'))
+                    } else if (r.breakEnd) {
+                        allBreakEnds.push(new Date(r.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }))
+                    }
+                })
+                timeStr = allBreakEnds.length > 0 ? allBreakEnds.join(', ') : "Not recorded"
                 break
         }
 
@@ -227,7 +241,8 @@ export default function AmendRecordsPage() {
                 date: new Date(`${dateStr}T00:00:00Z`).toISOString(),
                 type: recordType,
                 time: new Date(dateTimeStr).toISOString(),
-                reason
+                reason,
+                targetId: selectedEntryId === 'new' ? undefined : selectedEntryId
             }
 
             const url = editingId ? `/api/attendance-requests/${editingId}` : '/api/attendance-requests'
@@ -291,8 +306,10 @@ export default function AmendRecordsPage() {
         // effectively treating it as a new submission with pre-filled data.
         if (req.status === 'APPROVED' || req.status === 'DECLINED') {
             setEditingId(null)
+            setSelectedEntryId('new') // Treat as new if finalized
         } else {
             setEditingId(req.id)
+            setSelectedEntryId(req.targetId || 'new')
         }
 
         setSelectedDateOption(format(new Date(req.date), 'yyyy-MM-dd'))
@@ -331,6 +348,7 @@ export default function AmendRecordsPage() {
 
     const resetForm = () => {
         setEditingId(null)
+        setSelectedEntryId(null)
         setSelectedDateOption(format(new Date(), 'yyyy-MM-dd'))
         setRecordType("CLOCK_IN")
         setTime("")
@@ -387,7 +405,10 @@ export default function AmendRecordsPage() {
                                 </div>
                                 <div className="space-y-1.5 pt-3 border-t border-border/20">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">What are you correcting?</Label>
-                                    <Select value={recordType} onValueChange={setRecordType}>
+                                    <Select value={recordType} onValueChange={(val) => {
+                                        setRecordType(val)
+                                        setSelectedEntryId(null) // Reset selection when type changes
+                                    }}>
                                         <SelectTrigger className="h-10 bg-white border-border/50">
                                             <SelectValue placeholder="Select record type" />
                                         </SelectTrigger>
@@ -401,16 +422,112 @@ export default function AmendRecordsPage() {
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <Label>Correct Time</Label>
-                                    {referenceTime && (
-                                        <span className="text-xs text-muted-foreground font-mono bg-muted px-1 rounded">
-                                            {referenceTime}
-                                        </span>
-                                    )}
+                            <div className="space-y-3 pb-2">
+                                <Label className="text-xs font-bold text-foreground">Select Entry to Amend</Label>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {(() => {
+                                        const dayRecords = attendanceHistory.filter(a => a.date === selectedDateOption)
+                                        let entries: any[] = []
+
+                                        if (recordType === 'CLOCK_IN') {
+                                            entries = dayRecords.map(r => ({ id: r.id, time: r.clockIn, label: 'Clock In' })).filter(e => e.time)
+                                        } else if (recordType === 'CLOCK_OUT') {
+                                            entries = dayRecords.map(r => ({ id: r.id, time: r.clockOut, label: 'Clock Out' })).filter(e => e.time)
+                                        } else if (recordType === 'BREAK_START' || recordType === 'BREAK_END') {
+                                            dayRecords.forEach(r => {
+                                                if (r.breaks) {
+                                                    r.breaks.forEach((b: any) => {
+                                                        const bTime = recordType === 'BREAK_START' ? b.startTime : b.endTime
+                                                        if (bTime) entries.push({ id: b.id, time: bTime, label: recordType === 'BREAK_START' ? 'Break Start' : 'Break End' })
+                                                    })
+                                                }
+                                            })
+                                        }
+
+                                        return (
+                                            <>
+                                                {entries.map((e) => (
+                                                    <div
+                                                        key={e.id}
+                                                        onClick={() => {
+                                                            setSelectedEntryId(e.id)
+                                                            setTime(format(new Date(e.time), 'HH:mm'))
+                                                        }}
+                                                        className={cn(
+                                                            "flex items-center justify-between p-3 rounded-xl border-2 transition-all cursor-pointer group",
+                                                            selectedEntryId === e.id
+                                                                ? "border-red-600 bg-red-50/50 ring-1 ring-red-600"
+                                                                : "border-border/40 bg-white hover:border-red-200 hover:bg-slate-50"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={cn(
+                                                                "h-8 w-8 rounded-full flex items-center justify-center transition-colors",
+                                                                selectedEntryId === e.id ? "bg-red-600 text-white" : "bg-muted text-muted-foreground group-hover:bg-red-100 group-hover:text-red-600"
+                                                            )}>
+                                                                <Clock className="w-4 h-4" />
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-sm font-bold capitalize">{e.label}</span>
+                                                                <span className="text-xs font-mono text-muted-foreground">Recorded at {format(new Date(e.time), 'hh:mm a')}</span>
+                                                            </div>
+                                                        </div>
+                                                        {selectedEntryId === e.id && (
+                                                            <Badge className="bg-red-600 text-white border-none shadow-sm">Selected</Badge>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                <div
+                                                    onClick={() => {
+                                                        setSelectedEntryId('new')
+                                                        setTime("")
+                                                    }}
+                                                    className={cn(
+                                                        "flex items-center justify-between p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer group",
+                                                        selectedEntryId === 'new'
+                                                            ? "border-red-600 bg-red-50/50 border-solid ring-1 ring-red-600"
+                                                            : "border-border/60 bg-white hover:border-red-400 hover:bg-red-50/20"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn(
+                                                            "h-8 w-8 rounded-full flex items-center justify-center transition-colors",
+                                                            selectedEntryId === 'new' ? "bg-red-600 text-white" : "bg-muted text-muted-foreground group-hover:bg-red-200 group-hover:text-red-700"
+                                                        )}>
+                                                            <Plus className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-bold">Add Missing Entry</span>
+                                                            <span className="text-xs text-muted-foreground">Request a new record for this date</span>
+                                                        </div>
+                                                    </div>
+                                                    {selectedEntryId === 'new' && (
+                                                        <Badge className="bg-red-600 text-white border-none shadow-sm">New</Badge>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )
+                                    })()}
                                 </div>
-                                <Input type="time" value={time} onChange={e => setTime(e.target.value)} required />
+                            </div>
+
+                            <div className="space-y-2 pt-2">
+                                <Label className="text-xs font-bold">Corrected Time</Label>
+                                <div className="relative">
+                                    <Input
+                                        type="time"
+                                        value={time}
+                                        onChange={e => setTime(e.target.value)}
+                                        className="h-11 pl-4 bg-white border-border/50 text-base"
+                                        required
+                                    />
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 pointer-events-none">
+                                        <Clock className="w-5 h-5" />
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground italic px-1">
+                                    Enter the time that should have been recorded.
+                                </p>
                             </div>
 
                             <div className="space-y-2">
@@ -516,7 +633,8 @@ export default function AmendRecordsPage() {
 
                                 return filteredDays.map((day) => {
                                     const dateStr = format(day, 'yyyy-MM-dd')
-                                    const record = actualRecords.find(r => r.date === dateStr && r.mode !== 'LEAVE')
+                                    const dayRecords = actualRecords.filter(r => r.date === dateStr && r.mode !== 'LEAVE')
+                                    const hasAnyRecord = dayRecords.length > 0
 
                                     return (
                                         <TableRow key={dateStr} className="hover:bg-muted/50 transition-colors">
@@ -531,101 +649,119 @@ export default function AmendRecordsPage() {
                                                 </div>
                                             </TableCell>
                                             <TableCell className="align-middle">
-                                                {record ? (
-                                                    <Badge variant="outline" className="font-bold text-[10px] uppercase tracking-wide">
-                                                        {record.mode}
-                                                    </Badge>
-                                                ) : (
-                                                    <span className="text-[10px] text-muted-foreground italic">No Log</span>
-                                                )}
+                                                <div className="flex flex-col gap-1 items-start">
+                                                    {dayRecords.map((r, ri) => (
+                                                        <Badge key={r.id || ri} variant="outline" className="font-bold text-[10px] uppercase tracking-wide">
+                                                            {r.mode}
+                                                        </Badge>
+                                                    ))}
+                                                    {!hasAnyRecord && (
+                                                        <span className="text-[10px] text-muted-foreground italic">No Log</span>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                             <TableCell className="text-center align-middle font-mono text-sm">
-                                                <div className="flex items-center justify-center gap-1.5 group/in">
-                                                    <span>{record?.clockIn ? format(parseISO(record.clockIn), 'hh:mm a') : '---'}</span>
-                                                    {record?.clockIn && (
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedDateOption(dateStr);
-                                                                setRecordType("CLOCK_IN");
-                                                                setReferenceTime(`Current: ${format(parseISO(record.clockIn), 'hh:mm a')}`);
-                                                                setTime(format(parseISO(record.clockIn), 'HH:mm'));
-                                                                setDialogOpen(true);
-                                                            }}
-                                                            className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/in:opacity-100"
-                                                        >
-                                                            <Edit3 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    )}
+                                                <div className="flex flex-col gap-1.5 items-center justify-center">
+                                                    {dayRecords.map((record, ri) => (
+                                                        <div key={record.id || ri} className="flex items-center justify-center gap-1.5 group/in">
+                                                            <span>{record?.clockIn ? format(parseISO(record.clockIn), 'hh:mm a') : '---'}</span>
+                                                            {record?.clockIn && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSelectedDateOption(dateStr);
+                                                                        setRecordType("CLOCK_IN");
+                                                                        setSelectedEntryId(record.id);
+                                                                        setTime(format(parseISO(record.clockIn), 'HH:mm'));
+                                                                        setDialogOpen(true);
+                                                                    }}
+                                                                    className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/in:opacity-100"
+                                                                >
+                                                                    <Edit3 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {!hasAnyRecord && '---'}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-center align-middle font-mono text-sm text-muted-foreground">
-                                                <div className="flex items-center justify-center gap-1.5 group/out">
-                                                    <span>{record?.clockOut ? format(parseISO(record.clockOut), 'hh:mm a') : '---'}</span>
-                                                    {record?.clockOut && (
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedDateOption(dateStr);
-                                                                setRecordType("CLOCK_OUT");
-                                                                setReferenceTime(`Current: ${format(parseISO(record.clockOut), 'hh:mm a')}`);
-                                                                setTime(format(parseISO(record.clockOut), 'HH:mm'));
-                                                                setDialogOpen(true);
-                                                            }}
-                                                            className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/out:opacity-100"
-                                                        >
-                                                            <Edit3 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    )}
+                                                <div className="flex flex-col gap-1.5 items-center justify-center">
+                                                    {dayRecords.map((record, ri) => (
+                                                        <div key={record.id || ri} className="flex items-center justify-center gap-1.5 group/out">
+                                                            <span>{record?.clockOut ? format(parseISO(record.clockOut), 'hh:mm a') : '---'}</span>
+                                                            {record?.clockOut && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSelectedDateOption(dateStr);
+                                                                        setRecordType("CLOCK_OUT");
+                                                                        setSelectedEntryId(record.id);
+                                                                        setTime(format(parseISO(record.clockOut), 'HH:mm'));
+                                                                        setDialogOpen(true);
+                                                                    }}
+                                                                    className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/out:opacity-100"
+                                                                >
+                                                                    <Edit3 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {!hasAnyRecord && '---'}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-center align-middle">
-                                                {record?.breaks && record.breaks.length > 0 ? (
-                                                    <div className="flex flex-col gap-1 items-center font-mono">
-                                                        {record.breaks.map((b: any, bi: number) => (
-                                                            <div key={b.id || bi} className="text-[10px] bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-100 flex flex-col gap-0.5 items-start">
-                                                                <div className="flex items-center gap-2 group/bstart w-full justify-between">
-                                                                    <div className="flex items-center gap-1">
-                                                                        <span className="font-bold opacity-60">S:</span>
-                                                                        <span>{format(parseISO(b.startTime), 'hh:mm a')}</span>
+                                                <div className="flex flex-col gap-2 items-center">
+                                                    {dayRecords.map((record, ri) => (
+                                                        record?.breaks && record.breaks.length > 0 ? (
+                                                            <div key={record.id || ri} className="flex flex-col gap-1 items-center font-mono">
+                                                                {record.breaks.map((b: any, bi: number) => (
+                                                                    <div key={b.id || bi} className="text-[10px] bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-100 flex flex-col gap-0.5 items-start">
+                                                                        <div className="flex items-center gap-2 group/bstart w-full justify-between">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <span className="font-bold opacity-60">S:</span>
+                                                                                <span>{format(parseISO(b.startTime), 'hh:mm a')}</span>
+                                                                            </div>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setSelectedDateOption(dateStr);
+                                                                                    setRecordType("BREAK_START");
+                                                                                    setSelectedEntryId(b.id);
+                                                                                    setTime(format(parseISO(b.startTime), 'HH:mm'));
+                                                                                    setDialogOpen(true);
+                                                                                }}
+                                                                                className="opacity-0 group-hover/bstart:opacity-100 hover:text-red-600 ml-1"
+                                                                            >
+                                                                                <Edit3 className="w-2.5 h-2.5" />
+                                                                            </button>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 group/bend w-full justify-between">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <span className="font-bold opacity-60">E:</span>
+                                                                                <span>{b.endTime ? format(parseISO(b.endTime), 'hh:mm a') : '--:--'}</span>
+                                                                            </div>
+                                                                            {b.endTime && (
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        setSelectedDateOption(dateStr);
+                                                                                        setRecordType("BREAK_END");
+                                                                                        setSelectedEntryId(b.id);
+                                                                                        setTime(format(parseISO(b.endTime), 'HH:mm'));
+                                                                                        setDialogOpen(true);
+                                                                                    }}
+                                                                                    className="opacity-0 group-hover/bend:opacity-100 hover:text-red-600 ml-1"
+                                                                                >
+                                                                                    <Edit3 className="w-2.5 h-2.5" />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setSelectedDateOption(dateStr);
-                                                                            setRecordType("BREAK_START");
-                                                                            setReferenceTime(`Current: ${format(parseISO(b.startTime), 'hh:mm a')}`);
-                                                                            setTime(format(parseISO(b.startTime), 'HH:mm'));
-                                                                            setDialogOpen(true);
-                                                                        }}
-                                                                        className="opacity-0 group-hover/bstart:opacity-100 hover:text-red-600 ml-1"
-                                                                    >
-                                                                        <Edit3 className="w-2.5 h-2.5" />
-                                                                    </button>
-                                                                </div>
-                                                                <div className="flex items-center gap-2 group/bend w-full justify-between">
-                                                                    <div className="flex items-center gap-1">
-                                                                        <span className="font-bold opacity-60">E:</span>
-                                                                        <span>{b.endTime ? format(parseISO(b.endTime), 'hh:mm a') : '--:--'}</span>
-                                                                    </div>
-                                                                    {b.endTime && (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setSelectedDateOption(dateStr);
-                                                                                setRecordType("BREAK_END");
-                                                                                setReferenceTime(`Current: ${format(parseISO(b.endTime), 'hh:mm a')}`);
-                                                                                setTime(format(parseISO(b.endTime), 'HH:mm'));
-                                                                                setDialogOpen(true);
-                                                                            }}
-                                                                            className="opacity-0 group-hover/bend:opacity-100 hover:text-red-600 ml-1"
-                                                                        >
-                                                                            <Edit3 className="w-2.5 h-2.5" />
-                                                                        </button>
-                                                                    )}
-                                                                </div>
+                                                                ))}
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-muted-foreground italic">None</span>
-                                                )}
+                                                        ) : (
+                                                            ri === 0 && dayRecords.every(dr => !dr.breaks || dr.breaks.length === 0) ? <span key="none" className="text-xs text-muted-foreground italic">None</span> : null
+                                                        )
+                                                    ))}
+                                                    {!hasAnyRecord && <span className="text-xs text-muted-foreground italic">None</span>}
+                                                </div>
                                             </TableCell>
                                             <TableCell className="text-right align-middle border-l border-border/50 bg-muted/5">
                                                 <Button
@@ -634,17 +770,18 @@ export default function AmendRecordsPage() {
                                                     className="text-red-600 hover:text-red-700 hover:bg-red-50 font-bold text-[10px] uppercase tracking-widest h-7 px-2"
                                                     onClick={() => {
                                                         setSelectedDateOption(dateStr)
+                                                        const latestRecord = dayRecords[dayRecords.length - 1]
                                                         // Identify default action based on record status
-                                                        if (!record) {
+                                                        if (!hasAnyRecord) {
                                                             setRecordType("CLOCK_IN")
                                                             setReferenceTime("No log found for this date. You can request a Clock In.")
-                                                        } else if (!record.clockOut) {
+                                                        } else if (latestRecord && !latestRecord.clockOut) {
                                                             // If clocked in but not out, user might want to correct Clock In OR add Clock Out
                                                             setRecordType("CLOCK_OUT")
-                                                            setReferenceTime(`Clocked in at ${format(parseISO(record.clockIn), 'hh:mm a')}. You can request a Clock Out time or switch to correct Clock In.`)
+                                                            setReferenceTime(`Clocked in at ${format(parseISO(latestRecord.clockIn), 'hh:mm a')}. You can request a Clock Out time or switch to correct Clock In.`)
                                                         } else {
                                                             setRecordType("CLOCK_IN")
-                                                            setReferenceTime("Both Clock In and Out found. Use the dropdown to select which to amend, or use specific icons in the table.")
+                                                            setReferenceTime("Multiple records or completed shift found. Use the dropdown to select which to amend, or use specific icons in the table.")
                                                         }
 
                                                         setDialogOpen(true)
