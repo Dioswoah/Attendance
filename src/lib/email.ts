@@ -1,6 +1,6 @@
 
 import { google } from 'googleapis';
-import { prisma } from '@/lib/prisma'; // Added prisma import
+import { prisma } from './prisma'; // Changed from @/lib/prisma to avoid alias issues in server.ts
 
 // Helper to check if emails are enabled
 async function isEmailEnabled(): Promise<boolean> {

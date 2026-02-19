@@ -256,10 +256,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     where: { email: user.email as string }
                 });
 
+                // Recover refresh token from DB if missing (handle prompt=none or select_account flow)
+                let refreshToken = account.refresh_token;
+                if (!refreshToken && dbUser) {
+                    // Try to fetch from DB Account link
+                    const linkedAccount = await prisma.account.findFirst({
+                        where: { userId: dbUser.id, provider: 'google' }
+                    });
+                    if (linkedAccount?.refresh_token) {
+                        console.log('[Auth] Recovered Refresh Token from DB');
+                        refreshToken = linkedAccount.refresh_token;
+                    }
+                }
+
                 return {
                     ...token,
                     accessToken: account.access_token,
-                    refreshToken: account.refresh_token,
+                    refreshToken: refreshToken,
                     expiresAt: Date.now() + ((account.expires_in as number) * 1000), // expires_in is in seconds
                     id: dbUser?.id || user.id,
                 };

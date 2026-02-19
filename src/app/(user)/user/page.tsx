@@ -663,7 +663,32 @@ export default function UserPortal() {
         return () => clearInterval(timeInterval)
     }, [userAttendanceList, myAttendanceRequests, optimisticStatus])
 
-    // 3. Break Limit Monitoring Effect
+    // 3. Auto-Sync Google Calendar Status (Background Poll)
+    useEffect(() => {
+        if (!session?.user?.id) return
+
+        const performSync = async () => {
+            // Only sync if the tab is visible to save resources
+            if (document.visibilityState === 'visible') {
+                try {
+                    await fetch('/api/calendar/sync', { method: 'POST' })
+                    // Refresh data to reflect any status changes
+                    fetchDashboardData()
+                } catch (e) {
+                    console.error("Auto-sync failed", e)
+                }
+            }
+        }
+
+        // Initial sync on load
+        performSync()
+
+        const syncInterval = setInterval(performSync, 60000) // Check every minute
+
+        return () => clearInterval(syncInterval)
+    }, [session?.user?.id])
+
+    // 4. Break Limit Monitoring Effect
     useEffect(() => {
         const checkBreakLimit = async () => {
             if (!userId) return
@@ -1294,6 +1319,14 @@ export default function UserPortal() {
 
     // --- Dashboard Helpers ---
     const getStatusColor = () => {
+        // If clocked in, respect availability status override
+        if (optimisticStatus === "clocked-in" && userProfile?.availabilityStatus) {
+            const status = userProfile.availabilityStatus
+            if (status === 'DO_NOT_DISTURB') return "bg-rose-100 text-rose-700 border-rose-200"
+            if (status === 'BE_RIGHT_BACK') return "bg-amber-100 text-amber-700 border-amber-200"
+            if (status === 'APPEAR_AWAY') return "bg-amber-100 text-amber-700 border-amber-200"
+        }
+
         switch (optimisticStatus) {
             case "clocked-in": return "bg-green-100 text-green-700 border-green-200"
             case "on-break": return "bg-yellow-100 text-yellow-700 border-yellow-200"
@@ -1302,6 +1335,14 @@ export default function UserPortal() {
     }
 
     const getStatusText = () => {
+        // If clocked in, respect availability status override
+        if (optimisticStatus === "clocked-in" && userProfile?.availabilityStatus) {
+            const status = userProfile.availabilityStatus
+            if (status === 'DO_NOT_DISTURB') return "In a Meeting"
+            if (status === 'BE_RIGHT_BACK') return "Be Right Back"
+            if (status === 'APPEAR_AWAY') return "Away"
+        }
+
         switch (optimisticStatus) {
             case "clocked-in": return "Working"
             case "on-break": return "On Break"
@@ -1317,6 +1358,12 @@ export default function UserPortal() {
                 return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-200/50 border-0 font-bold">On Break</Badge>
             case "on-leave":
                 return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200/50 border-0 font-bold">On Leave</Badge>
+            case "do-not-disturb":
+                return <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-200/50 border-0 font-bold">In a Meeting</Badge>
+            case "be-right-back":
+                return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200/50 border-0 font-bold">Be Right Back</Badge>
+            case "appear-away":
+                return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200/50 border-0 font-bold">Away</Badge>
             default:
                 return <Badge className="bg-muted text-muted-foreground hover:bg-slate-200/50 border-0 font-bold">Clocked Out</Badge>
         }
@@ -1373,7 +1420,7 @@ export default function UserPortal() {
     // Standardized Status Checker
     const isStatus = (currentStatus: string, targetType: 'in' | 'break' | 'leave' | 'out') => {
         const s = currentStatus?.toLowerCase() || ''
-        if (targetType === 'in') return s === 'present' || s === 'clocked-in' || s === 'working' || s === 'clock_in'
+        if (targetType === 'in') return s === 'present' || s === 'clocked-in' || s === 'working' || s === 'clock_in' || s === 'do-not-disturb' || s === 'be-right-back' || s === 'appear-away'
         if (targetType === 'break') return s === 'break' || s === 'on-break' || s === 'on break'
         if (targetType === 'leave') return s === 'on-leave' || s === 'on leave' || s === 'leave' || s === 'sick' || s === 'annual' || s === 'vacation'
         if (targetType === 'out') return s === 'absent' || s === 'clocked-out' || s === 'off duty' || s === 'offline' || s === 'clock_out' || s === 'clocked_out'
@@ -1401,6 +1448,15 @@ export default function UserPortal() {
                     isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
                 )
                 if (onLeaveToday) liveStatus = 'on-leave'
+            }
+
+            // AVAILABILITY OVERRIDE: If the user is technically Active (Clocked In), check their specific Availability Status
+            // This allows "In a Meeting" or "Be Right Back" to supersede generic "Working"
+            const avail = staff.availabilityStatus
+            if (liveStatus === 'clocked-in') { // Only override if they are actually working
+                if (avail === 'DO_NOT_DISTURB') liveStatus = 'do-not-disturb'
+                else if (avail === 'BE_RIGHT_BACK') liveStatus = 'be-right-back'
+                else if (avail === 'APPEAR_AWAY') liveStatus = 'appear-away'
             }
 
             // LAST ACTIVE: Determine the most relevant timestamp for the current status
@@ -1468,7 +1524,7 @@ export default function UserPortal() {
             })
             .sort((a: any, b: any) => {
                 // Priority 1: Status Grouping (Clocked In / On Break > Others)
-                const priorityStatuses = ["clocked-in", "on-break"]
+                const priorityStatuses = ["clocked-in", "on-break", "do-not-disturb", "be-right-back", "appear-away"]
                 const aIsPriority = priorityStatuses.includes(a.status)
                 const bIsPriority = priorityStatuses.includes(b.status)
 
@@ -1483,7 +1539,15 @@ export default function UserPortal() {
                         const deptB = typeof b.department === 'string' ? b.department : b.department?.name || ""
                         return deptA.localeCompare(deptB)
                     case "status":
-                        const statusOrder: any = { "clocked-in": 0, "on-break": 1, "on-leave": 2, "clocked-out": 3 }
+                        const statusOrder: any = {
+                            "clocked-in": 0,
+                            "do-not-disturb": 0,
+                            "be-right-back": 0,
+                            "appear-away": 0,
+                            "on-break": 1,
+                            "on-leave": 2,
+                            "clocked-out": 3
+                        }
                         return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4)
                     default: return 0
                 }
@@ -2272,7 +2336,7 @@ export default function UserPortal() {
                                                 </TableRow>
                                             ) : (
                                                 sortedStaff.map((staff: any) => {
-                                                    const isOnline = staff.status === 'clocked-in' || staff.status === 'on-break'
+                                                    const isOnline = ['clocked-in', 'on-break', 'do-not-disturb', 'be-right-back', 'appear-away'].includes(staff.status)
                                                     // Ensure we check availabilityStatus existence, default to AVAILABLE if online
                                                     const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
                                                     const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]

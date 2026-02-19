@@ -407,10 +407,11 @@ export async function getCurrentWorkingLocation(
         const response = await calendar.events.list({
             calendarId: 'primary',
             timeMin: now.toISOString(),
-            // Look ahead 1 minute to catch current events
-            timeMax: new Date(now.getTime() + 60000).toISOString(),
+            // Look ahead 5 minutes to safely catch current events
+            timeMax: new Date(now.getTime() + 5 * 60000).toISOString(),
             singleEvents: true,
             orderBy: 'startTime',
+            showDeleted: false,
         });
 
         const activeEvents = response.data.items || [];
@@ -436,7 +437,17 @@ export async function getCurrentWorkingLocation(
             };
         }
 
-        // C. Busy Event (opaque) -> Do Not Disturb
+        // C. Google Meet / Video Call -> In a Meeting
+        const meetEvent = activeEvents.find(e => e.hangoutLink || e.conferenceData);
+        if (meetEvent) {
+            return {
+                type: 'customLocation',
+                label: 'In a Meeting',
+                summary: meetEvent.summary || 'Google Meet'
+            };
+        }
+
+        // D. Busy Event (opaque) -> Do Not Disturb
         // Use the first "Busy" event that is NOT transparent
         const busyEvent = activeEvents.find(e => e.transparency !== 'transparent');
         if (busyEvent) {
