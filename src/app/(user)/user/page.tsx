@@ -2506,7 +2506,7 @@ export default function UserPortal() {
                                                                         </span>
                                                                         <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
                                                                             {new Date(staff.lastActive).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })}
-
+                                                                            {/* Force invalidation v0.1.2 */}
                                                                         </span>
                                                                     </div>
                                                                 ) : (
