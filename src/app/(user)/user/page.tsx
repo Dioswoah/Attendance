@@ -2500,6 +2500,7 @@ export default function UserPortal() {
                                                             <TableCell>
                                                                 {staff.lastActive ? (
                                                                     <div className="flex flex-col items-start">
+                                                                        {/* Version: GMT removed */}
                                                                         <span className="text-xs font-bold text-slate-600 font-mono">
                                                                             {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: staff.selectedTimezone || userTimeZone })}
                                                                         </span>
