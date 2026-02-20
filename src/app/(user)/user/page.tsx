@@ -2505,8 +2505,11 @@ export default function UserPortal() {
                                                                             {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: staff.selectedTimezone || userTimeZone })}
                                                                         </span>
                                                                         <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                                                                            {new Date(staff.lastActive).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })}
-                                                                            {/* Force invalidation v0.1.2 */}
+                                                                            {new Date(staff.lastActive)
+                                                                                .toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })
+                                                                                .replace(/GMT.*$/, '')
+                                                                                .trim()}
+                                                                            {/* v0.1.3 */}
                                                                         </span>
                                                                     </div>
                                                                 ) : (
