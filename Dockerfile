@@ -19,6 +19,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# VERIFY SOURCE FRESHNESS
+RUN grep "Employment Location" src/app/\(user\)/user/page.tsx || (echo "Source code is stale!" && exit 1)
+
 # Generate Prisma Client
 RUN npx prisma generate
 
