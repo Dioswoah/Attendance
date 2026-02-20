@@ -80,7 +80,7 @@ export async function GET() {
                     department: { select: { id: true, name: true } },
                     availabilityStatus: true,
                     customStatusMessage: true,
-                    location: true,
+                    employmentLocation: true,
                     selectedTimezone: true,
                     attendance: {
                         take: 1,

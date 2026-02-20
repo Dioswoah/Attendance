@@ -24,14 +24,21 @@ interface StaffPerformanceCardProps {
     attendanceRecords: any[]
     dateRange: { start: string, end: string }
     onEditWorkHours?: (user: any) => void
+    onClick?: (user: any) => void
 }
 
-export function StaffPerformanceCard({ user, attendanceRecords, dateRange, onEditWorkHours }: StaffPerformanceCardProps) {
+export function StaffPerformanceCard({ user, attendanceRecords, dateRange, onEditWorkHours, onClick }: StaffPerformanceCardProps) {
     // Calculate individual metrics using our centralized utility
     const metrics = calculateUserPerformanceMetrics(attendanceRecords, user)
 
     return (
-        <Card className="border border-border shadow-sm hover:shadow-md transition-all overflow-hidden bg-white">
+        <Card
+            className={cn(
+                "border border-border shadow-sm hover:shadow-md transition-all overflow-hidden bg-white",
+                onClick && "cursor-pointer active:scale-[0.99]"
+            )}
+            onClick={() => onClick?.(user)}
+        >
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-4 pb-3">
                 <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -49,8 +56,11 @@ export function StaffPerformanceCard({ user, attendanceRecords, dateRange, onEdi
                     </div>
                     <div className="flex flex-col items-end">
                         <div
-                            className="group flex items-center gap-2 cursor-pointer hover:bg-slate-100 active:bg-slate-200 px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-slate-200"
-                            onClick={() => onEditWorkHours?.(user)}
+                            className="group flex items-center gap-2 cursor-pointer hover:bg-slate-100 active:bg-slate-200 px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-slate-200 z-10 relative"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onEditWorkHours?.(user)
+                            }}
                             role="button"
                             tabIndex={0}
                             title="Edit Work Hours"

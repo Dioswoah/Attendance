@@ -32,7 +32,7 @@ export async function PATCH(
 
         if (isArchived !== undefined) updateData.isArchived = isArchived
         if (location !== undefined) {
-            updateData.location = location
+            updateData.employmentLocation = location
             // SYNC: Update timezone based on location for primary regions
             if (location === 'Philippines') {
                 updateData.selectedTimezone = 'Asia/Manila'

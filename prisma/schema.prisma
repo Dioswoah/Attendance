@@ -23,7 +23,7 @@ model User {
   isArchived          Boolean             @default(false)
   deletedAt           DateTime?
   availabilityStatus  UserStatus          @default(AVAILABLE)
-  location            String?
+  employmentLocation  String?             @map("location")
   customStatusMessage String?
   selectedTimezone    String?             @default("UTC")
   useCurrentTimezone  Boolean             @default(true)

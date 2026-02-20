@@ -35,7 +35,7 @@ export async function POST(req: Request) {
                 name,
                 email: email.toLowerCase(),
                 roles: roles || ['USER'],
-                location: location || null,
+                employmentLocation: location || null,
                 shiftStartTime: shiftStartTime || "09:00",
                 department: departmentId ? { connect: { id: departmentId } } : undefined,
                 manager: managerId ? { connect: { id: managerId } } : undefined,

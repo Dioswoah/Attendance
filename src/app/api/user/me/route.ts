@@ -22,7 +22,7 @@ export async function PATCH(req: Request) {
 
     const updateData: any = {}
     if (location !== undefined) {
-        updateData.location = location
+        updateData.employmentLocation = location
         // SYNC: Auto-set timezone based on location for primary regions
         if (location === 'Philippines') {
             updateData.selectedTimezone = 'Asia/Manila'
