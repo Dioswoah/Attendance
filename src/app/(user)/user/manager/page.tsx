@@ -274,7 +274,7 @@ export default function ManagerControlPage() {
         if (session?.user?.id && myTeam.length > 0) {
             fetchPerformanceData()
         }
-    }, [perfStartDate, perfEndDate, selectedDepartments, myTeam.length, session?.user?.id])
+    }, [perfStartDate, perfEndDate, selectedDepartments, myTeam.length, session?.user?.id, pendingAttendanceData])
 
     const fetchPerformanceData = async () => {
         if (!session?.user?.id || myTeam.length === 0) return
@@ -313,7 +313,33 @@ export default function ManagerControlPage() {
                 const days = eachDayOfInterval({ start, end })
                 const chartData = days.map(day => {
                     const dateStr = format(day, "yyyy-MM-dd")
-                    const dayAtt = data.filter((a: any) => a.date === dateStr)
+
+                    // 1. Get Actual Attendance
+                    const actualAtt = data.filter((a: any) => a.date === dateStr)
+                    const usersWithActual = new Set(actualAtt.map((a: any) => a.userId))
+
+                    // 2. Get Pending Attendance (Virtual Records)
+                    // We only care about CLOCK_IN requests for users who don't have a record yet
+                    const pendingForDay = (pendingAttendanceData || []).filter((req: any) => {
+                        if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
+                        if (!staffIds.includes(req.user?.id || req.userId)) return false
+                        if (usersWithActual.has(req.user?.id || req.userId)) return false
+
+                        // Check date match
+                        const reqDate = new Date(req.time || req.date)
+                        return format(reqDate, "yyyy-MM-dd") === dateStr
+                    })
+
+                    const virtualAtt = pendingForDay.map((req: any) => ({
+                        userId: req.user?.id || req.userId,
+                        status: 'present', // Treat as present for stats
+                        clockIn: req.time || req.date,
+                        scheduledStart: null,
+                        isVirtual: true // Marker if needed
+                    }))
+
+                    // 3. Combine
+                    const dayAtt = [...actualAtt, ...virtualAtt]
 
                     // Logic: Use shiftStartTime if available for that record
                     const presentCount = dayAtt.filter((a: any) => a.status !== 'on-leave').length
