@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
     Dialog,
     DialogContent,
@@ -19,7 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit, LogIn, LogOut, MapPin, ChevronDown } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -27,6 +28,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSam
 import { cn } from "@/lib/utils"
 import { StaffPerformanceCard } from "@/components/performance/StaffPerformanceCard"
 import { calculateTardiness, calculateUserPerformanceMetrics } from "@/lib/performance-utils"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Checkbox } from "@/components/ui/checkbox"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell } from 'recharts'
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -66,7 +69,8 @@ export default function ManagerControlPage() {
 
     // Department Filter State
     const [managerDepartments, setManagerDepartments] = useState<any[]>([])
-    const [selectedDepartment, setSelectedDepartment] = useState<string>("all")
+    const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
+    const [selectedEmploymentLocations, setSelectedEmploymentLocations] = useState<string[]>([])
 
     // UI State
     const [searchQuery, setSearchQuery] = useState("")
@@ -89,9 +93,13 @@ export default function ManagerControlPage() {
     const [perfEndDate, setPerfEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
 
     // Work Hours Edit State
+    // Work Hours Edit State
     const [editingMember, setEditingMember] = useState<any>(null)
     const [editShiftStart, setEditShiftStart] = useState("09:00")
     const [editShiftEnd, setEditShiftEnd] = useState("17:00")
+
+    // Performance Log View State
+    const [selectedStaffForLogs, setSelectedStaffForLogs] = useState<any | null>(null)
 
     // View Mode State (Card vs Table)
     const [viewMode, setViewMode] = useState<'card' | 'table'>('card')
@@ -165,27 +173,43 @@ export default function ManagerControlPage() {
     // --- State Synchronization Effects ---
 
     // Sync Departments & Manager Departments
-    useEffect(() => {
-        if (departmentsData && uid) {
-            const myDepts = departmentsData.filter((dept: any) => dept.managerId === uid)
-            setManagerDepartments(myDepts)
-        }
-    }, [departmentsData, uid])
+
 
     // Sync My Team (depends on Employees + Manager Departments)
     useEffect(() => {
         if (employeesData && uid) {
-            // We need managedDeptIds to perform the filter
-            // If departmentsData is not loaded yet, this might run with empty, but that's fine as it will re-run
-            const managedDeptIds = departmentsData
-                ? departmentsData.filter((d: any) => d.managerId === uid).map((d: any) => d.id)
+            // 1. Identify departments I manage directly (Owned Departments)
+            const ownedDepts = departmentsData
+                ? departmentsData.filter((d: any) => d.managerId === uid)
                 : []
+            const ownedDeptIds = ownedDepts.map((d: any) => d.id)
 
+            // 2. Filter employees: either directly reported to me OR in my owned departments
             const myStaff = employeesData.filter((emp: any) =>
                 emp.managerId === uid ||
-                (emp.departmentId && managedDeptIds.includes(emp.departmentId))
+                (emp.departmentId && ownedDeptIds.includes(emp.departmentId))
             )
+
             setMyTeam(myStaff)
+
+            // 3. Determine all relevant departments for the dropdown filters
+            // Start with owned departments
+            const relevantDeptsMap = new Map()
+            ownedDepts.forEach((d: any) => relevantDeptsMap.set(d.id, d))
+
+            // Add departments from direct reports (who might be in other departments)
+            // Ensure we use the full department object attached to the employee
+            myStaff.forEach((emp: any) => {
+                if (emp.department) {
+                    relevantDeptsMap.set(emp.department.id, emp.department)
+                }
+            })
+
+            // Convert back to array and sort
+            const allManagerDepts = Array.from(relevantDeptsMap.values())
+            allManagerDepts.sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""))
+
+            setManagerDepartments(allManagerDepts)
         }
     }, [employeesData, departmentsData, uid])
 
@@ -250,7 +274,7 @@ export default function ManagerControlPage() {
         if (session?.user?.id && myTeam.length > 0) {
             fetchPerformanceData()
         }
-    }, [perfStartDate, perfEndDate, selectedDepartment, myTeam.length, session?.user?.id])
+    }, [perfStartDate, perfEndDate, selectedDepartments, myTeam.length, session?.user?.id])
 
     const fetchPerformanceData = async () => {
         if (!session?.user?.id || myTeam.length === 0) return
@@ -262,9 +286,10 @@ export default function ManagerControlPage() {
             end.setUTCHours(23, 59, 59, 999)
 
             // Filter team by selected department
-            const filteredTeam = selectedDepartment === 'all'
-                ? myTeam
-                : myTeam.filter(emp => emp.departmentId === selectedDepartment)
+            let filteredTeam = myTeam
+            if (selectedDepartments.length > 0 && !selectedDepartments.includes('all')) {
+                filteredTeam = myTeam.filter(emp => selectedDepartments.includes(emp.departmentId))
+            }
 
             if (filteredTeam.length === 0) {
                 setPerformanceData([])
@@ -452,41 +477,86 @@ export default function ManagerControlPage() {
     // --- Filter Data First (Before Using in Functions) ---
     // Filter Team Members
     const filteredTeam = useMemo(() => {
-        if (selectedDepartment === "all") return myTeam
-        return myTeam.filter(member => member.departmentId === selectedDepartment)
-    }, [myTeam, selectedDepartment])
+        let filtered = myTeam
+
+        // Department Filter
+        if (selectedDepartments.length > 0 && !selectedDepartments.includes('all')) {
+            filtered = filtered.filter(member => selectedDepartments.includes(member.departmentId))
+        }
+
+        // Employment Location Filter
+        if (selectedEmploymentLocations.length > 0) {
+            filtered = filtered.filter(member => selectedEmploymentLocations.includes(member.employmentLocation))
+        }
+
+        return filtered
+    }, [myTeam, selectedDepartments, selectedEmploymentLocations])
 
     // Filter Approved Leaves
     const filteredApprovedLeaves = useMemo(() => {
-        if (selectedDepartment === "all") return approvedLeaves
-        return approvedLeaves.filter(leave => {
-            const member = myTeam.find(m => m.id === leave.userId)
-            return member?.departmentId === selectedDepartment
-        })
-    }, [approvedLeaves, myTeam, selectedDepartment])
+        let leaves = approvedLeaves
+
+        // Department Filter
+        if (selectedDepartments.length > 0 && !selectedDepartments.includes('all')) {
+            leaves = leaves.filter(leave => {
+                const member = myTeam.find(m => m.id === leave.userId)
+                return member && selectedDepartments.includes(member.departmentId)
+            })
+        }
+
+        // Employment Location Filter
+        if (selectedEmploymentLocations.length > 0) {
+            leaves = leaves.filter(leave => {
+                const member = myTeam.find(m => m.id === leave.userId)
+                return member && selectedEmploymentLocations.includes(member.employmentLocation)
+            })
+        }
+
+        return leaves
+    }, [approvedLeaves, myTeam, selectedDepartments, selectedEmploymentLocations])
 
     // Filter Monthly Attendance
     const filteredMonthlyAttendance = useMemo(() => {
-        if (selectedDepartment === "all") return monthlyAttendance
-        return monthlyAttendance.filter(att => {
-            const member = myTeam.find(m => m.id === att.userId)
-            return member?.departmentId === selectedDepartment
-        })
-    }, [monthlyAttendance, myTeam, selectedDepartment])
+        let attendance = monthlyAttendance
+
+        // Department Filter
+        if (selectedDepartments.length > 0 && !selectedDepartments.includes('all')) {
+            attendance = attendance.filter(att => {
+                const member = myTeam.find(m => m.id === att.userId)
+                return member && selectedDepartments.includes(member.departmentId)
+            })
+        }
+
+        // Employment Location Filter
+        if (selectedEmploymentLocations.length > 0) {
+            attendance = attendance.filter(att => {
+                const member = myTeam.find(m => m.id === att.userId)
+                return member && selectedEmploymentLocations.includes(member.employmentLocation)
+            })
+        }
+
+        return attendance
+    }, [monthlyAttendance, myTeam, selectedDepartments, selectedEmploymentLocations])
 
     // Filter Pending Requests
     const filteredRequests = pendingRequests.filter(r => {
         const matchesSearch = r.userName.toLowerCase().includes(searchQuery.toLowerCase())
         const member = myTeam.find(m => m.id === r.userId)
-        const matchesDepartment = selectedDepartment === "all" || member?.departmentId === selectedDepartment
-        return matchesSearch && matchesDepartment
+
+        const matchesDepartment = selectedDepartments.length === 0 || selectedDepartments.includes('all') || (member && selectedDepartments.includes(member.departmentId))
+        const matchesLocation = selectedEmploymentLocations.length === 0 || (member && selectedEmploymentLocations.includes(member.employmentLocation))
+
+        return matchesSearch && matchesDepartment && matchesLocation
     })
 
     // Filter Request History
     const filteredHistory = requestHistory.filter(r => {
         const member = myTeam.find(m => m.id === r.userId)
-        const matchesDepartment = selectedDepartment === "all" || member?.departmentId === selectedDepartment
-        return matchesDepartment
+
+        const matchesDepartment = selectedDepartments.length === 0 || selectedDepartments.includes('all') || (member && selectedDepartments.includes(member.departmentId))
+        const matchesLocation = selectedEmploymentLocations.length === 0 || (member && selectedEmploymentLocations.includes(member.employmentLocation))
+
+        return matchesDepartment && matchesLocation
     })
 
     // --- Calendar Helpers ---
@@ -645,17 +715,52 @@ export default function ManagerControlPage() {
                             {managerDepartments.length > 1 && (
                                 <div className="flex items-center gap-2">
                                     <Filter className="w-4 h-4 text-muted-foreground" />
-                                    <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                                        <SelectTrigger className="w-[180px] h-9 bg-muted/30 border-border">
-                                            <SelectValue placeholder="All Departments" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">All Departments</SelectItem>
-                                            {managerDepartments.map(dept => (
-                                                <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                                <span className="truncate max-w-[100px]">
+                                                    {selectedDepartments.length === 0 ? "Departments" : selectedDepartments.length === managerDepartments.length ? "All Depts" : `${selectedDepartments.length} Selected`}
+                                                </span>
+                                                <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent className="w-56 p-2" align="start">
+                                            <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
+                                            <DropdownMenuSeparator />
+                                            <div className="max-h-[300px] overflow-y-auto space-y-1">
+                                                <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        if (selectedDepartments.length === managerDepartments.length) {
+                                                            setSelectedDepartments([]);
+                                                        } else {
+                                                            setSelectedDepartments(managerDepartments.map(d => d.id));
+                                                        }
+                                                    }}>
+                                                    <Checkbox
+                                                        checked={selectedDepartments.length === managerDepartments.length && managerDepartments.length > 0}
+                                                        id="dept-all-pending"
+                                                    />
+                                                    <label htmlFor="dept-all-pending" className="text-xs font-bold cursor-pointer flex-1">Select All</label>
+                                                </div>
+                                                <DropdownMenuSeparator />
+                                                {managerDepartments.map((dept) => (
+                                                    <div key={dept.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            if (selectedDepartments.includes(dept.id)) {
+                                                                setSelectedDepartments(selectedDepartments.filter(id => id !== dept.id));
+                                                            } else {
+                                                                setSelectedDepartments([...selectedDepartments, dept.id]);
+                                                            }
+                                                        }}>
+                                                        <Checkbox id={`dept-${dept.id}-pending`} checked={selectedDepartments.includes(dept.id)} />
+                                                        <label htmlFor={`dept-${dept.id}-pending`} className="text-xs font-medium cursor-pointer flex-1 truncate">{dept.name}</label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </div>
                             )}
                             <div className="relative flex-1 sm:flex-initial sm:w-64">
@@ -896,17 +1001,52 @@ export default function ManagerControlPage() {
                         {managerDepartments.length > 1 && (
                             <div className="flex items-center gap-2">
                                 <Filter className="w-4 h-4 text-muted-foreground" />
-                                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                                    <SelectTrigger className="w-[180px] h-9 bg-muted/30 border-border">
-                                        <SelectValue placeholder="All Departments" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Departments</SelectItem>
-                                        {managerDepartments.map(dept => (
-                                            <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                            <span className="truncate max-w-[100px]">
+                                                {selectedDepartments.length === 0 ? "Departments" : selectedDepartments.length === managerDepartments.length ? "All Depts" : `${selectedDepartments.length} Selected`}
+                                            </span>
+                                            <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent className="w-56 p-2" align="start">
+                                        <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
+                                        <DropdownMenuSeparator />
+                                        <div className="max-h-[300px] overflow-y-auto space-y-1">
+                                            <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    if (selectedDepartments.length === managerDepartments.length) {
+                                                        setSelectedDepartments([]);
+                                                    } else {
+                                                        setSelectedDepartments(managerDepartments.map(d => d.id));
+                                                    }
+                                                }}>
+                                                <Checkbox
+                                                    checked={selectedDepartments.length === managerDepartments.length && managerDepartments.length > 0}
+                                                    id="dept-all-history"
+                                                />
+                                                <label htmlFor="dept-all-history" className="text-xs font-bold cursor-pointer flex-1">Select All</label>
+                                            </div>
+                                            <DropdownMenuSeparator />
+                                            {managerDepartments.map((dept) => (
+                                                <div key={dept.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        if (selectedDepartments.includes(dept.id)) {
+                                                            setSelectedDepartments(selectedDepartments.filter(id => id !== dept.id));
+                                                        } else {
+                                                            setSelectedDepartments([...selectedDepartments, dept.id]);
+                                                        }
+                                                    }}>
+                                                    <Checkbox id={`dept-${dept.id}-history`} checked={selectedDepartments.includes(dept.id)} />
+                                                    <label htmlFor={`dept-${dept.id}-history`} className="text-xs font-medium cursor-pointer flex-1 truncate">{dept.name}</label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
                         )}
                     </div>
@@ -1059,17 +1199,52 @@ export default function ManagerControlPage() {
                                     {managerDepartments.length > 1 && (
                                         <div className="flex items-center gap-2">
                                             <Filter className="w-4 h-4 text-muted-foreground" />
-                                            <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                                                <SelectTrigger className="w-[180px] h-9 bg-white border-border">
-                                                    <SelectValue placeholder="All Departments" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="all">All Managed Departments</SelectItem>
-                                                    {managerDepartments.map(dept => (
-                                                        <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                                        <span className="truncate max-w-[100px]">
+                                                            {selectedDepartments.length === 0 ? "Departments" : selectedDepartments.length === managerDepartments.length ? "All Depts" : `${selectedDepartments.length} Selected`}
+                                                        </span>
+                                                        <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent className="w-56 p-2" align="start">
+                                                    <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    <div className="max-h-[300px] overflow-y-auto space-y-1">
+                                                        <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                if (selectedDepartments.length === managerDepartments.length) {
+                                                                    setSelectedDepartments([]);
+                                                                } else {
+                                                                    setSelectedDepartments(managerDepartments.map(d => d.id));
+                                                                }
+                                                            }}>
+                                                            <Checkbox
+                                                                checked={selectedDepartments.length === managerDepartments.length && managerDepartments.length > 0}
+                                                                id="dept-all-calendar"
+                                                            />
+                                                            <label htmlFor="dept-all-calendar" className="text-xs font-bold cursor-pointer flex-1">Select All</label>
+                                                        </div>
+                                                        <DropdownMenuSeparator />
+                                                        {managerDepartments.map((dept) => (
+                                                            <div key={dept.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (selectedDepartments.includes(dept.id)) {
+                                                                        setSelectedDepartments(selectedDepartments.filter(id => id !== dept.id));
+                                                                    } else {
+                                                                        setSelectedDepartments([...selectedDepartments, dept.id]);
+                                                                    }
+                                                                }}>
+                                                                <Checkbox id={`dept-${dept.id}-calendar`} checked={selectedDepartments.includes(dept.id)} />
+                                                                <label htmlFor={`dept-${dept.id}-calendar`} className="text-xs font-medium cursor-pointer flex-1 truncate">{dept.name}</label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </div>
                                     )}
                                 </div>
@@ -1291,17 +1466,87 @@ export default function ManagerControlPage() {
                                             />
                                         </div>
                                     </div>
-                                    <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                                        <SelectTrigger className="w-[180px] h-9 bg-white">
-                                            <SelectValue placeholder="All Departments" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">All Managed Depts</SelectItem>
-                                            {managerDepartments.map(d => (
-                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <div className="flex bg-white rounded-md shadow-sm">
+                                        {/* Employment Location Filter */}
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50 rounded-r-none border-r-0">
+                                                    <span className="truncate max-w-[100px]">
+                                                        {selectedEmploymentLocations.length === 0 || selectedEmploymentLocations.length === 2 ? "Location" : selectedEmploymentLocations.join(", ")}
+                                                    </span>
+                                                    <MapPin className="h-3 w-3 ml-2 opacity-50" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent className="w-48 p-2" align="start">
+                                                <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Emp. Location</DropdownMenuLabel>
+                                                <DropdownMenuSeparator />
+                                                <div className="space-y-1">
+                                                    {['Philippines', 'Australia'].map((loc) => (
+                                                        <div key={loc} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                if (selectedEmploymentLocations.includes(loc)) {
+                                                                    setSelectedEmploymentLocations(selectedEmploymentLocations.filter(l => l !== loc));
+                                                                } else {
+                                                                    setSelectedEmploymentLocations([...selectedEmploymentLocations, loc]);
+                                                                }
+                                                            }}>
+                                                            <Checkbox id={`loc-${loc}-perf`} checked={selectedEmploymentLocations.includes(loc)} />
+                                                            <label htmlFor={`loc-${loc}-perf`} className="text-xs font-medium cursor-pointer flex-1">{loc}</label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+
+                                        {/* Department Filter */}
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50 rounded-l-none">
+                                                    <span className="truncate max-w-[100px]">
+                                                        {selectedDepartments.length === 0 ? "Departments" : selectedDepartments.length === managerDepartments.length ? "All Depts" : `${selectedDepartments.length} Selected`}
+                                                    </span>
+                                                    <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent className="w-56 p-2" align="start">
+                                                <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
+                                                <DropdownMenuSeparator />
+                                                <div className="max-h-[300px] overflow-y-auto space-y-1">
+                                                    <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            if (selectedDepartments.length === managerDepartments.length) {
+                                                                setSelectedDepartments([]);
+                                                            } else {
+                                                                setSelectedDepartments(managerDepartments.map(d => d.id));
+                                                            }
+                                                        }}>
+                                                        <Checkbox
+                                                            checked={selectedDepartments.length === managerDepartments.length && managerDepartments.length > 0}
+                                                            id="dept-all-perf"
+                                                        />
+                                                        <label htmlFor="dept-all-perf" className="text-xs font-bold cursor-pointer flex-1">Select All</label>
+                                                    </div>
+                                                    <DropdownMenuSeparator />
+                                                    {managerDepartments.map((dept) => (
+                                                        <div key={dept.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                if (selectedDepartments.includes(dept.id)) {
+                                                                    setSelectedDepartments(selectedDepartments.filter(id => id !== dept.id));
+                                                                } else {
+                                                                    setSelectedDepartments([...selectedDepartments, dept.id]);
+                                                                }
+                                                            }}>
+                                                            <Checkbox id={`dept-${dept.id}-perf`} checked={selectedDepartments.includes(dept.id)} />
+                                                            <label htmlFor={`dept-${dept.id}-perf`} className="text-xs font-medium cursor-pointer flex-1 truncate">{dept.name}</label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
                                 </div>
                             </div>
                         </CardHeader>
@@ -1432,6 +1677,7 @@ export default function ManagerControlPage() {
                                                         attendanceRecords={rawPerformanceData.filter((a: any) => a.userId === member.id)}
                                                         dateRange={{ start: perfStartDate, end: perfEndDate }}
                                                         onEditWorkHours={openEditWorkHours}
+                                                        onClick={setSelectedStaffForLogs}
                                                     />
                                                 ))}
                                             </div>
@@ -1458,7 +1704,11 @@ export default function ManagerControlPage() {
                                                                     member
                                                                 )
                                                                 return (
-                                                                    <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
+                                                                    <tr
+                                                                        key={member.id}
+                                                                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                                                                        onClick={() => setSelectedStaffForLogs(member)}
+                                                                    >
                                                                         <td className="p-4">
                                                                             <div className="flex items-center gap-3">
                                                                                 <Avatar className="h-9 w-9 border-2 border-white shadow-sm">
@@ -1575,23 +1825,57 @@ export default function ManagerControlPage() {
                                             <Building2 className="w-4 h-4 text-primary" />
                                             Target Department
                                         </Label>
-                                        <Select
-                                            value={selectedDepartment}
-                                            onValueChange={(val) => {
-                                                setSelectedDepartment(val)
-                                                setReportSelectedStaff([]) // Reset staff selection when department changes
-                                            }}
-                                        >
-                                            <SelectTrigger className="bg-muted/30 border-border">
-                                                <SelectValue placeholder="All Managed Departments" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">All Managed Departments</SelectItem>
-                                                {managerDepartments.map(d => (
-                                                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50 w-full justify-between">
+                                                    <span className="truncate">
+                                                        {selectedDepartments.length === 0 ? "All Managed Departments" : selectedDepartments.length === managerDepartments.length ? "All Managed Departments" : `${selectedDepartments.length} Selected`}
+                                                    </span>
+                                                    <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent className="w-[350px] p-2" align="start">
+                                                <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
+                                                <DropdownMenuSeparator />
+                                                <div className="max-h-[300px] overflow-y-auto space-y-1">
+                                                    <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            if (selectedDepartments.length === managerDepartments.length) {
+                                                                setSelectedDepartments([]);
+                                                                setReportSelectedStaff([]);
+                                                            } else {
+                                                                setSelectedDepartments(managerDepartments.map(d => d.id));
+                                                                setReportSelectedStaff([]);
+                                                            }
+                                                        }}>
+                                                        <Checkbox
+                                                            checked={selectedDepartments.length === managerDepartments.length && managerDepartments.length > 0}
+                                                            id="dept-all-reports"
+                                                        />
+                                                        <label htmlFor="dept-all-reports" className="text-xs font-bold cursor-pointer flex-1">Select All</label>
+                                                    </div>
+                                                    <DropdownMenuSeparator />
+                                                    {managerDepartments.map((dept) => (
+                                                        <div key={dept.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                let newDepts;
+                                                                if (selectedDepartments.includes(dept.id)) {
+                                                                    newDepts = selectedDepartments.filter(id => id !== dept.id);
+                                                                } else {
+                                                                    newDepts = [...selectedDepartments, dept.id];
+                                                                }
+                                                                setSelectedDepartments(newDepts);
+                                                                setReportSelectedStaff([]);
+                                                            }}>
+                                                            <Checkbox id={`dept-${dept.id}-reports`} checked={selectedDepartments.includes(dept.id)} />
+                                                            <label htmlFor={`dept-${dept.id}-reports`} className="text-xs font-medium cursor-pointer flex-1 truncate">{dept.name}</label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </div>
 
                                     <div className="space-y-3">
@@ -1830,6 +2114,133 @@ export default function ManagerControlPage() {
                     </Card>
                 </TabsContent>
             </Tabs>
+
+            {/* Performance Detail Dialog */}
+            <Dialog open={!!selectedStaffForLogs} onOpenChange={(open) => !open && setSelectedStaffForLogs(null)}>
+                <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+                    <DialogHeader className="border-b pb-4">
+                        <div className="flex items-center gap-4">
+                            <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                                <AvatarFallback className="bg-slate-900 text-white font-bold">{selectedStaffForLogs?.name?.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <DialogTitle className="text-xl">{selectedStaffForLogs?.name}</DialogTitle>
+                                <DialogDescription className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="font-normal bg-slate-50">
+                                        {selectedStaffForLogs?.department?.name || selectedStaffForLogs?.department || 'Staff Member'}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">•</span>
+                                    <span className="text-xs text-muted-foreground">Performance Logs ({format(parseISO(perfStartDate), 'MMM dd')} - {format(parseISO(perfEndDate), 'MMM dd')})</span>
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="flex-1 overflow-y-auto min-h-[300px] p-1">
+                        <Table>
+                            <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
+                                <TableRow>
+                                    <TableHead className="w-[140px]">Date</TableHead>
+                                    <TableHead>Clock In</TableHead>
+                                    <TableHead>Clock Out</TableHead>
+                                    <TableHead>Breaks</TableHead>
+                                    <TableHead>Total Hours</TableHead>
+                                    <TableHead className="text-right">Status</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {(() => {
+                                    if (!selectedStaffForLogs) return null
+
+                                    const logs = rawPerformanceData
+                                        .filter((a: any) => a.userId === selectedStaffForLogs.id)
+                                        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+                                    if (logs.length === 0) {
+                                        return (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="h-40 text-center text-muted-foreground">
+                                                    No attendance records found for this period.
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    }
+
+                                    return logs.map((log: any) => {
+                                        const date = parseISO(log.date.split('T')[0])
+                                        const clockIn = log.clockIn ? new Date(log.clockIn) : null
+                                        const clockOut = log.clockOut ? new Date(log.clockOut) : null
+
+                                        // Calculate break duration
+                                        const breakDuration = log.breaks?.reduce((total: number, b: any) => {
+                                            if (b.start && b.end) {
+                                                return total + (new Date(b.end).getTime() - new Date(b.start).getTime())
+                                            }
+                                            return total
+                                        }, 0) || 0
+                                        const breakMinutes = Math.floor(breakDuration / 1000 / 60)
+
+                                        // Status Color
+                                        let statusColor = "bg-slate-100 text-slate-600"
+                                        if (log.status === 'present' || log.status === 'clocked-in' || (clockIn && clockOut)) statusColor = "bg-green-100 text-green-700"
+                                        if (log.status === 'late') statusColor = "bg-amber-100 text-amber-700"
+                                        if (log.status === 'absent' || log.status === 'on-leave') statusColor = "bg-red-100 text-red-700"
+
+                                        return (
+                                            <TableRow key={log.id} className="hover:bg-slate-50">
+                                                <TableCell className="font-medium text-xs">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-700">{format(date, 'MMM dd, yyyy')}</span>
+                                                        <span className="text-[10px] text-muted-foreground uppercase">{format(date, 'EEEE')}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {clockIn ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <LogIn className="w-3 h-3 text-green-600" />
+                                                            <span className="font-mono">{format(clockIn, 'hh:mm a')}</span>
+                                                        </div>
+                                                    ) : <span className="text-slate-300">--:--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {clockOut ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <LogOut className="w-3 h-3 text-red-600" />
+                                                            <span className="font-mono">{format(clockOut, 'hh:mm a')}</span>
+                                                        </div>
+                                                    ) : <span className="text-slate-300">--:--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {breakMinutes > 0 ? (
+                                                        <Badge variant="outline" className="font-normal text-[10px] h-5">
+                                                            {breakMinutes} min
+                                                        </Badge>
+                                                    ) : <span className="text-slate-300 text-[10px]">-</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs font-mono font-bold text-slate-700">
+                                                    {clockIn && clockOut ? (
+                                                        (() => {
+                                                            const diff = clockOut.getTime() - clockIn.getTime() - breakDuration
+                                                            const hours = Math.floor(diff / 1000 / 60 / 60)
+                                                            const mins = Math.floor((diff / 1000 / 60) % 60)
+                                                            return `${hours}h ${mins}m`
+                                                        })()
+                                                    ) : <span className="text-slate-300">--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Badge variant="secondary" className={cn("text-[10px] font-bold h-5 px-1.5 uppercase tracking-wide", statusColor)}>
+                                                        {log.status?.replace('_', ' ') || 'Absent'}
+                                                    </Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })
+                                })()}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Action Dialog (Keep existing) */}
             <Dialog open={!!selectedRequest} onOpenChange={() => setSelectedRequest(null)}>

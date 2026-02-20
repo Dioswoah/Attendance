@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
 import { getBrowserTimezone } from "@/lib/timezone"
 import { statusConfig } from "@/components/UserStatusDropdown"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Checkbox } from "@/components/ui/checkbox"
 
 
 export default function UserPortal() {
@@ -57,8 +59,8 @@ export default function UserPortal() {
     const [onboardingLocation, setOnboardingLocation] = useState("")
     const [onboardingManager, setOnboardingManager] = useState("")
     const [onboardingDepartment, setOnboardingDepartment] = useState("")
-    const [onboardingShiftStart, setOnboardingShiftStart] = useState("09:00")
-    const [onboardingShiftEnd, setOnboardingShiftEnd] = useState("17:00")
+    const [onboardingShiftStart, setOnboardingShiftStart] = useState("")
+    const [onboardingShiftEnd, setOnboardingShiftEnd] = useState("")
     const [userRoles, setUserRoles] = useState<string[]>([])
     const [userId, setUserId] = useState<string>("")
     const [userDepartment, setUserDepartment] = useState<string>("")
@@ -84,9 +86,10 @@ export default function UserPortal() {
     const [workedTime, setWorkedTime] = useState("00:00:00")
     const [breakTime, setBreakTime] = useState("00:00:00")
     const [sortBy, setSortBy] = useState<string>("name")
-    const [filterStatus, setFilterStatus] = useState<string>("all")
-    const [filterDepartment, setFilterDepartment] = useState<string>("all")
-    const [searchQuery, setSearchQuery] = useState<string>("")
+    const [filterStatus, setFilterStatus] = useState("all")
+    const [filterDepartments, setFilterDepartments] = useState<string[]>([])
+    const [filterEmploymentLocations, setFilterEmploymentLocations] = useState<string[]>([])
+    const [searchQuery, setSearchQuery] = useState("")
     const [feedSearch, setFeedSearch] = useState("")
     const [breakTotalMs, setBreakTotalMs] = useState(0)
     const [warningTriggered, setWarningTriggered] = useState(false)
@@ -177,7 +180,7 @@ export default function UserPortal() {
             }
 
             // Handle Onboarding Logic
-            if (data.user && data.user.location !== 'Philippines' && data.user.location !== 'Australia') {
+            if (data.user && data.user.employmentLocation !== 'Philippines' && data.user.employmentLocation !== 'Australia') {
                 const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
                 if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
                     setIsOnboardingOpen(true)
@@ -258,7 +261,7 @@ export default function UserPortal() {
         if (userTimeZone && previousTimezone && userTimeZone !== previousTimezone) {
             // Timezone has changed - prompt user to confirm work hours
             // ONLY if the user is based in the Philippines (as per request)
-            if (userProfile?.location === 'Philippines') {
+            if (userProfile?.employmentLocation === 'Philippines') {
                 setTempWorkHoursStart(userProfile?.shiftStartTime || "09:00")
                 setTempWorkHoursEnd(userProfile?.shiftEndTime || "17:00")
                 setShowTimezoneWorkHoursDialog(true)
@@ -299,7 +302,7 @@ export default function UserPortal() {
     }
 
     const handleOnboardingSubmit = async () => {
-        if (!onboardingLocation) return
+        if (!onboardingLocation || !onboardingShiftStart || !onboardingShiftEnd) return
 
         try {
             const res = await fetch('/api/user/me', {
@@ -321,8 +324,8 @@ export default function UserPortal() {
                 } else if (updated.selectedTimezone) {
                     setUserTimeZone(updated.selectedTimezone)
                 } else {
-                    if (updated.location === 'Philippines') setUserTimeZone('Asia/Manila')
-                    else if (updated.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                    if (updated.employmentLocation === 'Philippines') setUserTimeZone('Asia/Manila')
+                    else if (updated.employmentLocation === 'Australia') setUserTimeZone('Australia/Sydney')
                 }
                 setIsOnboardingOpen(false)
             }
@@ -1516,11 +1519,18 @@ export default function UserPortal() {
         return enrichedStaffList
             .filter((staff: any) => staff.name?.toLowerCase().includes(searchQuery.toLowerCase()))
             .filter((staff: any) => filterStatus === "all" || staff.status === filterStatus)
+            .filter((staff: any) => filterStatus === "all" || staff.status === filterStatus)
             .filter((staff: any) => {
-                if (filterDepartment === "all") return true
+                if (filterDepartments.length === 0) return true
                 const dObj = staff.department
                 const dept = typeof dObj === 'string' ? dObj : (dObj?.name || staff.departmentName)
-                return dept === filterDepartment
+                return filterDepartments.includes(dept)
+            })
+            .filter((staff: any) => {
+                if (filterEmploymentLocations.length === 0) return true
+                // If location is null/undefined, treat it as "Other" or exclude? 
+                // Currently matching updated data: 'Philippines', 'Australia'
+                return filterEmploymentLocations.includes(staff.employmentLocation)
             })
             .sort((a: any, b: any) => {
                 // Priority 1: Status Grouping (Clocked In / On Break > Others)
@@ -1552,12 +1562,13 @@ export default function UserPortal() {
                     default: return 0
                 }
             })
-    }, [enrichedStaffList, searchQuery, filterStatus, filterDepartment, sortBy])
+    }, [enrichedStaffList, searchQuery, filterStatus, filterDepartments, filterEmploymentLocations, sortBy])
 
     // 4. Sidebar Stats List (Filters by department but NOT by status)
     const departmentStaff = useMemo(() => {
         // Sync with the active department filter in the view
-        const activeDept = filterDepartment !== 'all' ? filterDepartment : (calendarFilterDepartment !== 'all' ? calendarFilterDepartment : 'all')
+        // Adapt logic for multi-select: if exactly one dept is selected, use it. If multiple or none, treat as all/mixed.
+        const activeDept = filterDepartments.length === 1 ? filterDepartments[0] : (calendarFilterDepartment !== 'all' ? calendarFilterDepartment : 'all')
 
         // If in Staff Overview/Global filtering, use enrichedStaffList. 
         // If in Calendar, keep it restricted to managed staff to match the calendar data.
@@ -1570,7 +1581,7 @@ export default function UserPortal() {
             const deptName = typeof dObj === 'string' ? dObj : (dObj?.name || s.departmentName || "Unassigned")
             return deptName === activeDept
         })
-    }, [enrichedStaffList, managedStaffBase, filterDepartment, calendarFilterDepartment, activeTab])
+    }, [enrichedStaffList, managedStaffBase, filterDepartments, calendarFilterDepartment, activeTab])
 
     // Standardized Status Checker
     const uniqueDepartments = useMemo(() => {
@@ -2302,17 +2313,78 @@ export default function UserPortal() {
                                                 </SelectContent>
                                             </Select>
 
-                                            <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                                                <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
-                                                    <SelectValue placeholder="Department" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="all">Departments</SelectItem>
-                                                    {uniqueDepartments.map((dept: any) => (
-                                                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            <div className="relative">
+                                                {/* Department Filter Dropdown */}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                                            <span className="truncate max-w-[100px]">{filterDepartments.length === 0 ? "Departments" : filterDepartments.length === uniqueDepartments.length ? "All Depts" : `${filterDepartments.length} Selected`}</span>
+                                                            <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent className="w-56 p-2" align="start">
+                                                        <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
+                                                        <DropdownMenuSeparator />
+                                                        <div className="max-h-[300px] overflow-y-auto space-y-1">
+                                                            <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (filterDepartments.length === uniqueDepartments.length) setFilterDepartments([]);
+                                                                    else setFilterDepartments(uniqueDepartments.map((d: any) => d));
+                                                                }}>
+                                                                <Checkbox id="dept-all" checked={filterDepartments.length === uniqueDepartments.length} />
+                                                                <label htmlFor="dept-all" className="text-xs font-medium cursor-pointer flex-1">Select All</label>
+                                                            </div>
+                                                            {uniqueDepartments.map((dept: any) => (
+                                                                <div key={dept} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        if (filterDepartments.includes(dept)) {
+                                                                            setFilterDepartments(filterDepartments.filter(d => d !== dept));
+                                                                        } else {
+                                                                            setFilterDepartments([...filterDepartments, dept]);
+                                                                        }
+                                                                    }}>
+                                                                    <Checkbox id={`dept-${dept}`} checked={filterDepartments.includes(dept)} />
+                                                                    <label htmlFor={`dept-${dept}`} className="text-xs font-medium cursor-pointer flex-1">{dept}</label>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </div>
+
+                                            {/* Employment Location Filter */}
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                                        <span className="truncate max-w-[100px]">
+                                                            {filterEmploymentLocations.length === 0 || filterEmploymentLocations.length === 2 ? "Location" : filterEmploymentLocations.join(", ")}
+                                                        </span>
+                                                        <MapPin className="h-3 w-3 ml-2 opacity-50" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent className="w-48 p-2" align="start">
+                                                    <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Emp. Location</DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    <div className="space-y-1">
+                                                        {['Philippines', 'Australia'].map((loc) => (
+                                                            <div key={loc} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (filterEmploymentLocations.includes(loc)) {
+                                                                        setFilterEmploymentLocations(filterEmploymentLocations.filter(l => l !== loc));
+                                                                    } else {
+                                                                        setFilterEmploymentLocations([...filterEmploymentLocations, loc]);
+                                                                    }
+                                                                }}>
+                                                                <Checkbox id={`loc-${loc}`} checked={filterEmploymentLocations.includes(loc)} />
+                                                                <label htmlFor={`loc-${loc}`} className="text-xs font-medium cursor-pointer flex-1">{loc}</label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
 
                                         </div>
                                     </div>
@@ -2324,7 +2396,8 @@ export default function UserPortal() {
                                                 <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
                                                 <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
                                                 <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
-                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right pr-24">Last Active</TableHead>
+                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employment Location</TableHead>
+                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Last Active</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -2419,27 +2492,20 @@ export default function UserPortal() {
                                                                     {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
                                                                 </Badge>
                                                             </TableCell>
-                                                            <TableCell className="text-right pr-24">
+                                                            <TableCell>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] font-bold text-slate-600">{staff.employmentLocation || "N/A"}</span>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
                                                                 {staff.lastActive ? (
-                                                                    <div className="flex flex-col items-end">
+                                                                    <div className="flex flex-col items-start">
                                                                         <span className="text-xs font-bold text-slate-600 font-mono">
                                                                             {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: staff.selectedTimezone || userTimeZone })}
                                                                         </span>
                                                                         <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
                                                                             {new Date(staff.lastActive).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })}
-                                                                            {staff.selectedTimezone && (
-                                                                                <span className="ml-1 text-[9px] font-black text-slate-300">
-                                                                                    {(() => {
-                                                                                        try {
-                                                                                            const parts = new Intl.DateTimeFormat('en-US', { timeZone: staff.selectedTimezone, timeZoneName: 'short' }).formatToParts(new Date())
-                                                                                            const tz = parts.find(p => p.type === 'timeZoneName')?.value
-                                                                                            // Strip "Standard Time" or "Daylight Time" if it's too long, or just keep initials if possible.
-                                                                                            // Usually 'short' gives PST, EST, GMT+8 etc.
-                                                                                            return tz || 'Local'
-                                                                                        } catch (e) { return 'Local' }
-                                                                                    })()}
-                                                                                </span>
-                                                                            )}
+
                                                                         </span>
                                                                     </div>
                                                                 ) : (
@@ -3110,7 +3176,7 @@ export default function UserPortal() {
                     <div className="p-8 space-y-6 bg-white">
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label>Select Your Location</Label>
+                                <Label>Employment Location</Label>
                                 <Select value={onboardingLocation} onValueChange={setOnboardingLocation}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Where are you based?" />
@@ -3153,7 +3219,7 @@ export default function UserPortal() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label className="text-sm font-bold">Your Work Hours</Label>
+                                <Label className="text-sm font-bold">Nominal Working Hours <span className="text-red-500">*</span></Label>
                                 <p className="text-xs text-muted-foreground">Set your default work schedule</p>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
@@ -3162,6 +3228,7 @@ export default function UserPortal() {
                                             type="time"
                                             value={onboardingShiftStart}
                                             onChange={(e) => setOnboardingShiftStart(e.target.value)}
+                                            required
                                             className="h-11 font-mono font-semibold"
                                         />
                                     </div>
@@ -3171,6 +3238,7 @@ export default function UserPortal() {
                                             type="time"
                                             value={onboardingShiftEnd}
                                             onChange={(e) => setOnboardingShiftEnd(e.target.value)}
+                                            required
                                             className="h-11 font-mono font-semibold"
                                         />
                                     </div>
@@ -3181,7 +3249,7 @@ export default function UserPortal() {
                         <div className="flex flex-col gap-3">
                             <Button
                                 onClick={handleOnboardingSubmit}
-                                disabled={!onboardingLocation}
+                                disabled={!onboardingLocation || !onboardingShiftStart || !onboardingShiftEnd}
                                 className="w-full h-12 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold uppercase tracking-widest text-xs rounded-xl shadow-lg"
                             >
                                 Complete Setup
@@ -3212,7 +3280,7 @@ export default function UserPortal() {
                             Timezone Changed
                         </DialogTitle>
                         <DialogDescription className="text-white/80 font-medium text-sm mt-2 relative z-10">
-                            Please confirm your work hours for the new timezone
+                            Please confirm your Nominal Working Hours for the new timezone
                         </DialogDescription>
                     </div>
 
@@ -3225,7 +3293,7 @@ export default function UserPortal() {
                                         Your timezone has changed to: <span className="font-mono">{userTimeZone}</span>
                                     </p>
                                     <p className="text-xs text-red-600/80">
-                                        Please verify your work hours are correct for this timezone. Your current hours may need adjustment.
+                                        Please verify your Nominal Working Hours are correct for this timezone. Your current hours may need adjustment.
                                     </p>
                                 </div>
                             </div>
@@ -3233,7 +3301,7 @@ export default function UserPortal() {
 
                         <div className="space-y-4">
                             <div>
-                                <Label className="text-sm font-bold mb-2 block">Your Work Hours</Label>
+                                <Label className="text-sm font-bold mb-2 block">Nominal Working Hours</Label>
                                 <p className="text-xs text-muted-foreground mb-3">
                                     Adjust these times to match your work schedule in <span className="font-semibold">{userTimeZone}</span>
                                 </p>
@@ -3266,7 +3334,7 @@ export default function UserPortal() {
                                 className="w-full h-12 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold uppercase tracking-widest text-xs rounded-xl shadow-lg"
                             >
                                 <Check className="w-4 h-4 mr-2" />
-                                Confirm Work Hours
+                                Confirm Nominal Working Hours
                             </Button>
 
                             <Button
