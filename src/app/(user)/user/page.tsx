@@ -3177,7 +3177,16 @@ export default function UserPortal() {
                         <div className="space-y-4">
                             <div className="space-y-2">
                                 <Label>Employment Location</Label>
-                                <Select value={onboardingLocation} onValueChange={setOnboardingLocation}>
+                                <Select value={onboardingLocation} onValueChange={(val) => {
+                                    setOnboardingLocation(val)
+                                    if (val === 'Australia') {
+                                        setOnboardingShiftStart("08:00")
+                                        setOnboardingShiftEnd("17:00")
+                                    } else if (val === 'Philippines') {
+                                        setOnboardingShiftStart("05:00")
+                                        setOnboardingShiftEnd("14:00")
+                                    }
+                                }}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Where are you based?" />
                                     </SelectTrigger>
