@@ -1958,14 +1958,22 @@ export default function UserPortal() {
 
                     <div className="flex flex-col items-end gap-2 self-start sm:self-center">
                         <Sheet>
-                            {mounted && document.getElementById('topbar-activity-container') ? createPortal(
+                            {mounted && document.getElementById('topbar-activity-container-desktop') ? createPortal(
                                 <SheetTrigger asChild>
-                                    <Button id="tour-topbar-activity" variant="outline" className="gap-2 bg-white shadow-sm rounded-xl font-bold text-[10px] uppercase tracking-widest text-[#8B2323] hover:text-white hover:bg-[#8B2323] border-slate-200 transition-all h-9 px-4">
+                                    <Button id="tour-topbar-activity-desktop" variant="outline" className="gap-2 bg-white shadow-sm rounded-xl font-bold text-[10px] uppercase tracking-widest text-[#8B2323] hover:text-white hover:bg-[#8B2323] border-slate-200 transition-all h-9 px-4">
                                         <History className="w-4 h-4" />
                                         Today's Activity
                                     </Button>
                                 </SheetTrigger>,
-                                document.getElementById('topbar-activity-container')!
+                                document.getElementById('topbar-activity-container-desktop')!
+                            ) : null}
+                            {mounted && document.getElementById('topbar-activity-container-mobile') ? createPortal(
+                                <SheetTrigger asChild>
+                                    <Button id="tour-topbar-activity-mobile" variant="outline" size="icon" className="bg-white shadow-sm rounded-xl text-[#8B2323] hover:text-white hover:bg-[#8B2323] border-slate-200 transition-all h-9 w-9">
+                                        <History className="w-4 h-4" />
+                                    </Button>
+                                </SheetTrigger>,
+                                document.getElementById('topbar-activity-container-mobile')!
                             ) : null}
                             <SheetContent className="w-full sm:max-w-md bg-white p-0 border-l border-slate-200 flex flex-col z-[100] h-full shadow-2xl overflow-hidden [&>button]:hidden">
                                 <div className="p-6 border-b border-slate-200/50 bg-slate-50 flex flex-col gap-4 sticky top-0 z-10 shrink-0">
@@ -2155,7 +2163,7 @@ export default function UserPortal() {
 
 
             {/* Portals and Modals Moved from Left Panel */}
-            {mounted && document.getElementById('topbar-clock-container') ? createPortal(
+            {mounted && document.getElementById('topbar-clock-container-desktop') ? createPortal(
                 <div className="flex flex-col items-center justify-center">
                     <div className="flex items-center gap-2">
                         <Globe className="w-4 h-4 text-slate-400" />
@@ -2167,7 +2175,18 @@ export default function UserPortal() {
                         {getStatusText()}
                     </span>
                 </div>,
-                document.getElementById('topbar-clock-container')!
+                document.getElementById('topbar-clock-container-desktop')!
+            ) : null}
+
+            {mounted && document.getElementById('topbar-clock-container-mobile') ? createPortal(
+                <div className="flex flex-col items-center justify-center scale-75 origin-right">
+                    <div className="flex items-center gap-1">
+                        <span className="text-xs font-mono font-black tracking-tight text-slate-800 leading-none">
+                            {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: userTimeZone }) : "--:--"}
+                        </span>
+                    </div>
+                </div>,
+                document.getElementById('topbar-clock-container-mobile')!
             ) : null}
 
             {mounted && document.getElementById('sidebar-workhours-container') && userProfile?.shiftStartTime && userProfile?.shiftEndTime ? createPortal(

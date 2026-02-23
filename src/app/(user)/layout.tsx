@@ -505,7 +505,8 @@ export default function UserLayout({
                                 </Button>
                             </Link>
                         )}
-                        <div id="topbar-activity-container"></div>
+                        <div id="topbar-clock-container-mobile"></div>
+                        <div id="topbar-activity-container-mobile"></div>
                         <UserOnboardingTour mode="trigger" />
                         <NotificationBell />
                     </div>
@@ -517,10 +518,10 @@ export default function UserLayout({
                         <Breadcrumbs />
                     </div>
 
-                    <div id="topbar-clock-container" className="flex items-center justify-center flex-1"></div>
+                    <div id="topbar-clock-container-desktop" className="flex items-center justify-center flex-1"></div>
 
                     <div className="flex items-center justify-end flex-1 gap-4">
-                        <div id="topbar-activity-container"></div>
+                        <div id="topbar-activity-container-desktop"></div>
                         <UserOnboardingTour mode="trigger" />
                         <NotificationBell />
                     </div>
