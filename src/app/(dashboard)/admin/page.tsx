@@ -591,7 +591,7 @@ export default function AdminDashboard() {
                                                         ) : record.mode === 'ONSITE' ? (
                                                             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
                                                                 <Briefcase className="h-3 w-3" />
-                                                                Onsite
+                                                                Offsite
                                                             </Badge>
                                                         ) : (
                                                             <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">

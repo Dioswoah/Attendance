@@ -8,13 +8,15 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Calendar, Clock, LogIn, LogOut, Coffee, FileText, Settings, ShieldCheck, AlertCircle, Eye, History, UserCheck, ShieldAlert, Edit2, Trash2 } from "lucide-react"
-import { format } from "date-fns"
+import { format, subDays, startOfDay, endOfDay } from "date-fns"
 import { getBrowserTimezone } from "@/lib/timezone"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 
 export default function ActivityLogsPage() {
     const { data: session } = useSession()
-    const [searchQuery, setSearchQuery] = useState("")
+    const [startDate, setStartDate] = useState(format(subDays(new Date(), 7), "yyyy-MM-dd"))
+    const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [filterType, setFilterType] = useState<string>("all")
     const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
 
@@ -26,7 +28,7 @@ export default function ActivityLogsPage() {
 
     const fetcher = (url: string) => fetch(url).then(res => res.json())
     const { data, isLoading } = useSWR(
-        session?.user?.id ? `/api/activity-logs?limit=100` : null,
+        session?.user?.id ? `/api/activity-logs?limit=500&userId=${session.user.id}` : null,
         fetcher
     )
 
@@ -49,14 +51,19 @@ export default function ActivityLogsPage() {
     }
 
     const filteredLogs = logs.filter((log: any) => {
-        const info = getActionInfo(log.action)
-        const matchesSearch = log.details?.actor?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            info.label.toLowerCase().includes(searchQuery.toLowerCase())
-        if (filterType === 'all') return matchesSearch
-        if (filterType === 'attendance') return matchesSearch && ['CLOCK_IN', 'CLOCK_OUT', 'AUTO_CLOCK_OUT'].includes(log.action)
-        if (filterType === 'leave') return matchesSearch && log.action.startsWith('LEAVE_')
-        if (filterType === 'admin') return matchesSearch && log.action.startsWith('ADMIN_')
-        return matchesSearch
+        let matchesDate = true
+        if (startDate && endDate) {
+            const logDate = new Date(log.createdAt)
+            matchesDate = logDate >= startOfDay(new Date(startDate)) && logDate <= endOfDay(new Date(endDate))
+        }
+
+        if (!matchesDate) return false
+
+        if (filterType === 'all') return true
+        if (filterType === 'attendance') return ['CLOCK_IN', 'CLOCK_OUT', 'AUTO_CLOCK_OUT'].includes(log.action)
+        if (filterType === 'leave') return log.action.startsWith('LEAVE_')
+        if (filterType === 'admin') return log.action.startsWith('ADMIN_')
+        return true
     })
 
     const groupedLogs = filteredLogs.reduce((acc: any, log: any) => {
@@ -70,18 +77,24 @@ export default function ActivityLogsPage() {
         <div className="space-y-8 w-full p-4 lg:p-8 max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
                 <div>
-                    <h1 className="text-3xl font-black tracking-tight text-slate-900 uppercase">Audit Trail</h1>
-                    <p className="text-slate-500 mt-1 font-medium italic">Transparency and accountability for every action.</p>
+                    <h1 className="text-3xl font-black tracking-tighter text-[#8B2323] uppercase">Activity Logs</h1>
+                    <p className="text-red-900/60 mt-1 font-bold text-sm tracking-widest uppercase">Your Recent Activities</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <div className="flex items-center gap-2 bg-white border border-red-100 p-1 rounded-xl shadow-sm">
                         <Input
-                            placeholder="Search actions..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 w-64 border-slate-200 focus:border-primary shadow-sm rounded-xl"
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="w-36 border-none shadow-none focus-visible:ring-0 text-sm font-bold text-slate-700"
+                        />
+                        <span className="text-red-300 font-bold">&rarr;</span>
+                        <Input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="w-36 border-none shadow-none focus-visible:ring-0 text-sm font-bold text-slate-700"
                         />
                     </div>
                     <Select value={filterType} onValueChange={setFilterType}>
@@ -211,8 +224,4 @@ export default function ActivityLogsPage() {
             </div>
         </div>
     )
-}
-
-function cn(...classes: any[]) {
-    return classes.filter(Boolean).join(" ")
 }

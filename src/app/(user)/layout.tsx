@@ -389,7 +389,9 @@ export default function UserLayout({
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-xs font-bold text-slate-700">Display Timezone</span>
                                                         <div className="h-6 w-fit px-2 rounded-md bg-slate-50 flex items-center justify-center border border-slate-100 italic text-[10px] text-slate-400 group-hover:bg-white transition-colors">
-                                                            {((session?.user as any)?.selectedTimezone || "UTC").split('/').pop()?.replace('_', ' ')}
+                                                            {((session?.user as any)?.useCurrentTimezone || (session?.user as any)?.selectedTimezone === Intl.DateTimeFormat().resolvedOptions().timeZone)
+                                                                ? "Local"
+                                                                : ((session?.user as any)?.selectedTimezone || "UTC").split('/').pop()?.replace('_', ' ')}
                                                         </div>
                                                     </div>
                                                     <p className="text-[10px] text-slate-400 font-medium truncate">Adjust time display preferences</p>
@@ -417,14 +419,14 @@ export default function UserLayout({
 
                                 <DropdownMenuItem
                                     onClick={() => signOut({ callbackUrl: '/' })}
-                                    className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group"
+                                    className="flex items-center gap-3 px-3 py-2.5 text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group"
                                 >
-                                    <div className="h-8 w-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 shrink-0 group-hover:bg-slate-100 group-hover:text-slate-900 transition-colors">
+                                    <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0 group-hover:bg-slate-200 group-hover:text-slate-900 transition-colors">
                                         <LogOut className="w-4 h-4" />
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="text-xs font-bold">Sign Out</span>
-                                        <p className="text-[10px] font-medium">End your session</p>
+                                        <p className="text-[10px] text-slate-500 font-medium">End your session</p>
                                     </div>
                                 </DropdownMenuItem>
                             </DropdownMenuContent>

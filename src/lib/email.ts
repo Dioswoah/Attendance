@@ -65,32 +65,37 @@ export async function sendLeaveRequestEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Create email content
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
     const emailContent = `From: "${userName}" <${userEmail}>
 To: ${managerEmail}
-Subject: Leave Request: ${userName} - ${leaveType}
+Subject: [RSA] Leave Request: ${userName} - ${leaveType}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-  <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-bottom: 1px solid #e0e0e0;">
-    <h2 style="margin: 0; color: #d32f2f;">Leave Request Notification</h2>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request Notification</h2>
   </div>
-  <div style="padding: 20px;">
-    <p>Hi <strong>${managerName}</strong>,</p>
-    <p><strong>${userName}</strong> has submitted a new leave request that requires your attention.</p>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${managerName}</strong>,</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Hope you're having a great day! <strong>${userName}</strong> has just submitted a new leave request that requires your friendly review.</p>
     
-    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
-      <p style="margin: 5px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
-      <p style="margin: 5px 0;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
-      <p style="margin: 5px 0;"><strong>Duration:</strong> ${duration}</p>
-      ${reason ? `<p style="margin: 5px 0;"><strong>Reason:</strong> ${reason}</p>` : ''}
+    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Leave Type:</strong> ${leaveType}</p>
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Duration:</strong> ${duration}</p>
+      ${reason ? `<p style="margin: 8px 0; color: #7f1d1d;"><strong>Reason:</strong> ${reason}</p>` : ''}
     </div>
 
-    <p>This is a reminder that there is a pending approval for this request.</p>
-    <p>Please log in to the <a href="https://attendance-app-712513641417.us-central1.run.app" style="color: #d32f2f; text-decoration: none; font-weight: bold;">User Portal</a> to review and take action.</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">Whenever you have a moment, please log in to the User Portal to review and take action.</p>
+    <div style="text-align: center;">
+      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Request</a>
+    </div>
   </div>
-  <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
-    <p style="margin: 0;">This is an automated message. Please do not reply directly to this email unless you intend to contact the employee.</p>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -164,30 +169,38 @@ export async function sendLeaveStatusUpdateEmail({
 
     const statusText = status === 'APPROVED' ? 'Approved' : 'Unable to Approve';
     const displayStatus = status === 'APPROVED' ? 'Approved' : 'Not Approved';
-    // Use a softer color for declined/not approved (e.g., slate/grey or muted red) instead of harsh red
-    const color = status === 'APPROVED' ? '#2e7d32' : '#718096';
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
     const emailContent = `From: "${managerName}" <${managerEmail}>
 To: ${userEmail}
-Subject: Update regarding your Leave Request
+Subject: [RSA] Update regarding your Leave Request
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Segoe UI', Arial, sans-serif; color: #4a5568; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
-  <div style="background-color: ${color}; padding: 20px; text-align: center;">
-    <h2 style="margin: 0; color: #ffffff; font-weight: 600;">Leave Request Update</h2>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request Update</h2>
   </div>
-  <div style="padding: 32px 24px;">
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Your leave request has been reviewed by <strong>${managerName}</strong>.</p>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Your recent leave request has been reviewed by <strong>${managerName}</strong>.</p>
     
-    <div style="background-color: #f8fafc; padding: 20px; border-radius: 12px; margin: 24px 0; border-left: 4px solid ${color}; border: 1px solid #e2e8f0;">
-      <p style="margin: 8px 0;"><strong>Status:</strong> <span style="color: ${color}; font-weight: bold;">${displayStatus}</span></p>
-      <p style="margin: 8px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
-      <p style="margin: 8px 0;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
-      ${status === 'DECLINED' && declineReason ? `<p style="margin: 8px 0; color: #4a5568;"><strong>Note from Manager:</strong> ${declineReason}</p>` : ''}
+    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Status:</strong> <span style="font-weight: bold;">${displayStatus}</span></p>
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Leave Type:</strong> ${leaveType}</p>
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
+      ${status === 'DECLINED' && declineReason ? `<p style="margin: 8px 0; color: #991b1b;"><strong>Note from Manager:</strong> ${declineReason}</p>` : ''}
     </div>
 
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Please check the <a href="https://attendance-app-712513641417.us-central1.run.app" style="color: ${color}; text-decoration: none; font-weight: bold;">User Portal</a> for full details.</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">You can view the full details and history of your requests on the portal.</p>
+    <div style="text-align: center;">
+      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Dashboard</a>
+    </div>
+  </div>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -251,34 +264,39 @@ export async function sendLeaveActionEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Try to maintain threading by using a similar subject
-    const subject = `Re: Leave Request: ${userName} - ${leaveType}`;
+    const subject = `[RSA] Leave Request ${action === 'UPDATED' ? 'Updated' : 'Cancelled'}: ${userName}`;
     const actionText = action === 'UPDATED' ? 'updated' : 'cancelled';
-    const color = action === 'UPDATED' ? '#1976d2' : '#757575'; // Blue for update, Grey for cancel
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
     const emailContent = `From: "${userName}" <${userEmail}>
 To: ${managerEmail}
 Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-  <div style="background-color: ${color}; padding: 20px; text-align: center;">
-    <h2 style="margin: 0; color: #ffffff;">Leave Request ${actionText === 'updated' ? 'Updated' : 'Cancelled'}</h2>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request ${actionText === 'updated' ? 'Updated' : 'Cancelled'}</h2>
   </div>
-  <div style="padding: 20px;">
-    <p>Hi <strong>${managerName}</strong>,</p>
-    <p><strong>${userName}</strong> has ${actionText} their leave request.</p>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${managerName}</strong>,</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Just a quick note that <strong>${userName}</strong> has ${actionText} their leave request.</p>
     
-    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
-      <p style="margin: 5px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
-      <p style="margin: 5px 0;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
-      ${action === 'UPDATED' ? '<p style="margin: 5px 0; font-style: italic;">The request details have been modified.</p>' : ''}
+    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Leave Type:</strong> ${leaveType}</p>
+      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
+      ${action === 'UPDATED' ? '<p style="margin: 8px 0; font-style: italic; color: #991b1b;">The details of the request have been modified by the user.</p>' : ''}
     </div>
 
-    <p>Please log in to the <a href="https://attendance-app-712513641417.us-central1.run.app" style="color: ${color}; text-decoration: none; font-weight: bold;">Admin Portal</a> to review.</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">For full details and to keep our records aligned, please log in to the portal.</p>
+    <div style="text-align: center;">
+      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Go to Portal</a>
+    </div>
   </div>
-  <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
-    <p style="margin: 0;">This is an automated message.</p>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -339,8 +357,8 @@ export async function sendAdminActionEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = `Administration Update: New ${actionType.toLowerCase()} entry added`;
-    const themeColor = '#6366f1'; // Indigo for admin updates
+    const subject = `[RSA] Administration Update: New ${actionType.toLowerCase()} entry added`;
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
     const emailContent = `From: "${adminName}" <${adminEmail}>
 To: ${userEmail}
@@ -348,37 +366,34 @@ Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: ${themeColor}; padding: 32px 24px; text-align: center;">
-    <div style="font-size: 48px; margin-bottom: 16px;">📝</div>
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Record Update</h2>
   </div>
   <div style="padding: 40px 32px;">
     <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      An administrator has recently updated your profile with a new <strong>${actionType.toLowerCase()}</strong> record. This ensures all your time-tracking information remains complete and accurate.
-    </p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">An administrator recently updated your profile with a new <strong>${actionType.toLowerCase()}</strong> record to ensure your information stays complete and accurate.</p>
     
-    <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #e2e8f0;">
+    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
       <div style="margin-bottom: 12px; display: flex; align-items: flex-start;">
-        <span style="color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 100px; display: block;">Date</span>
-        <span style="color: #0f172a; font-weight: 600; font-size: 16px;">${date}</span>
+        <span style="color: #991b1b; font-size: 13px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; width: 100px; display: block;">Date</span>
+        <span style="color: #7f1d1d; font-weight: 600; font-size: 16px;">${date}</span>
       </div>
       <div style="display: flex; align-items: flex-start;">
-        <span style="color: #64748b; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; width: 100px; display: block;">Details</span>
-        <span style="color: #0f172a; font-weight: 500; font-size: 15px; line-height: 1.5;">${details}</span>
+        <span style="color: #991b1b; font-size: 13px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; width: 100px; display: block;">Details</span>
+        <span style="color: #7f1d1d; font-weight: 500; font-size: 15px; line-height: 1.5;">${details}</span>
       </div>
     </div>
 
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">
-      You can review this new entry and all your other records anytime through your personal dashboard.
-    </p>
-
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">You can review this new entry and all your other records anytime on your dashboard.</p>
     <div style="text-align: center;">
-      <a href="https://attendance-app-712513641417.us-central1.run.app" style="display: inline-block; background-color: ${themeColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
+      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is an administrative notification.<br/>Designed to help you stay informed about your profile updates.</p>
+    <p style="margin: 0; line-height: 1.5;">This is a friendly administrative notification.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -446,40 +461,35 @@ export async function sendBreakLimitEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = "Quick Check-in: Break Status";
-    // Soft, friendly colors
-    const headerColor = '#60A5FA'; // Soft Blue
+    const subject = "[RSA] Quick Check-in: Break Status";
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
 Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
-  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
-    <div style="font-size: 48px; margin-bottom: 12px;">☕</div>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Time Check-in</h2>
   </div>
   <div style="padding: 40px 32px;">
     <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Hope you're having a good break! Just sending a quick, friendly ping since your break time has reached <strong>${totalBreakTime}</strong> today (daily guideline: ${limit}).</p>
     
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-      Hope you're having a good break! Just sending a friendly notification as your break time has reached <strong>${totalBreakTime}</strong> today (daily guideline: ${limit}).
-    </p>
-    
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
-      If you're ready to jump back in, you can end your break with one click below.
-    </p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">If you're refreshed and ready to jump back in, you can easily end your break and get back to work by clicking below.</p>
 
-    <div style="text-align: center; margin-bottom: 32px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(96, 165, 250, 0.4);">
-        End Break & Clock In
-      </a>
+    <div style="text-align: center; margin-bottom: 16px;">
+      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break & Clock In</a>
     </div>
 
-    <p style="font-size: 14px; color: #6b7280; text-align: center;">
-      (No worries if you need a bit more time! This is just to help you keep track.)
-    </p>
+    <p style="font-size: 14px; color: #6b7280; text-align: center; margin-top: 16px;">(No worries if you still need a bit more time! This is just to help you keep track.)</p>
+  </div>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -544,39 +554,34 @@ export async function sendBreakExpectedReturnEmail({
     }
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const subject = "Friendly Reminder: Are you still on break?";
-    const headerColor = '#FBBF24'; // Amber/Yellow
+    const subject = "[RSA] Friendly Reminder: Are you still on break?";
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
 Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
-  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
-    <div style="font-size: 48px; margin-bottom: 12px;">☕</div>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Status Check</h2>
   </div>
   <div style="padding: 40px 32px;">
     <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-      Just a friendly check-in! Your break's expected return time was <strong>${expectedReturnTime}</strong>.
-    </p>
-    
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
-      If you're already back at your desk and ready to resume work, you can easily end your break using the button below.
-    </p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Just another quick, friendly check-in! Your break was expected to end at around <strong>${expectedReturnTime}</strong>.</p>
+    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">If you're already back at your desk and working hard, you can easily end your break using the button below to update your status.</p>
 
-    <div style="text-align: center; margin-bottom: 32px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(251, 191, 36, 0.4);">
-        End Break Now
-      </a>
+    <div style="text-align: center; margin-bottom: 16px;">
+      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break Now</a>
     </div>
 
-    <p style="font-size: 14px; color: #6b7280; text-align: center;">
-      If you need more time, no problem! We just wanted to help you stay on track.
-    </p>
+    <p style="font-size: 14px; color: #6b7280; text-align: center; margin-top: 16px;">If you need a little more time, zero problems! We just want to help you stay on track.</p>
+  </div>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -625,43 +630,47 @@ export async function sendForgottenClockOutEmail({
     oauth2Client.setCredentials({ access_token: userAccessToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
+
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
-Subject: Friendly Reminder: Attendance Status Cleanup
+Subject: [RSA] Friendly Reminder: Your Attendance Session was Auto-Closed
 Content-Type: text/html; charset=utf-8
 
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #64748b; padding: 32px 24px; text-align: center;">
-    <div style="font-size: 48px; margin-bottom: 16px;">⏱️</div>
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Attendance Status Update</h2>
   </div>
   <div style="padding: 40px 32px;">
     <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
     
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      Our system noticed that your session for <strong>${date}</strong> remained active after the end of the day. To keep your attendance records accurate, we have automatically finalized the record for that day.
+      Hope you're having a good rest! We noticed that your session for <strong>${date}</strong> remained active after your scheduled shift ended. No worries — to save you the hassle and keep your records accurate, we've automatically closed it out for you.
     </p>
 
-    <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #e2e8f0; text-align: center;">
-      <p style="margin: 0; color: #64748b; font-size: 14px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em;">Updated Record</p>
-      <p style="margin: 8px 0; color: #0f172a; font-weight: 700; font-size: 18px;">${date}</p>
-      <p style="margin: 0; color: #94a3b8; font-size: 13px;">Status: Finalized at 11:59 PM</p>
+    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca; text-align: center;">
+      <p style="margin: 0; color: #991b1b; font-size: 14px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em;">Updated Record</p>
+      <p style="margin: 8px 0; color: #7f1d1d; font-weight: 700; font-size: 18px;">${date}</p>
+      <p style="margin: 0; color: #b91c1c; font-size: 13px; font-weight: 600;">Status: Auto-Clocked Out (Shift Ended)</p>
     </div>
     
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      If this was intentional or if any adjustments are needed to the finalized time, please don't hesitate to reach out to your administrator to update the record manually.
+      If you actually worked past your shift or if any adjustments are needed, please don't hesitate to reach out to your administrator to update the record manually.
     </p>
 
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">
-      For future days, please remember to click <strong>"Clock Out"</strong> via the portal before heading off to ensure everything is captured correctly.
+      Please try to remember to click <strong>"Clock Out"</strong> via the portal before heading off next time. Have a wonderful day!
     </p>
 
     <div style="text-align: center;">
-      <a href="https://attendance-app-712513641417.us-central1.run.app" style="display: inline-block; background-color: #64748b; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Attendance Records</a>
+      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Dashboard</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is an automated maintenance notification.<br/>Designed to keep your profile status current.</p>
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated reminder.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -745,35 +754,32 @@ export async function sendLateArrivalEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = "Check In: Start Your Shift?";
-    const headerColor = '#F59E0B'; // Amber
+    const subject = "[RSA] Check In: Start Your Shift?";
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
 Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
-  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
-    <div style="font-size: 48px; margin-bottom: 12px;">⏰</div>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Time to Clock In?</h2>
   </div>
   <div style="padding: 40px 32px;">
     <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-      We noticed you haven't clocked in yet for your shift scheduled at <strong>${scheduledStart}</strong>. 
-    </p>
-    
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
-      If you're already online and just forgot, you can clock in immediately using the button below. If you're running late or on leave, you can ignore this safe in the knowledge that we've checked in.
-    </p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Just checking in — we noticed you haven't clocked in yet for your shift scheduled at <strong>${scheduledStart}</strong>.</p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">If you're already online and simply forgot, you can clock in immediately using the button below. If you're running late or on leave, feel free to ignore this safely!</p>
 
-    <div style="text-align: center; margin-bottom: 32px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.4);">
-        Clock In Now
-      </a>
+    <div style="text-align: center; margin-bottom: 16px;">
+      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock In Now</a>
     </div>
+  </div>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -840,35 +846,32 @@ export async function sendOverdueDepartureEmail({
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const subject = "Check Out Reminder: Shift Ended?";
-    const headerColor = '#6366F1'; // Indigo
+    const subject = "[RSA] Check Out Reminder: Shift Ended?";
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
     const emailContent = `From: "Attendance System" <${userEmail}>
 To: ${userEmail}
 Subject: ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff;">
-  <div style="background-color: ${headerColor}; padding: 32px 24px; text-align: center;">
-    <div style="font-size: 48px; margin-bottom: 12px;">🌙</div>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Shift Wrap-Up</h2>
   </div>
   <div style="padding: 40px 32px;">
     <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
-      Just a friendly reminder that your scheduled shift ended around <strong>${scheduledEnd}</strong>, and you're still clocked in.
-    </p>
-    
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">
-       If you're done for the day, simply click below to clock out. If you're working late, feel free to ignore this message!
-    </p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Just a friendly reminder that your scheduled shift ended around <strong>${scheduledEnd}</strong>, and you're still clocked in.</p>
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">If you're all done for the day, please click below to clock out. If you're working a little late, no problem at all — feel free to ignore this message!</p>
 
-    <div style="text-align: center; margin-bottom: 32px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: ${headerColor}; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 99px; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);">
-        Clock Out Now
-      </a>
+    <div style="text-align: center; margin-bottom: 16px;">
+      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock Out Now</a>
     </div>
+  </div>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 
@@ -907,26 +910,31 @@ export async function sendGeneralEmail({
     oauth2Client.setCredentials({ access_token: accessToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
+    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
+
     const emailContent = `From: "Attendance System" <me>
 To: ${toEmail}
-Subject: ${subject}
+Subject: [RSA] ${subject}
 Content-Type: text/html; charset=utf-8
 
-<div style="font-family: 'Inter', sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-  <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-bottom: 1px solid #e0e0e0;">
-    <h2 style="margin: 0; color: #333;">${title}</h2>
+<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+    </div>
+    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">${title}</h2>
   </div>
-  <div style="padding: 20px;">
-    <p style="font-size: 16px; line-height: 1.6;">${message}</p>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">${message}</p>
     
     ${link ? `
-    <div style="text-align: center; margin-top: 24px;">
-      <a href="${link}" style="display: inline-block; background-color: #000; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">${linkText}</a>
+    <div style="text-align: center; margin-top: 32px; margin-bottom: 16px;">
+      <a href="\${link}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">${linkText}</a>
     </div>
     ` : ''}
   </div>
-  <div style="background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #e0e0e0;">
-    <p style="margin: 0;">Automated Notification</p>
+  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
   </div>
 </div>`;
 

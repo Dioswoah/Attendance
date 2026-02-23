@@ -833,7 +833,7 @@ export default function UserPortal() {
 
         // Validate location details if required
         if (mode === 'ONSITE' && !locationDetails.trim()) {
-            toast.error("Please provide a Location or Job Number for Onsite work")
+            toast.error("Please provide a Location or Job Number for Offsite work")
             return
         }
         if (mode === 'OTHER' && !locationDetails.trim()) {
@@ -1534,9 +1534,12 @@ export default function UserPortal() {
             const managedDeptIds = managedDepartments.map((d: any) => d.id || d)
             const isInManagedDept = s.departmentId && managedDeptIds.includes(s.departmentId)
 
-            return isSelf || isDirectReport || isInMyDepartment || isInManagedDept
+            // Manager visibility (My own manager)
+            const isMyManager = s.id === userManagerId
+
+            return isSelf || isDirectReport || isInMyDepartment || isInManagedDept || isMyManager
         })
-    }, [enrichedStaffList, userId, userDepartmentId, managedDepartments])
+    }, [enrichedStaffList, userId, userDepartmentId, managedDepartments, userManagerId])
 
     // 3. UI List (Filtered for the table) - GLOBAL DIRECTORY
     const sortedStaff = useMemo(() => {
@@ -2189,7 +2192,7 @@ export default function UserPortal() {
                 document.getElementById('topbar-clock-container-mobile')!
             ) : null}
 
-            {mounted && document.getElementById('sidebar-workhours-container') && userProfile?.shiftStartTime && userProfile?.shiftEndTime ? createPortal(
+            {mounted && document.getElementById('sidebar-workhours-container') && userProfile ? createPortal(
                 <button
                     className="flex items-center w-full px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group mb-1"
                     onClick={() => setShowScheduleInput(true)}
@@ -2203,7 +2206,9 @@ export default function UserPortal() {
                             <Edit className="w-3 h-3 text-slate-300 group-hover:text-red-500 transition-colors" />
                         </div>
                         <p className="text-[10px] font-mono font-bold text-red-600 mt-0.5">
-                            {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
+                            {(userProfile.shiftStartTime && userProfile.shiftEndTime) ?
+                                `${userProfile.shiftStartTime} - ${userProfile.shiftEndTime}` :
+                                'Not Set'}
                         </p>
                     </div>
                 </button>,
@@ -2547,17 +2552,23 @@ export default function UserPortal() {
                                         <div className="flex items-center gap-3">
                                             <div className="flex flex-col gap-1">
                                                 {/* Department Filter for Calendar */}
-                                                <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
-                                                    <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
-                                                        <SelectValue placeholder="Department" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="all">All Departments</SelectItem>
-                                                        {uniqueDepartments.map((dept: any) => (
-                                                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                {(userProfile?.roles?.includes('MANAGER') || userProfile?.roles?.includes('ADMIN')) ? (
+                                                    <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
+                                                        <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
+                                                            <SelectValue placeholder="Department" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="all">All Departments</SelectItem>
+                                                            {uniqueDepartments.map((dept: any) => (
+                                                                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                ) : (
+                                                    <div className="h-9 px-4 flex items-center bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 shadow-sm">
+                                                        {userDepartment || "My Department"}
+                                                    </div>
+                                                )}
                                             </div>
                                             <TabsList className="bg-slate-100 p-1 rounded-xl h-9">
                                                 <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -2925,7 +2936,7 @@ export default function UserPortal() {
                                 )}>
                                     <Briefcase className="w-6 h-6" />
                                 </div>
-                                <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">Onsite</span>
+                                <span className="font-black uppercase tracking-widest text-[10px] text-slate-700">Offsite</span>
                             </Button>
 
                             <Button
@@ -2963,7 +2974,7 @@ export default function UserPortal() {
                                     disabled={!locationDetails.trim() || isProcessing}
                                     className="w-full h-12 bg-slate-900 text-white font-black rounded-xl uppercase tracking-widest text-[10px]"
                                 >
-                                    Confirm Onsite Clock In
+                                    Confirm Offsite Clock In
                                 </Button>
                             </div>
                         )}

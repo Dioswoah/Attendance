@@ -78,6 +78,7 @@ async function cleanupOldSessions(sessionToken?: string) {
                     name: true,
                     email: true,
                     selectedTimezone: true,
+                    shiftStartTime: true,
                     shiftEndTime: true
                 }
             }
@@ -122,33 +123,46 @@ async function cleanupOldSessions(sessionToken?: string) {
 
             if (session.user.shiftEndTime) {
                 // Use User's Shift End Time
-                // Construct ISO string for session date + shift end time
-                // Format: YYYY-MM-DDTHH:mm:00+Offset
                 try {
-                    const shiftEndIso = `${sessionDateStr}T${session.user.shiftEndTime}:00${offsetStr}`;
+                    let shiftEndDay = sessionDateStr;
+                    // Support cross-midnight shifts or late clock-ins where shiftEnd appears before shiftStart
+                    if (session.user.shiftStartTime && session.user.shiftEndTime < session.user.shiftStartTime) {
+                        const nextDate = new Date(session.date);
+                        nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+                        shiftEndDay = nextDate.toISOString().split('T')[0];
+                    }
+
+                    const shiftEndIso = `${shiftEndDay}T${session.user.shiftEndTime}:00${offsetStr}`;
                     targetTime = new Date(shiftEndIso);
+
+                    // If they somehow clocked in after their shift supposedly ended, 
+                    // advance the target to the next day's shift end if it was a late extra shift
+                    if (targetTime <= session.clockIn) {
+                        targetTime.setUTCDate(targetTime.getUTCDate() + 1);
+                    }
                     reason = "shift ended";
                 } catch (e) {
-                    // Fallback to 9 hours if parse fails
                     targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
                     reason = "maximum duration exceeded";
                 }
             } else {
-                // Default: 9 hours after clock in
                 targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
                 reason = "maximum duration exceeded";
             }
 
-            // 3. Apply Cap: No later than 23:59 Local Time
-            // If targetTime is valid and earlier than endDay, use it. Otherwise use endDay.
-            // Also ensure targetTime is after clockIn (sanity check)
-            let finalClockOut = endDay;
-            if (targetTime < endDay && targetTime > session.clockIn) {
-                finalClockOut = targetTime;
-            } else {
-                // If we hit the cap, revert reason to "past midnight" context (or just keep as is? 
-                // User said "but no later than..." implying the rule clips the time. 
-                // We can stick to the reason derived or genericize it.)
+            // 3. Apply Cap: No later than 23:59 Local Time NEXT DAY, normally just targetTime.
+            let finalClockOut = targetTime;
+
+            // Safety cap if targetTime is somehow wildly far in the future
+            const maxAllowedTime = new Date(session.clockIn.getTime() + 14 * 60 * 60 * 1000); // hard cap at 14 hours
+            if (finalClockOut > maxAllowedTime) {
+                finalClockOut = maxAllowedTime;
+                reason = "maximum duration exceeded";
+            }
+
+            // Fallback if targetTime is somehow earlier than clockIn (shouldn't happen with the fix above)
+            if (finalClockOut < session.clockIn) {
+                finalClockOut = endDay;
                 reason = "forced end of day";
             }
 
