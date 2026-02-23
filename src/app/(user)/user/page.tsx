@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef } from "react"
+import { createPortal } from "react-dom"
 import { useSession, signIn, signOut } from "next-auth/react"
 import useSWR from "swr"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSam
 import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
 import { getBrowserTimezone } from "@/lib/timezone"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet"
 import { statusConfig } from "@/components/UserStatusDropdown"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -1337,6 +1339,20 @@ export default function UserPortal() {
         }
     }
 
+    const getStatusTextColor = () => {
+        if (optimisticStatus === "clocked-in" && userProfile?.availabilityStatus) {
+            const status = userProfile.availabilityStatus
+            if (status === 'DO_NOT_DISTURB') return "text-rose-600"
+            if (status === 'BE_RIGHT_BACK') return "text-amber-600"
+            if (status === 'APPEAR_AWAY') return "text-amber-600"
+        }
+        switch (optimisticStatus) {
+            case "clocked-in": return "text-green-600"
+            case "on-break": return "text-yellow-600"
+            default: return "text-slate-400"
+        }
+    }
+
     const getStatusText = () => {
         // If clocked in, respect availability status override
         if (optimisticStatus === "clocked-in" && userProfile?.availabilityStatus) {
@@ -1505,14 +1521,22 @@ export default function UserPortal() {
     // 2. Identify Managed Staff (Base for Stats & Table)
     const managedStaffBase = useMemo(() => {
         return enrichedStaffList.filter((s: any) => {
-            // STRICT MODE: Managers ONLY see direct reports + self
-            // We ignore department management for visibility - only direct reporting lines matter
-            const isDirectReport = s.managerId === userId
+            // Self visibility
             const isSelf = s.id === userId
 
-            return isDirectReport || isSelf
+            // Direct reporting line visibility
+            const isDirectReport = s.managerId === userId
+
+            // Departmental peer visibility (Same department)
+            const isInMyDepartment = userDepartmentId && s.departmentId === userDepartmentId
+
+            // Managed departments visibility (For managers)
+            const managedDeptIds = managedDepartments.map((d: any) => d.id || d)
+            const isInManagedDept = s.departmentId && managedDeptIds.includes(s.departmentId)
+
+            return isSelf || isDirectReport || isInMyDepartment || isInManagedDept
         })
-    }, [enrichedStaffList, userId])
+    }, [enrichedStaffList, userId, userDepartmentId, managedDepartments])
 
     // 3. UI List (Filtered for the table) - GLOBAL DIRECTORY
     const sortedStaff = useMemo(() => {
@@ -1864,11 +1888,11 @@ export default function UserPortal() {
         <div className="space-y-8 w-full">
             {/* Header */}
             <div id="tour-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
+                <div className="flex flex-col gap-2">
                     <h1 className="text-4xl md:text-5xl font-black tracking-tight text-foreground">
                         {greeting}, {displayName}
                     </h1>
-                    <p className="text-lg md:text-xl font-medium text-muted-foreground mt-2">
+                    <p className="text-lg md:text-xl font-medium text-muted-foreground">
                         {currentTime ? currentTime.toLocaleDateString("en-US", {
                             weekday: "long",
                             year: "numeric",
@@ -1878,913 +1902,886 @@ export default function UserPortal() {
                         }) : "Loading..."}
                     </p>
                 </div>
-                <Badge id="tour-status-badge" variant="outline" className={`${getStatusColor()} px-4 py-1.5 text-sm font-medium border`}>
-                    {getStatusText()}
-                </Badge>
-            </div>
 
-
-            {/* Dashboard Primary Row: Time Tracker + Activity Timeline */}
-            {/* Unified Daily Command Center */}
-            <Card className="border-0 shadow-2xl rounded-[2.5rem] overflow-hidden bg-white ring-1 ring-slate-200/50 relative">
-                <div className="flex flex-col xl:block relative">
-
-                    {/* Left Panel: Tracker & Controls */}
-                    <div className="w-full xl:w-[58%] p-6 md:p-8 flex flex-col relative bg-white min-h-[500px]">
-                        {isLoading ? (
-                            <div className="space-y-8 animate-pulse">
-                                <div className="flex justify-between items-center mb-6">
-                                    <Skeleton className="h-4 w-32" />
-                                    <div className="flex gap-2">
-                                        <Skeleton className="h-8 w-24 rounded-full" />
-                                        <Skeleton className="h-8 w-32 rounded-full" />
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-center justify-center space-y-4 py-12">
-                                    <Skeleton className="h-20 w-20 rounded-[2rem]" />
-                                    <Skeleton className="h-8 w-48" />
-                                    <Skeleton className="h-4 w-32" />
-                                </div>
-                                <div className="flex justify-center gap-4 mt-8">
-                                    <Skeleton className="h-14 w-40 rounded-2xl" />
-                                    <Skeleton className="h-14 w-40 rounded-2xl" />
-                                </div>
-                                <div className="grid grid-cols-3 gap-4 mt-auto pt-6 border-t border-slate-100">
-                                    <Skeleton className="h-16 w-full rounded-2xl" />
-                                    <Skeleton className="h-16 w-full rounded-2xl" />
-                                    <Skeleton className="h-16 w-full rounded-2xl" />
-                                </div>
+                {/* Right Side Actions Group */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    {/* Action Buttons now on the right */}
+                    <div id="tour-action-buttons" className="flex items-center gap-2">
+                        {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
+                            <div className="flex bg-green-600 rounded-2xl items-center shadow-md group p-1 z-20">
+                                <Button onClick={handleClockInClick} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-3 bg-transparent hover:bg-green-700/20 text-white font-black border-r border-white/20 rounded-r-none focus:ring-0 uppercase tracking-widest text-xs sm:text-sm transition-all active:scale-95 duration-200">
+                                    {isProcessing || isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+                                    Clock In
+                                </Button>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button disabled={isProcessing || isLoading} className="px-3 sm:px-4 h-12 sm:h-14 bg-transparent hover:bg-green-700/20 text-white rounded-l-none focus:ring-0 rounded-r-[0.9rem] transition-all active:scale-95 duration-200">
+                                            <ChevronDown className="h-5 w-5" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-80 p-0 rounded-2xl shadow-xl border-border overflow-hidden" align="end">
+                                        <div className="bg-[#8B2323] p-4 text-center relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                                            <p className="text-white font-black uppercase tracking-widest text-[10px] relative z-10">Request Amendment</p>
+                                        </div>
+                                        <div className="p-4 space-y-4 bg-white shadow-xl max-h-[80vh] overflow-y-auto">
+                                            <div className="space-y-1">
+                                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Time of Entry</Label>
+                                                <Input type="time" value={customClockInTime} onChange={(e) => setCustomClockInTime(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg font-mono font-bold text-base" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Reason</Label>
+                                                <Input placeholder="Reason for adjustment..." value={customReason} onChange={(e) => setCustomReason(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg text-xs" />
+                                            </div>
+                                            <Button onClick={() => setShowLocationDialog(true)} className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-widest rounded-lg shadow-md transition-all active:scale-95">Continue</Button>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
                             </div>
-                        ) : (
+                        )}
+                        {optimisticStatus === 'clocked-in' && (
                             <>
-                                {/* Decorative BG */}
-                                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-red-50/50 via-transparent to-transparent opacity-50 pointer-events-none" />
-
-                                {/* Top Bar: Info Chips */}
-                                <div className="flex flex-wrap items-center justify-between gap-4 relative z-10 mb-6">
-                                    <div className="flex items-center gap-2 text-slate-400">
-                                        <LayoutDashboard className="w-4 h-4" />
-                                        <span className="text-xs font-bold uppercase tracking-widest">Time Tracker</span>
-                                    </div>
-
-                                    <div className="flex items-center gap-3">
-                                        {/* Current Time Chip */}
-                                        <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-full">
-                                            <Globe className="w-3 h-3 text-slate-400" />
-                                            <span className="text-xs font-mono font-bold text-slate-600">
-                                                {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true, timeZone: userTimeZone }) : "--:--:--"}
-                                            </span>
-                                        </div>
-                                        {/* Work Hours Chip */}
-                                        {userProfile?.shiftStartTime && userProfile?.shiftEndTime && (
-                                            <div
-                                                className="flex items-center gap-2 bg-red-50 border border-red-100 px-3 py-1.5 rounded-full cursor-pointer hover:bg-red-100 transition-colors group"
-                                                onClick={() => setShowScheduleInput(true)}
-                                            >
-                                                <Briefcase className="w-3 h-3 text-red-400 group-hover:text-red-500" />
-                                                <span className="text-xs font-mono font-bold text-red-700">
-                                                    {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
-                                                </span>
-                                                <Edit className="w-3 h-3 text-red-300 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Edit Work Hours Modal */}
-                                <Dialog open={showScheduleInput} onOpenChange={setShowScheduleInput}>
-                                    <DialogContent className="sm:max-w-md">
-                                        <DialogHeader>
-                                            <DialogTitle>Edit Standard Schedule</DialogTitle>
-                                            <DialogDescription>
-                                                Set your expected shift times. This helps calculate overtime and late arrivals.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <div className="grid gap-4 py-4">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label>Start Time</Label>
-                                                    <Input type="time" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>End Time</Label>
-                                                    <Input type="time" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <DialogFooter>
-                                            <Button variant="outline" onClick={() => setShowScheduleInput(false)}>Cancel</Button>
-                                            <Button onClick={() => { handleUpdateWorkHours(); setShowScheduleInput(false); }} className="bg-[#8B2323] hover:bg-[#701c1c]">Save Changes</Button>
-                                        </DialogFooter>
-                                    </DialogContent>
-                                </Dialog>
-
-                                {/* Main Action Area */}
-                                <div id="tour-time-tracker" className="flex-1 flex flex-col justify-center gap-6 relative z-10 my-4">
-                                    {/* Status Visualization */}
-                                    <div className="text-center space-y-2">
-                                        {optimisticStatus === 'clocked-out' && (
-                                            <>
-                                                <div className="w-20 h-20 mx-auto bg-slate-50 rounded-[2rem] flex items-center justify-center mb-4 shadow-inner">
-                                                    <LogOut className="w-8 h-8 text-slate-300" />
-                                                </div>
-                                                <h2 className="text-2xl font-black tracking-tight text-foreground">Ready to start?</h2>
-                                                <p className="text-muted-foreground font-medium text-sm">Clock in to begin your session</p>
-                                            </>
-                                        )}
-                                        {optimisticStatus === 'clocked-in' && (
-                                            <>
-                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-green-600 mb-1">Currently Working</p>
-                                                <div className="text-5xl sm:text-6xl font-black tabular-nums tracking-tighter text-foreground">
-                                                    {currentTime && formatTime(currentTime).replace(/(AM|PM|am|pm)/, '')}
-                                                    <span className="text-xl text-muted-foreground ml-2 font-bold align-top mt-1 inline-block">
-                                                        {currentTime && formatTime(currentTime).split(' ')[1]}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center justify-center gap-2 mt-3 text-xs font-medium text-slate-500 bg-green-50/50 py-1.5 px-3 rounded-full w-fit mx-auto border border-green-100">
-                                                    <LogIn className="w-3 h-3 text-green-600" />
-                                                    Started at {pendingClockInForDisplay
-                                                        ? formatTime(new Date(pendingClockInForDisplay.time || pendingClockInForDisplay.date))
-                                                        : currentAttendance?.clockIn ? formatTime(new Date(currentAttendance.clockIn)) : "--:--"}
-                                                </div>
-                                            </>
-                                        )}
-                                        {optimisticStatus === 'on-break' && (
-                                            <>
-                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600 mb-1 animate-pulse">Break in Progress</p>
-                                                <div className="text-5xl sm:text-6xl font-black tabular-nums tracking-tighter text-[#D4A056]">
-                                                    {breakTime}
-                                                </div>
-                                                <p className="text-xs font-medium text-slate-400 mt-1">Recharging...</p>
-                                                {/* Expected Return */}
-                                                {(() => {
-                                                    const activeBreak = currentAttendance?.breaks?.find((b: any) => !b.endTime)
-                                                    if (activeBreak?.expectedReturnTime) {
-                                                        return (
-                                                            <div className="inline-flex items-center gap-2 mt-3 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100">
-                                                                <Clock className="w-3 h-3 text-amber-600" />
-                                                                <span className="text-xs font-bold text-amber-800">
-                                                                    Expected Back: {new Date(activeBreak.expectedReturnTime).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: userTimeZone })}
-                                                                </span>
-                                                            </div>
-                                                        )
-                                                    }
-                                                    return null
-                                                })()}
-                                            </>
-                                        )}
-                                    </div>
-
-                                    {/* Controls */}
-                                    <div id="tour-action-buttons" className="flex flex-wrap justify-center gap-3 max-w-lg mx-auto w-full">
-                                        {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
-                                            <div className="flex w-full sm:w-auto items-center shadow-2xl shadow-green-900/10 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 bg-green-600 group p-1 z-20">
-                                                <Button onClick={handleClockInClick} disabled={isProcessing} className="flex-1 gap-3 bg-transparent hover:bg-green-700/20 text-white h-14 px-8 text-base font-bold border-r border-white/20 rounded-r-none focus:ring-0 uppercase tracking-widest">
-                                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-                                                    Clock In
-                                                </Button>
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <Button disabled={isProcessing} className="px-4 h-14 bg-transparent hover:bg-green-700/20 text-white rounded-l-none focus:ring-0 rounded-r-xl">
-                                                            <ChevronDown className="h-5 w-5" />
-                                                        </Button>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-80 p-0 rounded-2xl shadow-xl border-border overflow-hidden" align="end">
-                                                        <div className="bg-[#8B2323] p-4 text-center relative overflow-hidden">
-                                                            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
-                                                            <p className="text-white font-black uppercase tracking-widest text-[10px] relative z-10">Request Amendment</p>
-                                                        </div>
-                                                        <div className="p-4 space-y-4 bg-white">
-                                                            <div className="space-y-1">
-                                                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Time of Entry</Label>
-                                                                <Input type="time" value={customClockInTime} onChange={(e) => setCustomClockInTime(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg font-mono font-bold text-base" />
-                                                            </div>
-                                                            <div className="space-y-1">
-                                                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Reason</Label>
-                                                                <Input placeholder="Reason for adjustment..." value={customReason} onChange={(e) => setCustomReason(e.target.value)} className="h-10 bg-white border-slate-200 rounded-lg text-xs" />
-                                                            </div>
-                                                            <Button onClick={() => setShowLocationDialog(true)} className="w-full h-10 bg-[#8B2323] hover:bg-[#701c1c] text-white font-bold text-xs uppercase tracking-widest rounded-lg shadow-md transition-all active:scale-95">Continue</Button>
-                                                        </div>
-                                                    </PopoverContent>
-                                                </Popover>
-                                            </div>
-                                        )}
-
-                                        {optimisticStatus === 'clocked-in' && (
-                                            <>
-                                                <Button onClick={breakStart} disabled={isProcessing} size="lg" variant="outline" className="flex-1 sm:flex-initial gap-2 border-2 border-[#D4A056]/20 text-[#9A7033] bg-[#FEF9F0] hover:bg-[#D4A056] hover:text-white h-14 px-6 text-sm font-bold rounded-2xl uppercase tracking-wider transition-all">
-                                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Coffee className="w-5 h-5" />} Start Break
-                                                </Button>
-                                                <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing} size="lg" className="flex-1 sm:flex-initial gap-2 h-14 px-6 text-sm font-bold rounded-2xl shadow-xl shadow-red-900/10 bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-wider transition-all hover:scale-[1.02]">
-                                                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="w-5 h-5" />} Clock Out
-                                                </Button>
-                                            </>
-                                        )}
-
-                                        {optimisticStatus === 'on-break' && (
-                                            <Button onClick={breakEnd} disabled={isProcessing} size="lg" className="w-full sm:w-auto gap-2 bg-[#D4A056] hover:bg-[#b88640] text-white h-14 px-10 text-sm font-bold rounded-2xl shadow-xl shadow-amber-900/10 uppercase tracking-wider transition-all hover:scale-[1.02]">
-                                                {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Timer className="w-5 h-5" />} End Break
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Footer Stats Grid */}
-                                <div className="grid grid-cols-3 gap-4 mt-auto pt-6 border-t border-slate-100">
-                                    {/* Hours Worked Stats */}
-                                    <div id="tour-stats-worked" className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
-                                        <div className="p-1.5 rounded-lg bg-green-100 text-green-600 mb-2">
-                                            <TrendingUp className="w-3.5 h-3.5" />
-                                        </div>
-                                        <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{workedTime}</span>
-                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Hours</span>
-                                    </div>
-
-                                    {/* Break Time Stats */}
-                                    <div id="tour-stats-break" className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
-                                        <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 mb-2">
-                                            <Coffee className="w-3.5 h-3.5" />
-                                        </div>
-                                        <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{breakTime}</span>
-                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Break</span>
-                                    </div>
-
-                                    {/* Pending Requests Stats */}
-                                    <div id="tour-stats-pending" className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-100">
-                                        <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600 mb-2">
-                                            <FileText className="w-3.5 h-3.5" />
-                                        </div>
-                                        <span className="text-xl font-black text-slate-800 tracking-tight">
-                                            {(() => {
-                                                const pendingLeaves = myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length
-                                                return pendingLeaves + myAttendanceRequests.length
-                                            })()}
-                                        </span>
-                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Pending</span>
-                                    </div>
-                                </div>
+                                <Button onClick={breakStart} disabled={isProcessing || isLoading} variant="outline" className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 border border-[#D4A056]/20 text-[#9A7033] bg-[#FEF9F0] hover:bg-[#D4A056] hover:text-white font-black rounded-2xl uppercase tracking-widest text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                    {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Coffee className="w-4 h-4 sm:h-5 sm:w-5" />} Start Break
+                                </Button>
+                                <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 font-black rounded-2xl bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-widest text-xs sm:text-sm shadow-md transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                    {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <LogOut className="w-4 h-4 sm:h-5 sm:w-5" />} Clock Out
+                                </Button>
                             </>
+                        )}
+                        {optimisticStatus === 'on-break' && (
+                            <Button onClick={breakEnd} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 bg-[#D4A056] hover:bg-[#b88640] text-white font-black rounded-2xl shadow-md uppercase tracking-widest text-xs sm:text-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Timer className="w-4 h-4 sm:h-5 sm:w-5" />} End Break
+                            </Button>
                         )}
                     </div>
 
-                    {/* Right Panel: Activity Feed */}
-                    <div id="tour-activity-feed" className="w-full xl:w-[42%] bg-slate-50/50 flex flex-col min-h-[500px] xl:min-h-0 xl:absolute xl:top-0 xl:right-0 xl:bottom-0 border-l border-slate-100">
-                        <div className="p-6 border-b border-slate-200/50 bg-white/50 backdrop-blur-sm flex items-center justify-between sticky top-0 z-10">
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Today's Activity</h3>
-                                <p className="text-[10px] font-medium text-slate-400">Real-time session log</p>
-                            </div>
-                            <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-                                <History className="w-4 h-4 text-slate-400" />
-                            </div>
-                        </div>
+                    <div className="flex flex-col items-end gap-2 self-start sm:self-center">
+                        <Sheet>
+                            {mounted && document.getElementById('topbar-activity-container') ? createPortal(
+                                <SheetTrigger asChild>
+                                    <Button id="tour-topbar-activity" variant="outline" className="gap-2 bg-white shadow-sm rounded-xl font-bold text-[10px] uppercase tracking-widest text-[#8B2323] hover:text-white hover:bg-[#8B2323] border-slate-200 transition-all h-9 px-4">
+                                        <History className="w-4 h-4" />
+                                        Today's Activity
+                                    </Button>
+                                </SheetTrigger>,
+                                document.getElementById('topbar-activity-container')!
+                            ) : null}
+                            <SheetContent className="w-full sm:max-w-md bg-white p-0 border-l border-slate-200 flex flex-col z-[100] h-full shadow-2xl overflow-hidden [&>button]:hidden">
+                                <div className="p-6 border-b border-slate-200/50 bg-slate-50 flex flex-col gap-4 sticky top-0 z-10 shrink-0">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex flex-col gap-0.5">
+                                            <SheetTitle className="text-sm font-bold text-slate-800 uppercase tracking-wide">Session Summary</SheetTitle>
+                                            <SheetDescription className="text-[10px] font-medium text-slate-400">Counters & Activity log</SheetDescription>
+                                        </div>
+                                        <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm">
+                                            <History className="w-4 h-4 text-slate-400" />
+                                        </div>
+                                    </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 relative scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                            {isLoading ? (
-                                <div className="space-y-6 pl-3 pt-2">
-                                    {[1, 2, 3, 4, 5].map((i) => (
-                                        <div key={i} className="relative pl-10">
-                                            <Skeleton className="absolute left-0 top-0 w-8 h-8 rounded-full" />
-                                            <div className="flex flex-col gap-2 p-3 -mt-2">
-                                                <Skeleton className="h-4 w-32" />
-                                                <Skeleton className="h-3 w-24" />
+                                    {/* Status Visualization Here */}
+                                    {optimisticStatus === 'clocked-in' && (
+                                        <div className="text-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-green-500" />
+                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-green-600 mb-1">Currently Working</p>
+                                            <div className="text-4xl font-black tabular-nums tracking-tighter text-foreground">
+                                                {currentTime && formatTime(currentTime).replace(/(AM|PM|am|pm)/, '')}
+                                                <span className="text-sm text-muted-foreground ml-1 font-bold align-top mt-1 inline-block">
+                                                    {currentTime && formatTime(currentTime).split(' ')[1]}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] font-medium text-slate-500 bg-green-50 py-1 px-2.5 rounded-full w-fit mx-auto border border-green-100">
+                                                <LogIn className="w-3 h-3 text-green-600" />
+                                                Started at {pendingClockInForDisplay
+                                                    ? formatTime(new Date(pendingClockInForDisplay.time || pendingClockInForDisplay.date))
+                                                    : currentAttendance?.clockIn ? formatTime(new Date(currentAttendance.clockIn)) : "--:--"}
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                activityFeed.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
-                                        <div className="p-4 bg-slate-100 rounded-full mb-3">
-                                            <CalendarOff className="w-6 h-6 text-slate-400" />
-                                        </div>
-                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No activity recorded today</p>
-                                    </div>
-                                ) : (
-                                    <div className="relative pl-3 pt-2">
-                                        {/* Continuous Line */}
-                                        <div className="absolute left-[15px] top-0 bottom-0 w-[2px] bg-slate-200/60" />
-
-                                        {activityFeed.map((event: any, index: number) => {
-                                            const timeString = (() => {
-                                                try { return event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '--:--' } catch (e) { return '--:--' }
-                                            })()
-
-                                            let dotColorClass = "bg-slate-400";
-                                            let labelClass = "text-slate-700";
-                                            let icon = <Check className="w-3 h-3 text-white" />
-
-                                            if (event.type.includes('clock-in')) {
-                                                dotColorClass = "bg-[#009B5A] ring-4 ring-green-100";
-                                                labelClass = "text-[#009B5A]";
-                                                icon = <LogIn className="w-3 h-3 text-white" />
-                                            }
-                                            else if (event.type.includes('clock-out')) {
-                                                dotColorClass = "bg-[#8B2323] ring-4 ring-red-100";
-                                                labelClass = "text-[#8B2323]";
-                                                icon = <LogOut className="w-3 h-3 text-white" />
-                                            }
-                                            else if (event.type.includes('break-start')) {
-                                                dotColorClass = "bg-amber-400 ring-4 ring-amber-100";
-                                                labelClass = "text-amber-600";
-                                                icon = <Coffee className="w-3 h-3 text-white" />
-                                            }
-                                            else if (event.type.includes('break-end')) {
-                                                dotColorClass = "bg-blue-400 ring-4 ring-blue-100";
-                                                labelClass = "text-blue-600";
-                                                icon = <Check className="w-3 h-3 text-white" />
-                                            }
-
-                                            return (
-                                                <div key={index} className="relative pl-10 group mb-8 last:mb-0">
-                                                    {/* Timeline Node */}
-                                                    <div className={cn("absolute left-0 top-0 w-8 h-8 rounded-full flex items-center justify-center z-10 transition-transform group-hover:scale-110 shadow-sm border border-white", dotColorClass)}>
-                                                        {icon}
-                                                    </div>
-
-                                                    {/* Content Bubble */}
-                                                    <div className="flex flex-col items-start gap-1 p-3 -mt-2 rounded-2xl hover:bg-white hover:shadow-sm hover:border-slate-100 border border-transparent transition-all duration-300">
-                                                        <div className="flex flex-row items-center gap-2">
-                                                            <span className={cn("text-sm font-black tracking-tight", labelClass)}>
-                                                                {event.label}
+                                    )}
+                                    {optimisticStatus === 'on-break' && (
+                                        <div className="text-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-[#D4A056]" />
+                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600 mb-1 animate-pulse">Break in Progress</p>
+                                            <div className="text-4xl font-black tabular-nums tracking-tighter text-[#D4A056]">
+                                                {breakTime}
+                                            </div>
+                                            <p className="text-[10px] font-medium text-slate-400 mt-1">Recharging...</p>
+                                            {/* Expected Return */}
+                                            {(() => {
+                                                const activeBreak = currentAttendance?.breaks?.find((b: any) => !b.endTime)
+                                                if (activeBreak?.expectedReturnTime) {
+                                                    return (
+                                                        <div className="inline-flex items-center gap-1.5 mt-2 bg-amber-50 px-2 py-1 rounded-full border border-amber-100">
+                                                            <Clock className="w-3 h-3 text-amber-600" />
+                                                            <span className="text-[10px] font-bold text-amber-800">
+                                                                Expected Back: {new Date(activeBreak.expectedReturnTime).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: userTimeZone })}
                                                             </span>
-                                                            <span className="text-[10px] font-bold text-slate-300 bg-slate-50 px-2 py-0.5 rounded-full">{timeString}</span>
                                                         </div>
+                                                    )
+                                                }
+                                                return null
+                                            })()}
+                                        </div>
+                                    )}
 
-                                                        {event.mode && (
-                                                            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                                                <MapPin className="w-3 h-3" />
-                                                                {event.mode.replace('_', ' ')}
-                                                                {event.locationDetails && <span className="normal-case text-slate-500">• {event.locationDetails}</span>}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                )
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </Card>
+                                    {/* Footer Stats Grid Moved Here */}
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {/* Hours Worked Stats */}
+                                        <div className="p-3 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-50">
+                                            <div className="p-1.5 rounded-lg bg-green-100 text-green-600 mb-2">
+                                                <TrendingUp className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{workedTime}</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Hours</span>
+                                        </div>
 
+                                        {/* Break Time Stats */}
+                                        <div className="p-3 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-50">
+                                            <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 mb-2">
+                                                <Coffee className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums">{breakTime}</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Break</span>
+                                        </div>
 
-
-            {/* Dashboard Secondary Section: Staff Table / Calendar */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-
-
-                <TabsContent value="overview" className="animate-in fade-in-50 duration-500">
-                    <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
-                        <CardHeader className="border-b border-border p-6 bg-muted/40 flex flex-col xl:flex-row items-center justify-between gap-4">
-                            <div className="flex flex-col sm:flex-row items-center gap-6 w-full xl:w-auto">
-                                <div className="flex items-center gap-2">
-                                    <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-primary">
-                                        <Users className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <CardTitle className="text-lg font-bold text-foreground">Staff Availability</CardTitle>
-                                        <CardDescription className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Real-time status monitor</CardDescription>
+                                        {/* Pending Requests Stats */}
+                                        <div className="p-3 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left transition-colors hover:bg-slate-50">
+                                            <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600 mb-2">
+                                                <FileText className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xl font-black text-slate-800 tracking-tight">
+                                                {(() => {
+                                                    const pendingLeaves = myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length
+                                                    return pendingLeaves + myAttendanceRequests.length
+                                                })()}
+                                            </span>
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Pending</span>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <TabsList id="tour-staff-status" className="bg-slate-100 p-1 rounded-xl h-9 self-start sm:self-center">
-                                    <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                        Staff Overview
-                                    </TabsTrigger>
-                                    <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                        Leave Calendar
-                                    </TabsTrigger>
-                                </TabsList>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                            {isLoading ? (
-                                <div className="p-6 space-y-6">
-                                    <div className="flex gap-4">
-                                        <Skeleton className="h-9 w-72" />
-                                        <Skeleton className="h-9 w-32" />
-                                        <Skeleton className="h-9 w-48" />
-                                    </div>
-                                    <div className="space-y-4">
-                                        {[1, 2, 3, 4, 5].map((i) => (
-                                            <div key={i} className="flex justify-between items-center py-2">
-                                                <div className="flex items-center gap-3">
-                                                    <Skeleton className="h-9 w-9 rounded-full" />
-                                                    <div className="space-y-1">
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6 relative scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                                    {isLoading ? (
+                                        <div className="space-y-6 pl-3 pt-2">
+                                            {[1, 2, 3, 4, 5].map((i) => (
+                                                <div key={i} className="relative pl-10">
+                                                    <Skeleton className="absolute left-0 top-0 w-8 h-8 rounded-full" />
+                                                    <div className="flex flex-col gap-2 p-3 -mt-2">
                                                         <Skeleton className="h-4 w-32" />
                                                         <Skeleton className="h-3 w-24" />
                                                     </div>
                                                 </div>
-                                                <Skeleton className="h-6 w-20 rounded-full" />
-                                                <Skeleton className="h-4 w-24" />
-                                                <Skeleton className="h-4 w-32" />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                <>
-
-                                    <div className="p-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center gap-4">
-                                        <div className="relative w-full sm:w-72">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                            <Input
-                                                placeholder="Search staff..."
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                className="pl-9 h-9 bg-white border-slate-200 rounded-lg text-xs font-medium focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
-                                            />
+                                            ))}
                                         </div>
-
-                                        <div className="flex-1 flex flex-wrap items-center gap-2">
-                                            <Select value={filterStatus} onValueChange={setFilterStatus}>
-                                                <SelectTrigger className="h-9 w-[130px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
-                                                    <SelectValue placeholder="Status" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="all">Statuses</SelectItem>
-                                                    <SelectItem value="clocked-in">Clocked In</SelectItem>
-                                                    <SelectItem value="on-break">On Break</SelectItem>
-                                                    <SelectItem value="clocked-out">Clocked Out</SelectItem>
-                                                    <SelectItem value="on-leave">On Leave</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-
-                                            <div className="relative">
-                                                {/* Department Filter Dropdown */}
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
-                                                            <span className="truncate max-w-[100px]">{filterDepartments.length === 0 ? "Departments" : filterDepartments.length === uniqueDepartments.length ? "All Depts" : `${filterDepartments.length} Selected`}</span>
-                                                            <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-56 p-2" align="start">
-                                                        <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
-                                                        <DropdownMenuSeparator />
-                                                        <div className="max-h-[300px] overflow-y-auto space-y-1">
-                                                            <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    if (filterDepartments.length === uniqueDepartments.length) setFilterDepartments([]);
-                                                                    else setFilterDepartments(uniqueDepartments.map((d: any) => d));
-                                                                }}>
-                                                                <Checkbox id="dept-all" checked={filterDepartments.length === uniqueDepartments.length} />
-                                                                <label htmlFor="dept-all" className="text-xs font-medium cursor-pointer flex-1">Select All</label>
-                                                            </div>
-                                                            {uniqueDepartments.map((dept: any) => (
-                                                                <div key={dept} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
-                                                                    onClick={(e) => {
-                                                                        e.preventDefault();
-                                                                        if (filterDepartments.includes(dept)) {
-                                                                            setFilterDepartments(filterDepartments.filter(d => d !== dept));
-                                                                        } else {
-                                                                            setFilterDepartments([...filterDepartments, dept]);
-                                                                        }
-                                                                    }}>
-                                                                    <Checkbox id={`dept-${dept}`} checked={filterDepartments.includes(dept)} />
-                                                                    <label htmlFor={`dept-${dept}`} className="text-xs font-medium cursor-pointer flex-1">{dept}</label>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+                                    ) : (
+                                        activityFeed.length === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
+                                                <div className="p-4 bg-slate-100 rounded-full mb-3">
+                                                    <CalendarOff className="w-6 h-6 text-slate-400" />
+                                                </div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No activity recorded today</p>
                                             </div>
+                                        ) : (
+                                            <div className="relative pl-3 pt-2">
+                                                {/* Continuous Line */}
+                                                <div className="absolute left-[15px] top-0 bottom-0 w-[2px] bg-slate-200/60" />
 
-                                            {/* Employment Location Filter */}
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
-                                                        <span className="truncate max-w-[100px]">
-                                                            {filterEmploymentLocations.length === 0 || filterEmploymentLocations.length === 2 ? "Location" : filterEmploymentLocations.join(", ")}
-                                                        </span>
-                                                        <MapPin className="h-3 w-3 ml-2 opacity-50" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent className="w-48 p-2" align="start">
-                                                    <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Emp. Location</DropdownMenuLabel>
-                                                    <DropdownMenuSeparator />
-                                                    <div className="space-y-1">
-                                                        {['Philippines', 'Australia'].map((loc) => (
-                                                            <div key={loc} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    if (filterEmploymentLocations.includes(loc)) {
-                                                                        setFilterEmploymentLocations(filterEmploymentLocations.filter(l => l !== loc));
-                                                                    } else {
-                                                                        setFilterEmploymentLocations([...filterEmploymentLocations, loc]);
-                                                                    }
-                                                                }}>
-                                                                <Checkbox id={`loc-${loc}`} checked={filterEmploymentLocations.includes(loc)} />
-                                                                <label htmlFor={`loc-${loc}`} className="text-xs font-medium cursor-pointer flex-1">{loc}</label>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                                                {activityFeed.map((event: any, index: number) => {
+                                                    const timeString = (() => {
+                                                        try { return event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '--:--' } catch (e) { return '--:--' }
+                                                    })()
 
-                                        </div>
-                                    </div>
+                                                    let dotColorClass = "bg-slate-400";
+                                                    let labelClass = "text-slate-700";
+                                                    let icon = <Check className="w-3 h-3 text-white" />
 
-                                    <Table>
-                                        <TableHeader className="bg-slate-50">
-                                            <TableRow className="hover:bg-transparent">
-                                                <TableHead className="w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
-                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
-                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
-                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
-                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employment Location</TableHead>
-                                                <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Last Active</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {sortedStaff.length === 0 ? (
-                                                <TableRow>
-                                                    <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm italic font-medium">
-                                                        No staff found matching your criteria
-                                                    </TableCell>
-                                                </TableRow>
-                                            ) : (
-                                                sortedStaff.map((staff: any) => {
-                                                    const isOnline = ['clocked-in', 'on-break', 'do-not-disturb', 'be-right-back', 'appear-away'].includes(staff.status)
-                                                    // Ensure we check availabilityStatus existence, default to AVAILABLE if online
-                                                    const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
-                                                    const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+                                                    if (event.type.includes('clock-in')) {
+                                                        dotColorClass = "bg-[#009B5A] ring-4 ring-green-100";
+                                                        labelClass = "text-[#009B5A]";
+                                                        icon = <LogIn className="w-3 h-3 text-white" />
+                                                    }
+                                                    else if (event.type.includes('clock-out')) {
+                                                        dotColorClass = "bg-[#8B2323] ring-4 ring-red-100";
+                                                        labelClass = "text-[#8B2323]";
+                                                        icon = <LogOut className="w-3 h-3 text-white" />
+                                                    }
+                                                    else if (event.type.includes('break-start')) {
+                                                        dotColorClass = "bg-amber-400 ring-4 ring-amber-100";
+                                                        labelClass = "text-amber-600";
+                                                        icon = <Coffee className="w-3 h-3 text-white" />
+                                                    }
+                                                    else if (event.type.includes('break-end')) {
+                                                        dotColorClass = "bg-blue-400 ring-4 ring-blue-100";
+                                                        labelClass = "text-blue-600";
+                                                        icon = <Check className="w-3 h-3 text-white" />
+                                                    }
 
                                                     return (
-                                                        <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
-                                                            <TableCell className="pl-6 py-4">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="relative">
-                                                                        <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
-                                                                            <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
-                                                                                {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
-                                                                            </AvatarFallback>
-                                                                        </Avatar>
-                                                                        {/* Status Dot */}
-                                                                        {statusConfigItem && (
-                                                                            <div className={`absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10`} title={statusConfigItem.label}>
-                                                                                <statusConfigItem.icon className={`h-3 w-3 ${statusConfigItem.color}`} />
-                                                                            </div>
-                                                                        )}
+                                                        <div key={index} className="relative pl-10 group mb-8 last:mb-0">
+                                                            {/* Timeline Node */}
+                                                            <div className={cn("absolute left-0 top-0 w-8 h-8 rounded-full flex items-center justify-center z-10 transition-transform group-hover:scale-110 shadow-sm border border-white", dotColorClass)}>
+                                                                {icon}
+                                                            </div>
+
+                                                            {/* Content Bubble */}
+                                                            <div className="flex flex-col items-start gap-1 p-3 -mt-2 rounded-2xl hover:bg-white hover:shadow-sm hover:border-slate-100 border border-transparent transition-all duration-300">
+                                                                <div className="flex flex-row items-center gap-2">
+                                                                    <span className={cn("text-sm font-black tracking-tight", labelClass)}>
+                                                                        {event.label}
+                                                                    </span>
+                                                                    <span className="text-[10px] font-bold text-slate-300 bg-slate-50 px-2 py-0.5 rounded-full">{timeString}</span>
+                                                                </div>
+
+                                                                {event.mode && (
+                                                                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                                        <MapPin className="w-3 h-3" />
+                                                                        {event.mode.replace('_', ' ')}
+                                                                        {event.locationDetails && <span className="normal-case text-slate-500">• {event.locationDetails}</span>}
                                                                     </div>
-                                                                    <div>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
-                                                                            {/* Custom Status Message */}
-                                                                            {(isOnline && (staff.customStatusMessage || (statusConfigItem && statusConfigItem.label !== 'Active'))) && (
-                                                                                <span className="text-[10px] text-muted-foreground/80 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
-                                                                                    {staff.customStatusMessage || statusConfigItem?.label}
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                        <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className="flex flex-col gap-1">
-                                                                    {getStaffStatusBadge(staff.status)}
-                                                                    {staff.status === 'on-break' && staff.expectedReturnTime && (
-                                                                        <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1">
-                                                                            Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className="flex flex-col gap-1">
-                                                                    {isOnline && staff.lastAttendance?.mode ? (
-                                                                        <>
-                                                                            <div className="flex items-center gap-2">
-                                                                                {staff.lastAttendance.mode === 'WFH' ? <MapPin className="h-3 w-3 text-slate-500" /> :
-                                                                                    staff.lastAttendance.mode === 'ONSITE' ? <Briefcase className="h-3 w-3 text-slate-500" /> :
-                                                                                        staff.lastAttendance.mode === 'OTHER' ? <MoreHorizontal className="h-3 w-3 text-slate-500" /> :
-                                                                                            <Building2 className="h-3 w-3 text-slate-500" />
-                                                                                }
-                                                                                <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-600 uppercase px-1.5 h-5 bg-white">
-                                                                                    {staff.lastAttendance.mode.replace('_', ' ')}
-                                                                                </Badge>
-                                                                            </div>
-                                                                            {staff.lastAttendance.locationDetails && (
-                                                                                <span className="text-[10px] font-medium text-slate-400 truncate max-w-[150px] pl-5" title={staff.lastAttendance.locationDetails}>
-                                                                                    {staff.lastAttendance.locationDetails}
-                                                                                </span>
-                                                                            )}
-                                                                        </>
-                                                                    ) : (
-                                                                        <div className="flex items-center gap-2 opacity-50">
-                                                                            <div className="w-3 flex justify-center">
-                                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                                                                            </div>
-                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                                                                OFFLINE
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
-                                                                    {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
-                                                                </Badge>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-[10px] font-bold text-slate-600">{staff.employmentLocation || "N/A"}</span>
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {staff.lastActive ? (
-                                                                    <div className="flex flex-col items-start">
-                                                                        {/* Version: GMT removed */}
-                                                                        <span className="text-xs font-bold text-slate-600 font-mono">
-                                                                            {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: staff.selectedTimezone || userTimeZone })}
-                                                                        </span>
-                                                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                                                                            {new Date(staff.lastActive)
-                                                                                .toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: staff.selectedTimezone || userTimeZone })
-                                                                                .replace(/GMT.*$/, '')
-                                                                                .trim()}
-                                                                            {/* v0.1.3 */}
-                                                                        </span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
                                                                 )}
-                                                            </TableCell>
-                                                        </TableRow>
+                                                            </div>
+                                                        </div>
                                                     )
-                                                })
-                                            )}
-                                        </TableBody>
-                                    </Table>
-                                </>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
+                                                })}
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            </SheetContent>
+                        </Sheet>
+                    </div>
+                </div>
+            </div>
 
-                <TabsContent value="calendar" className="animate-in fade-in-50 duration-500">
-                    <div className="flex flex-col gap-6">
+
+            {/* Portals and Modals Moved from Left Panel */}
+            {mounted && document.getElementById('topbar-clock-container') ? createPortal(
+                <div className="flex flex-col items-center justify-center">
+                    <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-slate-400" />
+                        <span className="text-lg font-mono font-black tracking-tight text-slate-800 leading-none">
+                            {currentTime ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true, timeZone: userTimeZone }) : "--:--:--"}
+                        </span>
+                    </div>
+                    <span id="tour-status-badge" className={`text-[10px] font-black uppercase tracking-widest mt-1 leading-[0] ${getStatusTextColor()}`}>
+                        {getStatusText()}
+                    </span>
+                </div>,
+                document.getElementById('topbar-clock-container')!
+            ) : null}
+
+            {mounted && document.getElementById('sidebar-workhours-container') && userProfile?.shiftStartTime && userProfile?.shiftEndTime ? createPortal(
+                <button
+                    className="flex items-center w-full px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group mb-1"
+                    onClick={() => setShowScheduleInput(true)}
+                >
+                    <div className="h-8 w-8 rounded-lg bg-red-50 flex items-center justify-center text-[#8B2323] shrink-0 group-hover:bg-red-100 transition-colors">
+                        <Clock className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 ml-3 flex flex-col items-start">
+                        <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-bold text-slate-700">Work Hours</span>
+                            <Edit className="w-3 h-3 text-slate-300 group-hover:text-red-500 transition-colors" />
+                        </div>
+                        <p className="text-[10px] font-mono font-bold text-red-600 mt-0.5">
+                            {userProfile.shiftStartTime} - {userProfile.shiftEndTime}
+                        </p>
+                    </div>
+                </button>,
+                document.getElementById('sidebar-workhours-container')!
+            ) : null}
+
+            {/* Edit Work Hours Modal */}
+            <Dialog open={showScheduleInput} onOpenChange={setShowScheduleInput}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Edit Standard Schedule</DialogTitle>
+                        <DialogDescription>
+                            Set your expected shift times. This helps calculate overtime and late arrivals.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Start Time</Label>
+                                <Input type="time" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>End Time</Label>
+                                <Input type="time" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowScheduleInput(false)}>Cancel</Button>
+                        <Button onClick={() => { handleUpdateWorkHours(); setShowScheduleInput(false); }} className="bg-[#8B2323] hover:bg-[#701c1c]">Save Changes</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Dashboard Workspace */}
+            <div className="w-full flex flex-col z-[5]">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 flex-1">
+
+
+                    <TabsContent value="overview" className="animate-in fade-in-50 duration-500">
                         <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
-                            <CardHeader className="border-b border-border p-6 bg-muted/40">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex flex-col gap-1">
-                                            {/* Department Filter for Calendar */}
-                                            <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
-                                                <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
-                                                    <SelectValue placeholder="Department" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="all">All Departments</SelectItem>
-                                                    {uniqueDepartments.map((dept: any) => (
-                                                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <TabsList className="bg-slate-100 p-1 rounded-xl h-9">
-                                            <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                                Staff Overview
-                                            </TabsTrigger>
-                                            <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                                Leave Calendar
-                                            </TabsTrigger>
-                                        </TabsList>
-                                    </div>
+                            <CardHeader className="border-b border-border p-6 bg-muted/40 flex flex-col xl:flex-row items-center justify-between gap-4">
+                                <div className="flex flex-col sm:flex-row items-center gap-6 w-full xl:w-auto">
                                     <div className="flex items-center gap-2">
-                                        <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-                                            <ChevronDown className="h-4 w-4 rotate-90" />
-                                        </Button>
-                                        <span className="text-sm font-bold min-w-[120px] text-center">
-                                            {format(currentMonth, 'MMMM yyyy')}
-                                        </span>
-                                        <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-                                            <ChevronDown className="h-4 w-4 -rotate-90" />
-                                        </Button>
-                                    </div>
-                                </div>
-                                {/* Team Status Summary - Integrated */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-border/50">
-                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                        <div className="p-2 rounded-lg bg-green-50 text-green-600">
-                                            <Users className="w-4 h-4" />
+                                        <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-primary">
+                                            <Users className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <p className="text-2xl font-black text-slate-800 leading-none">
-                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'in')).length}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked In</p>
+                                            <CardTitle className="text-lg font-bold text-foreground">Staff Availability</CardTitle>
+                                            <CardDescription className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Real-time status monitor</CardDescription>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                        <div className="p-2 rounded-lg bg-amber-50 text-amber-600">
-                                            <Coffee className="w-4 h-4" />
-                                        </div>
-                                        <div>
-                                            <p className="text-2xl font-black text-slate-800 leading-none">
-                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'break')).length}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Break</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                        <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-                                            <CalendarDays className="w-4 h-4" />
-                                        </div>
-                                        <div>
-                                            <p className="text-2xl font-black text-slate-800 leading-none">
-                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'leave')).length}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Leave</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                        <div className="p-2 rounded-lg bg-slate-100 text-slate-500">
-                                            <LogOut className="w-4 h-4" />
-                                        </div>
-                                        <div>
-                                            <p className="text-2xl font-black text-slate-800 leading-none">
-                                                {departmentStaff.filter((s: any) => isStatus(s.status, 'out')).length}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked Out</p>
-                                        </div>
-                                    </div>
-                                </div>
 
-                                {/* Legend */}
-                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 pt-4 border-t border-border/50">
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Approved Leave</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pending Leave</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-amber-500" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">On Break</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-green-500" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Present</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-red-500" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Public Holiday</span>
-                                    </div>
+                                    <TabsList id="tour-staff-status" className="bg-slate-100 p-1 rounded-xl h-9 self-start sm:self-center">
+                                        <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                            Staff Overview
+                                        </TabsTrigger>
+                                        <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                            Leave Calendar
+                                        </TabsTrigger>
+                                    </TabsList>
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
                                 {isLoading ? (
-                                    <div className="p-6">
-                                        <div className="grid grid-cols-7 gap-4 mb-4">
-                                            {Array.from({ length: 7 }).map((_, i) => (
-                                                <Skeleton key={i} className="h-6 w-full rounded-md" />
-                                            ))}
+                                    <div className="p-6 space-y-6">
+                                        <div className="flex gap-4">
+                                            <Skeleton className="h-9 w-72" />
+                                            <Skeleton className="h-9 w-32" />
+                                            <Skeleton className="h-9 w-48" />
                                         </div>
-                                        <div className="grid grid-cols-7 gap-4 auto-rows-fr">
-                                            {Array.from({ length: 35 }).map((_, i) => (
-                                                <Skeleton key={i} className="h-24 w-full rounded-xl" />
+                                        <div className="space-y-4">
+                                            {[1, 2, 3, 4, 5].map((i) => (
+                                                <div key={i} className="grid grid-cols-6 items-center py-4 border-b border-slate-50 last:border-0 pl-6 pr-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <Skeleton className="h-9 w-9 rounded-full" />
+                                                        <div className="space-y-1">
+                                                            <Skeleton className="h-4 w-32" />
+                                                            <Skeleton className="h-3 w-24" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="pl-4"><Skeleton className="h-6 w-20 rounded-full" /></div>
+                                                    <div className="pl-4"><Skeleton className="h-5 w-24 rounded-lg" /></div>
+                                                    <div className="pl-4"><Skeleton className="h-4 w-24" /></div>
+                                                    <div className="pl-4"><Skeleton className="h-4 w-32" /></div>
+                                                    <div className="pl-4"><Skeleton className="h-4 w-28" /></div>
+                                                </div>
                                             ))}
                                         </div>
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="grid grid-cols-7 border-b border-border bg-slate-50/50">
-                                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                                                <div key={day} className="py-3 text-[10px] font-black uppercase tracking-[0.2em] text-center text-slate-400">
-                                                    {day}
+
+                                        <div className="p-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center gap-4">
+                                            <div className="relative w-full sm:w-72">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                                <Input
+                                                    placeholder="Search staff..."
+                                                    value={searchQuery}
+                                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                                    className="pl-9 h-9 bg-white border-slate-200 rounded-lg text-xs font-medium focus-visible:ring-offset-0 focus-visible:ring-1 focus-visible:ring-primary shadow-sm"
+                                                />
+                                            </div>
+
+                                            <div className="flex-1 flex flex-wrap items-center gap-2">
+                                                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                                                    <SelectTrigger className="h-9 w-[130px] bg-white border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-1 focus:ring-primary/20 shadow-sm transition-all hover:border-slate-300">
+                                                        <SelectValue placeholder="Status" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="all">Statuses</SelectItem>
+                                                        <SelectItem value="clocked-in">Clocked In</SelectItem>
+                                                        <SelectItem value="on-break">On Break</SelectItem>
+                                                        <SelectItem value="clocked-out">Clocked Out</SelectItem>
+                                                        <SelectItem value="on-leave">On Leave</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+
+                                                <div className="relative">
+                                                    {/* Department Filter Dropdown */}
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                                                <span className="truncate max-w-[100px]">{filterDepartments.length === 0 ? "Departments" : filterDepartments.length === uniqueDepartments.length ? "All Depts" : `${filterDepartments.length} Selected`}</span>
+                                                                <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent className="w-56 p-2" align="start">
+                                                            <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Filter Departments</DropdownMenuLabel>
+                                                            <DropdownMenuSeparator />
+                                                            <div className="max-h-[300px] overflow-y-auto space-y-1">
+                                                                <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        if (filterDepartments.length === uniqueDepartments.length) setFilterDepartments([]);
+                                                                        else setFilterDepartments(uniqueDepartments.map((d: any) => d));
+                                                                    }}>
+                                                                    <Checkbox id="dept-all" checked={filterDepartments.length === uniqueDepartments.length} />
+                                                                    <label htmlFor="dept-all" className="text-xs font-medium cursor-pointer flex-1">Select All</label>
+                                                                </div>
+                                                                {uniqueDepartments.map((dept: any) => (
+                                                                    <div key={dept} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                        onClick={(e) => {
+                                                                            e.preventDefault();
+                                                                            if (filterDepartments.includes(dept)) {
+                                                                                setFilterDepartments(filterDepartments.filter(d => d !== dept));
+                                                                            } else {
+                                                                                setFilterDepartments([...filterDepartments, dept]);
+                                                                            }
+                                                                        }}>
+                                                                        <Checkbox id={`dept-${dept}`} checked={filterDepartments.includes(dept)} />
+                                                                        <label htmlFor={`dept-${dept}`} className="text-xs font-medium cursor-pointer flex-1">{dept}</label>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
-                                            ))}
-                                        </div>
-                                        <div className="grid grid-cols-7 auto-rows-fr">
-                                            {calendarDays.map((day, i) => {
-                                                const dateStr = format(day, 'yyyy-MM-dd')
 
-                                                // 1. Paid Leaves (Approved) - Exclude SICK, Filter Dept
-                                                const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
-                                                    if (leave.type === 'SICK' || leave.status !== 'APPROVED') return false
-
-                                                    // Dept Filter
-                                                    if (calendarFilterDepartment !== 'all') {
-                                                        const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
-                                                        const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                        if (dept !== calendarFilterDepartment) return false
-                                                    }
-
-                                                    return isWithinInterval(day, {
-                                                        start: parseISO(leave.startDate),
-                                                        end: parseISO(leave.endDate)
-                                                    })
-                                                }).map((l: any) => ({ type: 'leave-approved', data: l }))
-
-                                                // 2. Pending Leaves - Exclude SICK, Filter Dept
-                                                const pendingLeaves = teamApprovedLeaves.filter((leave: any) => {
-                                                    if (leave.type === 'SICK' || leave.status !== 'PENDING') return false
-
-                                                    // Dept Filter
-                                                    if (calendarFilterDepartment !== 'all') {
-                                                        const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
-                                                        const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                        if (dept !== calendarFilterDepartment) return false
-                                                    }
-
-                                                    return isWithinInterval(day, {
-                                                        start: parseISO(leave.startDate),
-                                                        end: parseISO(leave.endDate)
-                                                    })
-                                                }).map((l: any) => ({ type: 'leave-pending', data: l }))
-
-                                                // 3. Attendance (Present/On Break) - Filter Dept
-                                                const attendanceEvents = monthlyAttendance.filter((a: any) => {
-                                                    const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
-                                                    if (attDate !== dateStr) return false
-
-                                                    // Dept Filter
-                                                    if (calendarFilterDepartment !== 'all') {
-                                                        const staff = employees.find((e: any) => e.id === a.userId)
-                                                        const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                        if (dept !== calendarFilterDepartment) return false
-                                                    }
-                                                    return true
-                                                }).reduce((acc: any[], a: any) => {
-                                                    // Deduplicate: Only show one record per user per day (the most recent)
-                                                    const existing = acc.find(item => item.data.userId === a.userId)
-                                                    if (!existing) {
-                                                        const isBreak = (a.status === 'on-break' || (a.breaks?.some((b: any) => !b.endTime)))
-                                                        acc.push({ type: isBreak ? 'on-break' : 'present', data: a })
-                                                    }
-                                                    return acc
-                                                }, [])
-
-                                                const events: any[] = [...approvedLeaves, ...pendingLeaves, ...attendanceEvents]
-
-                                                // Holidays
-                                                if (NSW_HOLIDAYS_2026[dateStr]) {
-                                                    events.unshift({ type: 'holiday', name: NSW_HOLIDAYS_2026[dateStr], data: null })
-                                                }
-
-                                                const isCurrentMonth = isSameMonth(day, currentMonth)
-                                                const isTodayDay = isToday(day)
-
-                                                return (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => setSelectedDayDetail(day)}
-                                                        className={cn(
-                                                            "min-h-[100px] p-2 border-r border-b border-border transition-colors hover:bg-slate-50 cursor-pointer relative",
-                                                            !isCurrentMonth && "bg-slate-50/30 opacity-40"
-                                                        )}
-                                                    >
-                                                        <div className="flex justify-between items-start mb-1">
-                                                            <span className={cn(
-                                                                "text-xs font-bold",
-                                                                isTodayDay ? "bg-[#8B2323] text-white w-6 h-6 rounded-full flex items-center justify-center shadow-md scale-110" : "text-slate-500",
-                                                                !isCurrentMonth && "text-slate-300"
-                                                            )}>
-                                                                {format(day, 'd')}
+                                                {/* Employment Location Filter */}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                                            <span className="truncate max-w-[100px]">
+                                                                {filterEmploymentLocations.length === 0 || filterEmploymentLocations.length === 2 ? "Location" : filterEmploymentLocations.join(", ")}
                                                             </span>
-                                                        </div>
-                                                        <div className="space-y-1 overflow-hidden">
-                                                            {events.slice(0, 3).map((event: any, idx: number) => (
-                                                                <div key={idx} className={cn(
-                                                                    "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md truncate border",
-                                                                    event.type === 'holiday' ? "bg-red-50 text-red-600 border-red-100" :
-                                                                        event.type === 'leave-approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                                                                            event.type === 'leave-pending' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
-                                                                                event.type === 'on-break' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                                                                                    event.type === 'present' ? "bg-green-50 text-green-600 border-green-100" :
-                                                                                        "bg-slate-50 text-slate-600 border-slate-100"
-                                                                )}>
-                                                                    {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || event.data.user?.name || 'Staff')}
+                                                            <MapPin className="h-3 w-3 ml-2 opacity-50" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent className="w-48 p-2" align="start">
+                                                        <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Emp. Location</DropdownMenuLabel>
+                                                        <DropdownMenuSeparator />
+                                                        <div className="space-y-1">
+                                                            {['Philippines', 'Australia'].map((loc) => (
+                                                                <div key={loc} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        if (filterEmploymentLocations.includes(loc)) {
+                                                                            setFilterEmploymentLocations(filterEmploymentLocations.filter(l => l !== loc));
+                                                                        } else {
+                                                                            setFilterEmploymentLocations([...filterEmploymentLocations, loc]);
+                                                                        }
+                                                                    }}>
+                                                                    <Checkbox id={`loc-${loc}`} checked={filterEmploymentLocations.includes(loc)} />
+                                                                    <label htmlFor={`loc-${loc}`} className="text-xs font-medium cursor-pointer flex-1">{loc}</label>
                                                                 </div>
                                                             ))}
-                                                            {events.length > 3 && (
-                                                                <p className="text-[8px] font-bold text-slate-400 pl-1">+{events.length - 3} more...</p>
-                                                            )}
                                                         </div>
-                                                    </div>
-                                                )
-                                            })}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto scrollbar-hide -mx-4 sm:mx-0">
+                                            <Table>
+                                                <TableHeader className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-20">
+                                                    <TableRow className="hover:bg-transparent border-b-slate-100">
+                                                        <TableHead className="w-[280px] sm:w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 hidden md:table-cell">Location</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 hidden lg:table-cell">Department</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 hidden xl:table-cell">Employment Location</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Last Active</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {sortedStaff.length === 0 ? (
+                                                        <TableRow>
+                                                            <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm italic font-medium">
+                                                                No staff found matching your criteria
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ) : (
+                                                        sortedStaff.map((staff: any) => {
+                                                            const isOnline = ['clocked-in', 'on-break', 'do-not-disturb', 'be-right-back', 'appear-away'].includes(staff.status)
+                                                            // Ensure we check availabilityStatus existence, default to AVAILABLE if online
+                                                            const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                                            const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+
+                                                            return (
+                                                                <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
+                                                                    <TableCell className="pl-6 py-4">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="relative">
+                                                                                <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
+                                                                                    <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
+                                                                                        {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
+                                                                                    </AvatarFallback>
+                                                                                </Avatar>
+                                                                                {/* Status Dot */}
+                                                                                {statusConfigItem && (
+                                                                                    <div className={`absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10`} title={statusConfigItem.label}>
+                                                                                        <statusConfigItem.icon className={`h-3 w-3 ${statusConfigItem.color}`} />
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                            <div>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
+                                                                                    {/* Custom Status Message */}
+                                                                                    {(isOnline && (staff.customStatusMessage || (statusConfigItem && statusConfigItem.label !== 'Active'))) && (
+                                                                                        <span className="text-[10px] text-muted-foreground/80 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
+                                                                                            {staff.customStatusMessage || statusConfigItem?.label}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <div className="flex flex-col gap-1 min-w-[100px]">
+                                                                            {getStaffStatusBadge(staff.status)}
+                                                                            {staff.status === 'on-break' && staff.expectedReturnTime && (
+                                                                                <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1 break-words">
+                                                                                    Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell className="hidden md:table-cell">
+                                                                        <div className="flex flex-col gap-1">
+                                                                            {isOnline && staff.lastAttendance?.mode ? (
+                                                                                <>
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {staff.lastAttendance.mode === 'WFH' ? <MapPin className="h-3 w-3 text-slate-500" /> :
+                                                                                            staff.lastAttendance.mode === 'ONSITE' ? <Briefcase className="h-3 w-3 text-slate-500" /> :
+                                                                                                staff.lastAttendance.mode === 'OTHER' ? <MoreHorizontal className="h-3 w-3 text-slate-500" /> :
+                                                                                                    <Building2 className="h-3 w-3 text-slate-500" />
+                                                                                        }
+                                                                                        <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-600 uppercase px-1.5 h-5 bg-white">
+                                                                                            {staff.lastAttendance.mode.replace('_', ' ')}
+                                                                                        </Badge>
+                                                                                    </div>
+                                                                                    {staff.lastAttendance.locationDetails && (
+                                                                                        <span className="text-[10px] font-medium text-slate-400 truncate max-w-[150px] pl-5" title={staff.lastAttendance.locationDetails}>
+                                                                                            {staff.lastAttendance.locationDetails}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                <div className="flex items-center gap-2 opacity-50">
+                                                                                    <div className="w-3 flex justify-center">
+                                                                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                                                                    </div>
+                                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                                                        OFFLINE
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
+                                                                            {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
+                                                                        </Badge>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-[10px] font-bold text-slate-600">{staff.employmentLocation || "N/A"}</span>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        {staff.lastActive ? (
+                                                                            <div className="flex flex-col items-start">
+                                                                                {/* Version: GMT removed */}
+                                                                                <span className="text-xs font-bold text-slate-600 font-mono">
+                                                                                    {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                                                </span>
+                                                                                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                                                                                    {new Date(staff.lastActive)
+                                                                                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: userTimeZone })
+                                                                                        .replace(/GMT.*$/, '')
+                                                                                        .trim()}
+                                                                                    {/* v0.1.3 */}
+                                                                                </span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
+                                                                        )}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            )
+                                                        })
+                                                    )}
+                                                </TableBody>
+                                            </Table>
                                         </div>
                                     </>
                                 )}
                             </CardContent>
                         </Card>
+                    </TabsContent>
 
-                    </div>
-                </TabsContent>
-            </Tabs>
+                    <TabsContent value="calendar" className="animate-in fade-in-50 duration-500">
+                        <div className="flex flex-col gap-6">
+                            <Card className="border-2 border-border shadow-xl shadow-slate-100/50 rounded-[2rem] overflow-hidden bg-white">
+                                <CardHeader className="border-b border-border p-6 bg-muted/40">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex flex-col gap-1">
+                                                {/* Department Filter for Calendar */}
+                                                <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
+                                                    <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
+                                                        <SelectValue placeholder="Department" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="all">All Departments</SelectItem>
+                                                        {uniqueDepartments.map((dept: any) => (
+                                                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <TabsList className="bg-slate-100 p-1 rounded-xl h-9">
+                                                <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                                    Staff Overview
+                                                </TabsTrigger>
+                                                <TabsTrigger value="calendar" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                                    Leave Calendar
+                                                </TabsTrigger>
+                                            </TabsList>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                                                <ChevronDown className="h-4 w-4 rotate-90" />
+                                            </Button>
+                                            <span className="text-sm font-bold min-w-[120px] text-center">
+                                                {format(currentMonth, 'MMMM yyyy')}
+                                            </span>
+                                            <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                                                <ChevronDown className="h-4 w-4 -rotate-90" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    {/* Team Status Summary - Integrated */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-border/50">
+                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                            <div className="p-2 rounded-lg bg-green-50 text-green-600">
+                                                <Users className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <p className="text-2xl font-black text-slate-800 leading-none">
+                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'in')).length}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked In</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                            <div className="p-2 rounded-lg bg-amber-50 text-amber-600">
+                                                <Coffee className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <p className="text-2xl font-black text-slate-800 leading-none">
+                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'break')).length}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Break</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                            <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                                                <CalendarDays className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <p className="text-2xl font-black text-slate-800 leading-none">
+                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'leave')).length}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Leave</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                                            <div className="p-2 rounded-lg bg-slate-100 text-slate-500">
+                                                <LogOut className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <p className="text-2xl font-black text-slate-800 leading-none">
+                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'out')).length}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked Out</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Legend */}
+                                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 pt-4 border-t border-border/50">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Approved Leave</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pending Leave</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">On Break</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full bg-green-500" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Present</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full bg-red-500" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Public Holiday</span>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    {isLoading ? (
+                                        <div className="p-6">
+                                            <div className="grid grid-cols-7 gap-4 mb-4">
+                                                {Array.from({ length: 7 }).map((_, i) => (
+                                                    <Skeleton key={i} className="h-6 w-full rounded-md" />
+                                                ))}
+                                            </div>
+                                            <div className="grid grid-cols-7 gap-4 auto-rows-fr">
+                                                {Array.from({ length: 35 }).map((_, i) => (
+                                                    <Skeleton key={i} className="h-24 w-full rounded-xl" />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="overflow-x-auto scrollbar-hide -mx-4 sm:mx-0">
+                                                <div className="min-w-[700px]">
+                                                    <div className="grid grid-cols-7 border-b border-border bg-slate-50/50">
+                                                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                                            <div key={day} className="py-3 text-[10px] font-black uppercase tracking-[0.2em] text-center text-slate-400">
+                                                                {day}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div className="grid grid-cols-7 auto-rows-fr">
+                                                        {calendarDays.map((day, i) => {
+                                                            const dateStr = format(day, 'yyyy-MM-dd')
+
+                                                            // 1. Paid Leaves (Approved) - Exclude SICK, Filter Dept
+                                                            const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
+                                                                if (leave.type === 'SICK' || leave.status !== 'APPROVED') return false
+
+                                                                // Dept Filter
+                                                                if (calendarFilterDepartment !== 'all') {
+                                                                    const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
+                                                                    const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                                    if (dept !== calendarFilterDepartment) return false
+                                                                }
+
+                                                                return isWithinInterval(day, {
+                                                                    start: parseISO(leave.startDate),
+                                                                    end: parseISO(leave.endDate)
+                                                                })
+                                                            }).map((l: any) => ({ type: 'leave-approved', data: l }))
+
+                                                            // 2. Pending Leaves - Exclude SICK, Filter Dept
+                                                            const pendingLeaves = teamApprovedLeaves.filter((leave: any) => {
+                                                                if (leave.type === 'SICK' || leave.status !== 'PENDING') return false
+
+                                                                // Dept Filter
+                                                                if (calendarFilterDepartment !== 'all') {
+                                                                    const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
+                                                                    const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                                    if (dept !== calendarFilterDepartment) return false
+                                                                }
+
+                                                                return isWithinInterval(day, {
+                                                                    start: parseISO(leave.startDate),
+                                                                    end: parseISO(leave.endDate)
+                                                                })
+                                                            }).map((l: any) => ({ type: 'leave-pending', data: l }))
+
+                                                            // 3. Attendance (Present/On Break) - Filter Dept
+                                                            const attendanceEvents = monthlyAttendance.filter((a: any) => {
+                                                                const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
+                                                                if (attDate !== dateStr) return false
+
+                                                                // Dept Filter
+                                                                if (calendarFilterDepartment !== 'all') {
+                                                                    const staff = employees.find((e: any) => e.id === a.userId)
+                                                                    const dept = staff?.department?.name || staff?.department || "Unassigned"
+                                                                    if (dept !== calendarFilterDepartment) return false
+                                                                }
+                                                                return true
+                                                            }).reduce((acc: any[], a: any) => {
+                                                                // Deduplicate: Only show one record per user per day (the most recent)
+                                                                const existing = acc.find(item => item.data.userId === a.userId)
+                                                                if (!existing) {
+                                                                    const isBreak = (a.status === 'on-break' || (a.breaks?.some((b: any) => !b.endTime)))
+                                                                    acc.push({ type: isBreak ? 'on-break' : 'present', data: a })
+                                                                }
+                                                                return acc
+                                                            }, [])
+
+                                                            const events: any[] = [...approvedLeaves, ...pendingLeaves, ...attendanceEvents]
+
+                                                            // Holidays
+                                                            if (NSW_HOLIDAYS_2026[dateStr]) {
+                                                                events.unshift({ type: 'holiday', name: NSW_HOLIDAYS_2026[dateStr], data: null })
+                                                            }
+
+                                                            const isCurrentMonth = isSameMonth(day, currentMonth)
+                                                            const isTodayDay = isToday(day)
+
+                                                            return (
+                                                                <div
+                                                                    key={i}
+                                                                    onClick={() => setSelectedDayDetail(day)}
+                                                                    className={cn(
+                                                                        "min-h-[100px] p-2 border-r border-b border-border transition-colors hover:bg-slate-50 cursor-pointer relative",
+                                                                        !isCurrentMonth && "bg-slate-50/30 opacity-40"
+                                                                    )}
+                                                                >
+                                                                    <div className="flex justify-between items-start mb-1">
+                                                                        <span className={cn(
+                                                                            "text-xs font-bold",
+                                                                            isTodayDay ? "bg-[#8B2323] text-white w-6 h-6 rounded-full flex items-center justify-center shadow-md scale-110" : "text-slate-500",
+                                                                            !isCurrentMonth && "text-slate-300"
+                                                                        )}>
+                                                                            {format(day, 'd')}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="space-y-1 overflow-hidden">
+                                                                        {events.slice(0, 3).map((event: any, idx: number) => (
+                                                                            <div key={idx} className={cn(
+                                                                                "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md truncate border",
+                                                                                event.type === 'holiday' ? "bg-red-50 text-red-600 border-red-100" :
+                                                                                    event.type === 'leave-approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
+                                                                                        event.type === 'leave-pending' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
+                                                                                            event.type === 'on-break' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                                                                                event.type === 'present' ? "bg-green-50 text-green-600 border-green-100" :
+                                                                                                    "bg-slate-50 text-slate-600 border-slate-100"
+                                                                            )}>
+                                                                                {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || event.data.user?.name || 'Staff')}
+                                                                            </div>
+                                                                        ))}
+                                                                        {events.length > 3 && (
+                                                                            <p className="text-[8px] font-bold text-slate-400 pl-1">+{events.length - 3} more...</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </CardContent>
+                            </Card>
+
+                        </div>
+                    </TabsContent>
+                </Tabs>
+            </div>
 
             {/* Clock Out Confirmation Dialog */}
-            < Dialog open={showClockOutConfirm} onOpenChange={setShowClockOutConfirm} >
+            <Dialog open={showClockOutConfirm} onOpenChange={setShowClockOutConfirm}>
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className="bg-[#8B2323] p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />

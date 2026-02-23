@@ -52,7 +52,7 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
                     popover: {
                         title: 'Interactive Controls',
                         description: 'One-click actions to Clock In, Start Break, or Clock Out. Use the dropdown on Clock In to request manual time adjustments.',
-                        side: "top", align: 'center'
+                        side: "bottom", align: 'end'
                     }
                 },
                 {
@@ -80,11 +80,11 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
                     }
                 },
                 {
-                    element: '#tour-activity-feed',
+                    element: '#tour-topbar-activity',
                     popover: {
-                        title: 'Session Timeline',
-                        description: 'A beautiful chronological feed of everything you\'ve done today, including locations and timestamps.',
-                        side: "left", align: 'start'
+                        title: 'Today\'s Activity',
+                        description: 'Quickly access your session summary and chronological feed directly from the header.',
+                        side: "bottom", align: 'end'
                     }
                 },
                 {
@@ -93,6 +93,14 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
                         title: 'Team Intelligence',
                         description: 'Switch between Staff Overview and the Leave Calendar to stay informed about your colleagues\' availability.',
                         side: "top", align: 'start'
+                    }
+                },
+                {
+                    element: '#tour-sidebar-settings',
+                    popover: {
+                        title: 'Quick Settings',
+                        description: 'Manage your work hours, timezone, and portal settings right from your profile.',
+                        side: "right", align: 'end'
                     }
                 }
             ]

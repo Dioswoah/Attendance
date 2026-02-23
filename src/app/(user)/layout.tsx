@@ -1,10 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2 } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -287,19 +295,80 @@ export default function UserLayout({
                                 <p className="text-[10px] font-medium text-white/40 uppercase tracking-[0.1em] mt-0.5">{userRole}</p>
                             </div>
                         )}
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button id="tour-sidebar-settings" variant="ghost" size="icon" className="text-white/40 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all shrink-0">
+                                    <Settings className="w-4 h-4 transition-transform group-hover:rotate-45" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="end"
+                                side="right"
+                                sideOffset={12}
+                                className="w-72 rounded-[1.5rem] p-2 bg-white/95 backdrop-blur-md shadow-2xl border-slate-100 animate-in fade-in slide-in-from-left-2 duration-200"
+                            >
+                                <div className="px-3 py-3 border-b border-slate-50 mb-1">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Settings & Preferences</p>
+                                </div>
+
+                                <div id="sidebar-workhours-container"></div>
+
+                                <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
+                                    <TimezoneSettings
+                                        compact
+                                        showLabel={false}
+                                        trigger={
+                                            <div className="flex items-center w-full px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group">
+                                                <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-100 transition-colors">
+                                                    <Globe className="w-4 h-4" />
+                                                </div>
+                                                <div className="flex-1 ml-3 overflow-hidden">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-xs font-bold text-slate-700">Display Timezone</span>
+                                                        <div className="h-6 w-fit px-2 rounded-md bg-slate-50 flex items-center justify-center border border-slate-100 italic text-[10px] text-slate-400 group-hover:bg-white transition-colors">
+                                                            {((session?.user as any)?.selectedTimezone || "UTC").split('/').pop()?.replace('_', ' ')}
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-[10px] text-slate-400 font-medium truncate">Adjust time display preferences</p>
+                                                </div>
+                                            </div>
+                                        }
+                                    />
+                                </DropdownMenuItem>
+
+                                {userRoles.includes('ADMIN') && (
+                                    <DropdownMenuItem asChild>
+                                        <Link href="/admin" className="flex items-center gap-3 px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer group">
+                                            <div className="h-8 w-8 rounded-lg bg-red-50 flex items-center justify-center text-red-600 shrink-0 group-hover:bg-red-100 transition-colors">
+                                                <Shield className="w-4 h-4" />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-bold uppercase tracking-widest">Admin Portal</span>
+                                                <p className="text-[10px] text-red-400 font-medium">System Management</p>
+                                            </div>
+                                        </Link>
+                                    </DropdownMenuItem>
+                                )}
+
+                                <DropdownMenuSeparator className="bg-slate-50 my-1" />
+
+                                <DropdownMenuItem
+                                    onClick={() => signOut({ callbackUrl: '/' })}
+                                    className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group"
+                                >
+                                    <div className="h-8 w-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 shrink-0 group-hover:bg-slate-100 group-hover:text-slate-900 transition-colors">
+                                        <LogOut className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold">Sign Out</span>
+                                        <p className="text-[10px] font-medium">End your session</p>
+                                    </div>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
 
-                    <Button
-                        variant="ghost"
-                        onClick={() => signOut({ callbackUrl: '/' })}
-                        className={cn(
-                            "w-full justify-start h-10 gap-3 text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/5 rounded-lg transition-colors mt-2",
-                            sidebarCollapsed && "justify-center px-0"
-                        )}
-                    >
-                        <LogOut className="w-5 h-5 shrink-0" />
-                        {!sidebarCollapsed && <span>Sign Out</span>}
-                    </Button>
                 </div>
 
                 {/* Footer */}
@@ -436,31 +505,22 @@ export default function UserLayout({
                                 </Button>
                             </Link>
                         )}
+                        <div id="topbar-activity-container"></div>
                         <UserOnboardingTour mode="trigger" />
-
                         <NotificationBell />
                     </div>
                 </header>
 
                 {/* Desktop Header */}
                 <header className="hidden lg:flex bg-white border-b border-border px-4 lg:px-8 py-4 items-center justify-between gap-4 sticky top-0 z-30">
-                    <div className="flex items-center">
+                    <div className="flex items-center flex-1">
                         <Breadcrumbs />
                     </div>
 
-                    <div className="flex items-center gap-4">
-                        {userRoles.includes('ADMIN') && (
-                            <Link href="/admin">
-                                <Button
-                                    variant="outline"
-                                    className="bg-white text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 font-bold text-xs uppercase tracking-wide h-9"
-                                >
-                                    <LayoutDashboard className="w-4 h-4 mr-2" />
-                                    ADMIN PORTAL
-                                </Button>
-                            </Link>
-                        )}
-                        <TimezoneSettings showNote={false} />
+                    <div id="topbar-clock-container" className="flex items-center justify-center flex-1"></div>
+
+                    <div className="flex items-center justify-end flex-1 gap-4">
+                        <div id="topbar-activity-container"></div>
                         <UserOnboardingTour mode="trigger" />
                         <NotificationBell />
                     </div>
