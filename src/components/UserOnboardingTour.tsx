@@ -83,7 +83,7 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
                     element: '#tour-topbar-activity',
                     popover: {
                         title: 'Today\'s Activity',
-                        description: 'Quickly access your session summary and chronological feed directly from the header.',
+                        description: 'Quickly access your today\'s activity and chronological feed directly from the header.',
                         side: "bottom", align: 'end'
                     }
                 },

@@ -1979,7 +1979,7 @@ export default function UserPortal() {
                                 <div className="p-6 border-b border-slate-200/50 bg-slate-50 flex flex-col gap-4 sticky top-0 z-10 shrink-0">
                                     <div className="flex items-center justify-between">
                                         <div className="flex flex-col gap-0.5">
-                                            <SheetTitle className="text-sm font-bold text-slate-800 uppercase tracking-wide">Session Summary</SheetTitle>
+                                            <SheetTitle className="text-sm font-bold text-slate-800 uppercase tracking-wide">Today's Activity</SheetTitle>
                                             <SheetDescription className="text-[10px] font-medium text-slate-400">Counters & Activity log</SheetDescription>
                                         </div>
                                         <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm">
