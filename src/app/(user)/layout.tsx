@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2 } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -34,6 +34,8 @@ export default function UserLayout({
     const [pendingLeaveCount, setPendingLeaveCount] = useState(0)
     const [pendingAmendCount, setPendingAmendCount] = useState(0)
     const [managerPendingCount, setManagerPendingCount] = useState(0)
+    const [managerPendingLeaves, setManagerPendingLeaves] = useState(0)
+    const [managerPendingAttn, setManagerPendingAttn] = useState(0)
     const pathname = usePathname()
     const { data: session, status } = useSession()
 
@@ -82,18 +84,24 @@ export default function UserLayout({
                     ])
 
                     let totalManagerPending = 0
+                    let leavesCount = 0
+                    let attnCount = 0
 
                     if (managerLeavesRes.ok) {
                         const leaves = await managerLeavesRes.json()
-                        totalManagerPending += Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING').length : 0
+                        leavesCount = Array.isArray(leaves) ? leaves.filter((l: any) => l.status === 'PENDING').length : 0
+                        totalManagerPending += leavesCount
                     }
 
                     if (managerAttnRes.ok) {
                         const reqs = await managerAttnRes.json()
-                        totalManagerPending += Array.isArray(reqs) ? reqs.filter((r: any) => r.status === 'PENDING').length : 0
+                        attnCount = Array.isArray(reqs) ? reqs.filter((r: any) => r.status === 'PENDING').length : 0
+                        totalManagerPending += attnCount
                     }
 
                     setManagerPendingCount(totalManagerPending)
+                    setManagerPendingLeaves(leavesCount)
+                    setManagerPendingAttn(attnCount)
                 } catch (error) {
                     console.error("Failed to fetch manager pending counts", error)
                 }
@@ -164,7 +172,19 @@ export default function UserLayout({
         { name: "Leave Requests", href: "/user/leaves", icon: CalendarDays, badge: pendingLeaveCount },
         { name: "Amend Records", href: "/user/amend-records", icon: Edit, badge: pendingAmendCount },
         { name: "Activity Logs", href: "/user/activity", icon: FileText },
-        ...(isManagerOrAdmin ? [{ name: "Manager Control", href: "/user/manager", icon: Users, badge: managerPendingCount }] : []),
+        ...(isManagerOrAdmin ? [{
+            name: "Manager Control",
+            href: "/user/manager",
+            icon: Users,
+            badge: managerPendingCount,
+            subItems: [
+                { name: "Pending Requests", href: "/user/manager?tab=requests", icon: ListChecks, badge: managerPendingLeaves + managerPendingAttn },
+                { name: "History", href: "/user/manager?tab=history", icon: History },
+                { name: "Calendar", href: "/user/manager?tab=calendar", icon: CalendarDays },
+                { name: "Performance", href: "/user/manager?tab=performance", icon: TrendingUp },
+                { name: "Reports", href: "/user/manager?tab=reports", icon: Download }
+            ]
+        }] : []),
     ]
 
     // Wait for session to load to prevent hydration errors
@@ -237,36 +257,78 @@ export default function UserLayout({
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 p-4 space-y-2">
+                <nav className="flex-1 p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)] custom-scrollbar">
                     {navItems.map((item) => {
                         const Icon = item.icon
-                        const isActive = pathname === item.href
+                        const isActive = pathname === item.href || (item.subItems?.some(sub => pathname + (window?.location?.search || '') === sub.href))
+                        const hasSubItems = item.subItems && item.subItems.length > 0
+                        const isExpanded = !sidebarCollapsed && (isActive || hasSubItems) // Always expand if active or has subitems for now, or we can add state
+
                         return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={cn(
-                                    "flex items-center gap-3 px-3 h-10 rounded-lg font-medium text-sm transition-all duration-200 relative",
-                                    isActive
-                                        ? "bg-[#D4A056] text-primary-foreground font-semibold shadow-sm"
-                                        : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground",
-                                    sidebarCollapsed && "justify-center px-0 h-10 w-10 mx-auto"
+                            <div key={item.href} className="space-y-1">
+                                <Link
+                                    href={item.href}
+                                    className={cn(
+                                        "flex items-center gap-3 px-3 h-10 rounded-lg font-medium text-sm transition-all duration-200 relative",
+                                        isActive && !hasSubItems
+                                            ? "bg-[#D4A056] text-primary-foreground font-semibold shadow-sm"
+                                            : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground",
+                                        sidebarCollapsed && "justify-center px-0 h-10 w-10 mx-auto",
+                                        isActive && hasSubItems && !sidebarCollapsed && "text-white font-bold"
+                                    )}
+                                >
+                                    <Icon className={cn("h-5 w-5 shrink-0", isActive ? (hasSubItems ? "text-white" : "text-primary-foreground") : "text-sidebar-foreground/70")} />
+                                    {!sidebarCollapsed && (
+                                        <span className="flex-1">{item.name}</span>
+                                    )}
+                                    {item.badge ? (
+                                        sidebarCollapsed ? (
+                                            <div className="absolute top-0 right-0 h-3 w-3 rounded-full bg-white border-2 border-transparent" />
+                                        ) : (
+                                            <span className="bg-white text-red-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                                {item.badge}
+                                            </span>
+                                        )
+                                    ) : null}
+                                </Link>
+
+                                {hasSubItems && !sidebarCollapsed && (
+                                    <div className="ml-4 pl-4 border-l border-white/10 space-y-1 mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        {item.subItems?.map((sub) => {
+                                            const SubIcon = sub.icon
+                                            const subHref = sub.href
+                                            // Extract tab from subHref if it exists
+                                            const subTab = subHref.split('tab=')[1]
+
+                                            // Handle active state accurately via pathname + search
+                                            const currentSearch = typeof window !== 'undefined' ? window.location.search : ''
+                                            const isSubActive = (pathname === subHref.split('?')[0]) &&
+                                                (currentSearch.includes(`tab=${subTab}`) || (!currentSearch && subTab === 'requests'))
+
+                                            return (
+                                                <Link
+                                                    key={sub.href}
+                                                    href={sub.href}
+                                                    className={cn(
+                                                        "flex items-center gap-3 px-3 h-9 rounded-lg font-medium text-[11px] uppercase tracking-wider transition-all duration-200 relative",
+                                                        isSubActive
+                                                            ? "bg-white/10 text-white font-bold shadow-inner border border-white/5"
+                                                            : "text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-white/5"
+                                                    )}
+                                                >
+                                                    <SubIcon className="h-3.5 w-3.5" />
+                                                    <span className="flex-1">{sub.name}</span>
+                                                    {sub.badge ? (
+                                                        <span className="bg-white text-red-900 text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-sm">
+                                                            {sub.badge}
+                                                        </span>
+                                                    ) : null}
+                                                </Link>
+                                            )
+                                        })}
+                                    </div>
                                 )}
-                            >
-                                <Icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary-foreground" : "text-sidebar-foreground/70")} />
-                                {!sidebarCollapsed && (
-                                    <span className="flex-1">{item.name}</span>
-                                )}
-                                {item.badge ? (
-                                    sidebarCollapsed ? (
-                                        <div className="absolute top-0 right-0 h-3 w-3 rounded-full bg-white border-2 border-transparent" />
-                                    ) : (
-                                        <span className="bg-white text-red-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                                            {item.badge}
-                                        </span>
-                                    )
-                                ) : null}
-                            </Link>
+                            </div>
                         )
                     })}
                 </nav>
@@ -414,30 +476,57 @@ export default function UserLayout({
                             </div>
 
                             {/* Mobile Navigation */}
-                            <nav className="flex-1 p-4 space-y-2">
+                            <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
                                 {navItems.map((item) => {
                                     const Icon = item.icon
                                     const isActive = pathname === item.href
+                                    const hasSubItems = item.subItems && item.subItems.length > 0
+
                                     return (
-                                        <Link
-                                            key={item.href}
-                                            href={item.href}
-                                            onClick={() => setSidebarOpen(false)}
-                                            className={cn(
-                                                "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
-                                                isActive
-                                                    ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-lg shadow-sidebar-accent/20"
-                                                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
+                                        <div key={item.href} className="space-y-1">
+                                            <Link
+                                                href={item.href}
+                                                onClick={() => !hasSubItems && setSidebarOpen(false)}
+                                                className={cn(
+                                                    "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
+                                                    isActive && !hasSubItems
+                                                        ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-lg shadow-sidebar-accent/20"
+                                                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
+                                                )}
+                                            >
+                                                <Icon className="h-6 w-6" />
+                                                <span className="text-xs font-black tracking-widest flex-1">{item.name}</span>
+                                                {item.badge ? (
+                                                    <span className="bg-red-100/80 text-red-900 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                                        {item.badge}
+                                                    </span>
+                                                ) : null}
+                                            </Link>
+
+                                            {hasSubItems && (
+                                                <div className="ml-6 pl-4 border-l-2 border-slate-100 space-y-2 py-2 animate-in fade-in slide-in-from-top-1">
+                                                    {item.subItems?.map((sub) => {
+                                                        const SubIcon = sub.icon
+                                                        return (
+                                                            <Link
+                                                                key={sub.href}
+                                                                href={sub.href}
+                                                                onClick={() => setSidebarOpen(false)}
+                                                                className="flex items-center gap-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 transition-colors w-full"
+                                                            >
+                                                                <SubIcon className="h-4 w-4" />
+                                                                <span className="flex-1">{sub.name}</span>
+                                                                {sub.badge ? (
+                                                                    <span className="bg-red-50 text-red-600 border border-red-100 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                                                        {sub.badge}
+                                                                    </span>
+                                                                ) : null}
+                                                            </Link>
+                                                        )
+                                                    })}
+                                                </div>
                                             )}
-                                        >
-                                            <Icon className="h-6 w-6" />
-                                            <span className="text-xs font-black tracking-widest flex-1">{item.name}</span>
-                                            {item.badge ? (
-                                                <span className="bg-red-100/80 text-red-900 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                                                    {item.badge}
-                                                </span>
-                                            ) : null}
-                                        </Link>
+                                        </div>
                                     )
                                 })}
                             </nav>

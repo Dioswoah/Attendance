@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useSession } from "next-auth/react"
+import { useRouter, useSearchParams } from "next/navigation"
 import useSWR, { mutate } from "swr"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -56,6 +57,15 @@ interface Request {
 
 export default function ManagerControlPage() {
     const { data: session, status } = useSession()
+    const router = useRouter()
+    const searchParams = useSearchParams()
+
+    // Sync active tab with search params
+    const activeTab = searchParams.get('tab') || 'requests'
+
+    const handleTabChange = (val: string) => {
+        router.push(`/user/manager?tab=${val}`, { scroll: false })
+    }
 
     // Requests State
     const [pendingRequests, setPendingRequests] = useState<Request[]>([])
@@ -729,34 +739,12 @@ export default function ManagerControlPage() {
 
             {/* Page Header is handled inside Tabs mainly, but we can put a global title */}
 
-            <Tabs defaultValue="requests" className="w-full space-y-8">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full space-y-8">
                 <div id="tour-manager-header" className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Manager Control</h1>
                         <p className="text-muted-foreground mt-1">Review requests and monitor team availability</p>
                     </div>
-                    <TabsList className="h-12 bg-white border border-border p-1 w-full md:w-auto shadow-sm gap-1 rounded-xl flex-wrap justify-center">
-                        <TabsTrigger id="tour-manager-tab-requests" value="requests" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
-                            Pending Requests
-                            {pendingRequests.length > 0 && (
-                                <span className="ml-2 bg-white/20 text-current px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                                    {pendingRequests.length}
-                                </span>
-                            )}
-                        </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-history" value="history" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
-                            History
-                        </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-calendar" value="calendar" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
-                            Calendar
-                        </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-performance" value="performance" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all flex items-center gap-2 min-w-fit flex-shrink-0">
-                            Performance
-                        </TabsTrigger>
-                        <TabsTrigger id="tour-manager-tab-reports" value="reports" className="h-10 px-4 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm font-medium transition-all min-w-fit flex-shrink-0">
-                            Reports
-                        </TabsTrigger>
-                    </TabsList>
                 </div>
 
                 {/* --- REQUESTS TAB --- */}
