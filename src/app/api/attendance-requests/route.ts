@@ -1,9 +1,9 @@
-
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { sendLeaveRequestEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
+import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -126,6 +126,18 @@ export async function POST(req: Request) {
                 })
             }
         }
+
+        // Update Summary
+        await updateAttendanceSummary(userId, normalizedDate)
+
+        // Log Activity
+        await logActivity({
+            userId,
+            action: 'ATTENDANCE_REQUEST_SUBMIT',
+            entityType: 'ATTENDANCE_REQUEST',
+            entityId: request.id,
+            details: { type, date: normalizedDate, time: eventTime, reason }
+        })
 
         broadcastUpdate('attendance', request)
         return NextResponse.json(request)

@@ -5,6 +5,17 @@ import { auth } from "@/auth"
 import { sendLeaveStatusUpdateEmail, sendLeaveActionEmail, sendGeneralEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { notifyRole } from "@/lib/notifications"
+import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
+
+async function updateRangeSummaries(userId, startDate, endDate) {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const current = new Date(start)
+    while (current <= end) {
+        await updateAttendanceSummary(userId, new Date(current))
+        current.setDate(current.getDate() + 1)
+    }
+}
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -80,15 +91,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 })
 
                 // Notify Admin about Manager Approval
-                if (isManager && !isAdmin) { // If Manager (not Admin) approves
-                    // We need to notify Admin
-                    // Use imported notifyRole and sendGeneralEmail
-                    // (I need to add imports to the file first, see next step)
+                if (isManager && !isAdmin) {
                     await notifyRole("ADMIN", "Manager Approval", `Manager ${session.user.name} approved leave for ${updatedRequest.user.name}.`, "INFO");
 
-                    // Send Email to Admin (Iterate admins or generic system email? Since sendGeneralEmail is single recipient, we need to find an admin email or skip email.)
-                    // Use notifyRole which sends in-app. For email, maybe skip or find one admin.
-                    // The prompt requires "email on the admin". I will fetch admins.
                     const admins = await prisma.user.findMany({ where: { roles: { has: 'ADMIN' }, email: { not: null } } });
                     for (const admin of admins) {
                         if (session.accessToken) {
@@ -105,8 +110,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 }
             }
 
-            // Notifications (Reuse logic or simplify)
-            // Notify User
+            // --- Log & Summary ---
+            await updateRangeSummaries(updatedRequest.userId, updatedRequest.startDate, updatedRequest.endDate)
+            await logActivity({
+                userId: updatedRequest.userId,
+                action: isUserEditing ? 'LEAVE_EDIT' : `LEAVE_${updatedRequest.status}`,
+                entityType: 'LEAVE',
+                entityId: id,
+                details: {
+                    actor: session.user.name,
+                    status: updatedRequest.status,
+                    type: updatedRequest.type,
+                    dateRange: `${updatedRequest.startDate.toLocaleDateString()} - ${updatedRequest.endDate.toLocaleDateString()}`
+                }
+            })
+
+            // Notifications
             await prisma.notification.create({
                 data: {
                     userId: updatedRequest.userId,
@@ -117,7 +136,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 }
             })
 
-            // Email to User
             if (session.accessToken && session.user.email) {
                 await sendLeaveStatusUpdateEmail({
                     userName: updatedRequest.user.name || "Employee",
@@ -154,9 +172,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             return NextResponse.json({ error: "Leave/Request not found" }, { status: 404 })
         }
 
-        // Existing LEAVE Amendment Logic (Original Logic)
         const isManager = session.user.id !== currentLeave.userId
-
         let updatedLeave
 
         if (isManager) {
@@ -165,7 +181,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 data: {
                     status: body.status,
                     declineReason: body.declineReason,
-                    // @ts-ignore
                     isArchived: body.isArchived,
                     startDate: body.startDate ? new Date(body.startDate) : undefined,
                     endDate: body.endDate ? new Date(body.endDate) : undefined,
@@ -204,7 +219,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 })
             }
 
-            // NEW: Notify Manager if Admin is the one editing
             if (currentLeave.user.managerId && currentLeave.user.managerId !== session.user.id) {
                 await prisma.notification.create({
                     data: {
@@ -232,7 +246,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             }
 
         } else {
-            // User updating their own leave
             updatedLeave = await prisma.leave.update({
                 where: { id },
                 data: {
@@ -243,10 +256,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     duration: body.duration,
                     startTime: body.startTime ? new Date(body.startTime) : undefined,
                     endTime: body.endTime ? new Date(body.endTime) : undefined,
-                    // If user edits approved leave, what happens? Usually reset to pending?
-                    // status: "PENDING" 
-                    // But if it's separate model, user shouldn't edit 'Leave' directly often.
-                    // Let's assume user edits revert to pending or simple update if allowed.
                 },
                 include: { user: { include: { manager: true } } }
             })
@@ -261,39 +270,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         link: "/admin/leaves"
                     }
                 })
-
-                if (session.accessToken && updatedLeave.user.manager?.email) {
-                    await sendLeaveActionEmail({
-                        managerName: updatedLeave.user.manager.name || "Manager",
-                        managerEmail: updatedLeave.user.manager.email,
-                        userName: updatedLeave.user.name || "Employee",
-                        userEmail: updatedLeave.user.email,
-                        userAccessToken: session.accessToken,
-                        leaveType: updatedLeave.type,
-                        startDate: new Date(updatedLeave.startDate).toLocaleDateString(),
-                        endDate: new Date(updatedLeave.endDate).toLocaleDateString(),
-                        action: 'UPDATED'
-                    })
-                }
             }
         }
 
-        // NEW: Notify Admins if Manager is modifying history
-        const isAdmin = session.user.roles?.includes('ADMIN')
-        if (!isAdmin && session.user.id !== updatedLeave.userId) {
-            const admins = await prisma.user.findMany({ where: { roles: { has: 'ADMIN' } } })
-            for (const admin of admins) {
-                await prisma.notification.create({
-                    data: {
-                        userId: admin.id,
-                        title: "Manager Modified History",
-                        message: `${session.user.name} has modified an approved leave for ${updatedLeave.user.name}.`,
-                        type: "LEAVE_STATUS",
-                        link: "/admin/leaves"
-                    }
-                })
+        // --- Log & Summary ---
+        await updateRangeSummaries(updatedLeave.userId, updatedLeave.startDate, updatedLeave.endDate)
+        await logActivity({
+            userId: updatedLeave.userId,
+            action: isManager ? 'ADMIN_LEAVE_EDIT' : 'LEAVE_EDIT',
+            entityType: 'LEAVE',
+            entityId: id,
+            details: {
+                actor: session.user.name,
+                status: updatedLeave.status,
+                type: updatedLeave.type
             }
-        }
+        })
 
         broadcastUpdate('leaves', updatedLeave)
         return NextResponse.json(updatedLeave)
@@ -310,7 +302,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         }
 
-        // 1. Try to find LeaveRequest
         const leaveRequest = await prisma.leaveRequest.findUnique({
             where: { id },
             include: { user: { include: { manager: true } } }
@@ -330,38 +321,20 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
                 data: { deletedAt: new Date() }
             })
 
-            // Notifications for LeaveRequest deletion
-            if (leaveRequest.userId !== session.user.id) {
-                // Admin/Manager deleting user request
-                await prisma.notification.create({
-                    data: {
-                        userId: leaveRequest.userId,
-                        title: "Leave Request Removed",
-                        message: "Your leave request has been removed by an administrator.",
-                        type: "LEAVE_CANCELLED",
-                        link: "/leaves"
-                    }
-                })
-            } else {
-                // User deleting their own request
-                if (leaveRequest.user.managerId) {
-                    await prisma.notification.create({
-                        data: {
-                            userId: leaveRequest.user.managerId,
-                            title: "Leave Request Cancelled",
-                            message: `${leaveRequest.user.name} has cancelled their leave request.`,
-                            type: "LEAVE_CANCELLED",
-                            link: "/admin/leaves"
-                        }
-                    })
-                }
-            }
+            // --- Log & Summary ---
+            await updateRangeSummaries(leaveRequest.userId, leaveRequest.startDate, leaveRequest.endDate)
+            await logActivity({
+                userId: leaveRequest.userId,
+                action: 'LEAVE_CANCEL',
+                entityType: 'LEAVE_REQUEST',
+                entityId: id,
+                details: { actor: session.user.name }
+            })
 
             broadcastUpdate('leaves', { id, deleted: true })
             return NextResponse.json({ success: true })
         }
 
-        // 2. Fallback to Leave
         const leave = await prisma.leave.findUnique({
             where: { id },
             include: { user: { include: { manager: true } } }
@@ -369,7 +342,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
         if (!leave) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-        // Check permissions
         const roles = (session.user as any).roles || []
         const isAdmin = roles.includes('ADMIN')
         const isManager = leave.user.managerId === session.user.id
@@ -383,113 +355,20 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             data: { deletedAt: new Date() }
         })
 
-        if (leave.userId !== session.user.id) {
-            // Admin/Manager Deleting User's Leave
-            // 1. Notify User
-            await prisma.notification.create({
-                data: {
-                    userId: leave.userId,
-                    title: "Leave Request Removed",
-                    message: "Your leave request has been removed by an administrator.",
-                    type: "LEAVE_CANCELLED",
-                    link: "/leaves"
-                }
-            })
-
-            if (session.accessToken && leave.user.email) {
-                // Reuse status update email or action email? Action email seems generic enough.
-                await sendLeaveActionEmail({
-                    managerName: session.user.name || "Administrator",
-                    managerEmail: session.user.email,
-                    userName: leave.user.name || "Employee",
-                    userEmail: leave.user.email, // Send TO user
-                    userAccessToken: session.accessToken, // From Admin
-                    leaveType: leave.type,
-                    startDate: new Date(leave.startDate).toLocaleDateString(),
-                    endDate: new Date(leave.endDate).toLocaleDateString(),
-                    action: 'CANCELLED'
-                })
-            }
-
-            // 2. Notify Manager (if exists and not the one deleting)
-            if (leave.user.managerId && leave.user.managerId !== session.user.id) {
-                await prisma.notification.create({
-                    data: {
-                        userId: leave.user.managerId,
-                        title: "Staff Leave Removed",
-                        message: `Leave request for ${leave.user.name} has been removed by an administrator.`,
-                        type: "LEAVE_CANCELLED",
-                        link: "/admin/leaves"
-                    }
-                })
-
-                if (session.accessToken && leave.user.manager?.email) {
-                    await sendLeaveActionEmail({
-                        managerName: leave.user.manager.name || "Manager", // Receiver name for context? No, function expects managerName as "Sender" usually, but here we are notifying manager.
-                        // Let's swap generic usages:
-                        // We are sending TO the manager.
-                        // "managerName" in the email template is "Hi [managerName]".
-                        managerEmail: leave.user.manager.email,
-                        userName: session.user.name || "Administrator", // The "Sender"
-                        userEmail: session.user.email,
-                        userAccessToken: session.accessToken,
-                        leaveType: leave.type,
-                        startDate: new Date(leave.startDate).toLocaleDateString(),
-                        endDate: new Date(leave.endDate).toLocaleDateString(),
-                        action: 'CANCELLED'
-                    })
-                }
-            }
-        } else {
-            // User Deleting Own Leave (Existing Logic)
-            if (leave.user.managerId) {
-                await prisma.notification.create({
-                    data: {
-                        userId: leave.user.managerId,
-                        title: "Leave Request Cancelled",
-                        message: `${leave.user.name} has cancelled their leave request.`,
-                        type: "LEAVE_CANCELLED",
-                        link: "/admin/leaves"
-                    }
-                })
-
-                if (session.accessToken && leave.user.manager?.email) {
-                    await sendLeaveActionEmail({
-                        managerName: leave.user.manager.name || "Manager",
-                        managerEmail: leave.user.manager.email,
-                        userName: leave.user.name || "Employee",
-                        userEmail: leave.user.email,
-                        userAccessToken: session.accessToken,
-                        leaveType: leave.type,
-                        startDate: new Date(leave.startDate).toLocaleDateString(),
-                        endDate: new Date(leave.endDate).toLocaleDateString(),
-                        action: 'CANCELLED'
-                    })
-                }
-            }
-        }
-
-        // NEW: Notify Admins if Manager is deleting history
-        const isAdminSession = session.user.roles?.includes('ADMIN')
-        const targetLeave = leave || (leaveRequest as any)
-        if (!isAdminSession && session.user.id !== targetLeave.userId) {
-            const admins = await prisma.user.findMany({ where: { roles: { has: 'ADMIN' } } })
-            for (const admin of admins) {
-                await prisma.notification.create({
-                    data: {
-                        userId: admin.id,
-                        title: "Manager Deleted History",
-                        message: `${session.user.name} has deleted an approved/denied leave for ${targetLeave.user?.name || 'User'}.`,
-                        type: "LEAVE_CANCELLED",
-                        link: "/admin/leaves"
-                    }
-                })
-            }
-        }
+        // --- Log & Summary ---
+        await updateRangeSummaries(leave.userId, leave.startDate, leave.endDate)
+        await logActivity({
+            userId: leave.userId,
+            action: 'LEAVE_DELETE',
+            entityType: 'LEAVE',
+            entityId: id,
+            details: { actor: session.user.name }
+        })
 
         broadcastUpdate('leaves', { id, deleted: true })
         return NextResponse.json({ success: true })
     } catch (error) {
+        console.error("DELETE leave error:", error)
         return NextResponse.json({ error: "Failed to delete leave" }, { status: 500 })
     }
 }

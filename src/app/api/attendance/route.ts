@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { sendAdminActionEmail, sendForgottenClockOutEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { syncStatusToCalendar } from "@/lib/calendar"
+import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
 
 // NSW Public Holidays 2026
 const HOLIDAYS_2026 = [
@@ -157,6 +158,18 @@ async function cleanupOldSessions(sessionToken?: string) {
                     clockOut: finalClockOut,
                     status: 'PRESENT'
                 }
+            })
+
+            // Update Summary
+            await updateAttendanceSummary(session.user.id, session.date)
+
+            // Log Activity
+            await logActivity({
+                userId: session.user.id,
+                action: 'AUTO_CLOCK_OUT',
+                entityType: 'ATTENDANCE',
+                entityId: session.id,
+                details: { reason }
             })
 
             await prisma.break.updateMany({
@@ -654,6 +667,18 @@ export async function POST(req: Request) {
         }
 
 
+        // Update Summary
+        await updateAttendanceSummary(userId, targetDate)
+
+        // Log Activity
+        await logActivity({
+            userId,
+            action: 'CLOCK_IN',
+            entityType: 'ATTENDANCE',
+            entityId: attendance.id,
+            details: { mode: mode || 'OFFICE', date: targetDate }
+        })
+
         broadcastUpdate('attendance', attendance)
         return NextResponse.json(attendance)
     } catch (error) {
@@ -798,6 +823,18 @@ export async function PATCH(req: Request) {
         const updated = await prisma.attendance.update({
             where: { id: existing.id },
             data: updateData
+        })
+
+        // Update Summary
+        await updateAttendanceSummary(userId, existing.date)
+
+        // Log Activity
+        await logActivity({
+            userId,
+            action: action ? action.toUpperCase().replace('-', '_') : 'UPDATE',
+            entityType: 'ATTENDANCE',
+            entityId: existing.id,
+            details: { action, date: existing.date }
         })
 
         broadcastUpdate('attendance', updated)

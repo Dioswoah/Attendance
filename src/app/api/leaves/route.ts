@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { sendLeaveRequestEmail, sendAdminActionEmail } from "@/lib/email"
 import { auth } from "@/auth"
 import { broadcastUpdate } from "@/lib/eventBus"
+import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -266,6 +267,24 @@ export async function POST(req: Request) {
                 }
             }
         }
+
+        // Update Summaries for the date range
+        const start = new Date(startDate)
+        const end = new Date(endDate)
+        const current = new Date(start)
+        while (current <= end) {
+            await updateAttendanceSummary(userId, new Date(current))
+            current.setDate(current.getDate() + 1)
+        }
+
+        // Log Activity
+        await logActivity({
+            userId,
+            action: 'LEAVE_SUBMIT',
+            entityType: 'LEAVE',
+            entityId: leaveRequest.id,
+            details: { type, startDate, endDate, duration, reason }
+        })
 
         broadcastUpdate('leaves', leaveRequest)
         return NextResponse.json(leaveRequest)

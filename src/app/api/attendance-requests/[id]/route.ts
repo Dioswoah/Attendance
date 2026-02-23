@@ -1,9 +1,9 @@
-
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { sendLeaveStatusUpdateEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
+import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -48,7 +48,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const declineReason = updatedRequest.declineReason
 
         if (status === 'APPROVED') {
-            // Precise Update if targetId exists
             if (request.targetId) {
                 if (['CLOCK_IN', 'CLOCK_OUT'].includes(request.type)) {
                     await prisma.attendance.update({
@@ -67,7 +66,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     })
                 }
             } else {
-                // Fallback: Date-based logic for older requests or missing targetId
                 const startDate = new Date(request.date)
                 startDate.setHours(0, 0, 0, 0)
                 const endDate = new Date(startDate)
@@ -76,16 +74,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 let attendance = await prisma.attendance.findFirst({
                     where: {
                         userId: request.userId,
-                        date: {
-                            gte: startDate,
-                            lt: endDate
-                        }
+                        date: { gte: startDate, lt: endDate }
                     }
                 })
 
                 const updateData: any = {}
-
-                // PROVISIONAL CLEANUP (ON APPROVE): 
                 if (attendance && attendance.notes === `PROVISIONAL_REQUEST:${request.id}`) {
                     updateData.notes = null
                 }
@@ -116,20 +109,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 }
             }
         } else if (status === 'DECLINED' && request.type === 'CLOCK_IN') {
-            // PROVISIONAL CLEANUP (ON DECLINE):
             const provisional = await prisma.attendance.findFirst({
                 where: {
                     userId: request.userId,
                     notes: `PROVISIONAL_REQUEST:${request.id}`
                 }
             })
-
             if (provisional) {
                 await prisma.attendance.delete({
                     where: { id: provisional.id }
                 })
             }
         }
+
+        // --- Log & Summary ---
+        await updateAttendanceSummary(request.userId, request.date)
+        await logActivity({
+            userId: request.userId,
+            action: isUserEditing ? 'ATTENDANCE_REQUEST_EDIT' : `ATTENDANCE_REQUEST_${status}`,
+            entityType: 'ATTENDANCE_REQUEST',
+            entityId: id,
+            details: { actor: session.user.name, status, type: request.type, date: request.date }
+        })
 
         // Notify User
         await prisma.notification.create({
@@ -170,22 +171,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {
-        // 1. Fetch the request to know its type
+        const session = await auth()
         const request = await prisma.attendanceRequest.findUnique({
             where: { id }
         })
-
         if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-        // 2. Perform soft delete on the request
         await prisma.attendanceRequest.update({
             where: { id },
             data: { deletedAt: new Date() }
         })
 
-        // 3. PROVISIONAL CLEANUP (ON DELETE):
-        // If this request created a provisional attendance record, we MUST clean it up
-        // to avoid "ruined data integrity" as the user described.
         const provisional = await prisma.attendance.findFirst({
             where: {
                 userId: request.userId,
@@ -194,15 +190,10 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         })
 
         if (provisional) {
-            // Check if there's other meaningful data in this record
-            // If it only has the clock-in from the request and no clock-out, delete the whole record.
-            // If it has a clock-out, keep the record but null the clock-in (making it "blank" as requested).
             if (provisional.clockOut) {
                 const updateData: any = { notes: null }
                 if (request.type === 'CLOCK_IN') updateData.clockIn = null
                 if (request.type === 'BREAK_START') updateData.breakStart = null
-                // ... handle other types if necessary
-
                 await prisma.attendance.update({
                     where: { id: provisional.id },
                     data: updateData
@@ -213,6 +204,16 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
                 })
             }
         }
+
+        // --- Log & Summary ---
+        await updateAttendanceSummary(request.userId, request.date)
+        await logActivity({
+            userId: request.userId,
+            action: 'ATTENDANCE_REQUEST_DELETE',
+            entityType: 'ATTENDANCE_REQUEST',
+            entityId: id,
+            details: { actor: session?.user?.name || "System" }
+        })
 
         broadcastUpdate('attendance', { id, deleted: true })
         return NextResponse.json({ success: true })

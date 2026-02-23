@@ -7,307 +7,212 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Calendar, Clock, LogIn, LogOut, Coffee, FileText, Loader2 } from "lucide-react"
+import { Search, Calendar, Clock, LogIn, LogOut, Coffee, FileText, Settings, ShieldCheck, AlertCircle, Eye, History, UserCheck, ShieldAlert, Edit2, Trash2 } from "lucide-react"
 import { format } from "date-fns"
 import { getBrowserTimezone } from "@/lib/timezone"
 import { Skeleton } from "@/components/ui/skeleton"
 
-interface ActivityLog {
-    id: string
-    date: string
-    type: "clock-in" | "clock-out" | "break-start" | "break-end" | "leave-request" | "leave-approved" | "leave-denied"
-    time: string
-    details: string
-    employeeName?: string
-}
-
 export default function ActivityLogsPage() {
-    const { data: session, status } = useSession()
-    const [logs, setLogs] = useState<ActivityLog[]>([])
+    const { data: session } = useSession()
     const [searchQuery, setSearchQuery] = useState("")
     const [filterType, setFilterType] = useState<string>("all")
-    const [startDate, setStartDate] = useState<string>(format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'))
-    const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
-    const [userTimeZone, setUserTimeZone] = useState("UTC")
-    const [isLoading, setIsLoading] = useState(true)
+    const [userTimeZone, setUserTimeZone] = useState("Asia/Manila")
 
     useEffect(() => {
         if (session?.user) {
-            const stored = (session.user as any).selectedTimezone
-            if (stored && stored !== 'UTC') setUserTimeZone(stored)
-            else if ((session.user as any).useCurrentTimezone) {
-                setUserTimeZone(getBrowserTimezone())
-            }
+            setUserTimeZone((session.user as any).selectedTimezone || getBrowserTimezone())
         }
     }, [session])
 
-    // SWR Fetcher
     const fetcher = (url: string) => fetch(url).then(res => res.json())
-
-    // Construct SWR Key dynamically
-    const swrKey = session?.user?.id
-        ? `/api/attendance?userId=${session.user.id}${startDate && endDate ? `&startDate=${startDate}&endDate=${endDate}` : ''}`
-        : null
-
-    const { data: attendanceData, isLoading: isSwrLoading } = useSWR(swrKey, fetcher, {
-        keepPreviousData: true
-    })
-
-    useEffect(() => {
-        if (attendanceData) {
-            const activityLogs = convertAttendanceToLogs(attendanceData)
-            setLogs(activityLogs)
-            setIsLoading(false)
-        }
-    }, [attendanceData, userTimeZone]) // Re-run if data or timezone changes
-
-    // Removed manual fetch logic
-    const fetchActivityLogs = async () => { }
-
-    const convertAttendanceToLogs = (attendanceData: any[]): ActivityLog[] => {
-        const logs: ActivityLog[] = []
-
-        attendanceData.forEach((record) => {
-            if (record.clockIn) {
-                logs.push({
-                    id: `${record.id}-in`,
-                    date: new Date(record.clockIn).toISOString().split('T')[0],
-                    type: "clock-in",
-                    time: new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
-                    details: `Clocked in from ${record.mode.toLowerCase()}`
-                })
-            }
-
-            if (record.breakStart) {
-                logs.push({
-                    id: `${record.id}-break-start`,
-                    date: new Date(record.breakStart).toISOString().split('T')[0],
-                    type: "break-start",
-                    time: new Date(record.breakStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
-                    details: "Started break"
-                })
-            }
-
-            if (record.breakEnd) {
-                logs.push({
-                    id: `${record.id}-break-end`,
-                    date: new Date(record.breakEnd).toISOString().split('T')[0],
-                    type: "break-end",
-                    time: new Date(record.breakEnd).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
-                    details: "Ended break"
-                })
-            }
-
-            if (record.clockOut) {
-                logs.push({
-                    id: `${record.id}-out`,
-                    date: new Date(record.clockOut).toISOString().split('T')[0],
-                    type: "clock-out",
-                    time: new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }),
-                    details: "Clocked out"
-                })
-            }
-        })
-
-        return logs.sort((a, b) => new Date(b.date + ' ' + b.time).getTime() - new Date(a.date + ' ' + a.time).getTime())
-    }
-
-    const getTypeIcon = (type: ActivityLog["type"]) => {
-        switch (type) {
-            case "clock-in":
-                return <LogIn className="w-5 h-5" />
-            case "clock-out":
-                return <LogOut className="w-5 h-5" />
-            case "break-start":
-            case "break-end":
-                return <Coffee className="w-5 h-5" />
-            default:
-                return <FileText className="w-5 h-5" />
-        }
-    }
-
-    const getTypeBadge = (type: ActivityLog["type"]) => {
-        switch (type) {
-            case "clock-in":
-                return <Badge className="bg-green-100 text-green-700 hover:bg-green-100/80 border-green-200 font-medium text-xs">Clock In</Badge>
-            case "clock-out":
-                return <Badge variant="secondary" className="font-medium text-xs">Clock Out</Badge>
-            case "break-start":
-                return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100/80 border-orange-200 font-medium text-xs">Break Start</Badge>
-            case "break-end":
-                return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100/80 border-blue-200 font-medium text-xs">Break End</Badge>
-            case "leave-request":
-                return <Badge variant="outline" className="font-medium text-xs border-border text-muted-foreground">Leave Request</Badge>
-            case "leave-approved":
-                return <Badge className="bg-green-100 text-green-700 hover:bg-green-100/80 border-green-200 font-medium text-xs">Approved</Badge>
-            case "leave-denied":
-                return <Badge className="bg-red-100 text-red-700 hover:bg-red-100/80 border-red-200 font-medium text-xs">Denied</Badge>
-        }
-    }
-
-    const filteredLogs = logs.filter((log) => {
-        const matchesSearch = log.details.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesType =
-            filterType === "all" ||
-            (filterType === "attendance" && ["clock-in", "clock-out", "break-start", "break-end"].includes(log.type)) ||
-            (filterType === "leave" && ["leave-request", "leave-approved", "leave-denied"].includes(log.type))
-        return matchesSearch && matchesType
-    })
-
-    // Group logs by date
-    const groupedLogs = filteredLogs.reduce(
-        (acc, log) => {
-            if (!acc[log.date]) {
-                acc[log.date] = []
-            }
-            acc[log.date].push(log)
-            return acc
-        },
-        {} as Record<string, ActivityLog[]>
+    const { data, isLoading } = useSWR(
+        session?.user?.id ? `/api/activity-logs?limit=100` : null,
+        fetcher
     )
 
-    // Loading check removed to allow Skeleton UI rendering
-    // if (status === "loading" || isLoading) { ... } removed
+    const logs = data?.logs || []
+
+    const getActionInfo = (action: string) => {
+        switch (action) {
+            case 'CLOCK_IN': return { icon: LogIn, color: 'text-green-600', label: 'Clock In', bg: 'bg-green-100' }
+            case 'CLOCK_OUT': return { icon: LogOut, color: 'text-blue-600', label: 'Clock Out', bg: 'bg-blue-100' }
+            case 'AUTO_CLOCK_OUT': return { icon: ShieldAlert, color: 'text-orange-600', label: 'Auto Clock Out', bg: 'bg-orange-100' }
+            case 'LEAVE_SUBMIT': return { icon: FileText, color: 'text-purple-600', label: 'Leave Request', bg: 'bg-purple-100' }
+            case 'LEAVE_APPROVED': return { icon: ShieldCheck, color: 'text-green-700', label: 'Leave Approved', bg: 'bg-green-200' }
+            case 'LEAVE_DECLINED': return { icon: AlertCircle, color: 'text-red-600', label: 'Leave Declined', bg: 'bg-red-100' }
+            case 'ADMIN_EDIT': return { icon: Edit2, color: 'text-amber-600', label: 'Admin Edit', bg: 'bg-amber-100' }
+            case 'ADMIN_DELETE': return { icon: Trash2, color: 'text-red-700', label: 'Admin Delete', bg: 'bg-red-100' }
+            case 'ATTENDANCE_REQUEST_SUBMIT': return { icon: History, color: 'text-indigo-600', label: 'Correction Request', bg: 'bg-indigo-100' }
+            case 'ATTENDANCE_SUMMARY_UPPERCASE': return { icon: UserCheck, color: 'text-teal-600', label: 'Summary Update', bg: 'bg-teal-100' }
+            default: return { icon: Settings, color: 'text-slate-600', label: action, bg: 'bg-slate-100' }
+        }
+    }
+
+    const filteredLogs = logs.filter((log: any) => {
+        const info = getActionInfo(log.action)
+        const matchesSearch = log.details?.actor?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            info.label.toLowerCase().includes(searchQuery.toLowerCase())
+        if (filterType === 'all') return matchesSearch
+        if (filterType === 'attendance') return matchesSearch && ['CLOCK_IN', 'CLOCK_OUT', 'AUTO_CLOCK_OUT'].includes(log.action)
+        if (filterType === 'leave') return matchesSearch && log.action.startsWith('LEAVE_')
+        if (filterType === 'admin') return matchesSearch && log.action.startsWith('ADMIN_')
+        return matchesSearch
+    })
+
+    const groupedLogs = filteredLogs.reduce((acc: any, log: any) => {
+        const dateStr = format(new Date(log.createdAt), "yyyy-MM-dd")
+        if (!acc[dateStr]) acc[dateStr] = []
+        acc[dateStr].push(log)
+        return acc
+    }, {})
 
     return (
-        <div className="space-y-8 w-full">
-            {/* Header */}
-            <div id="tour-activity-header">
-                <h1 className="text-2xl font-bold tracking-tight text-foreground">Activity Logs</h1>
-                <p className="text-base text-muted-foreground mt-1">View your attendance and leave request history</p>
-            </div>
-
-            {/* Filters */}
-            <div id="tour-activity-filters" className="flex flex-col xl:flex-row gap-4">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search logs..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 h-10 bg-white border-border rounded-lg text-sm"
-                    />
+        <div className="space-y-8 w-full p-4 lg:p-8 max-w-7xl mx-auto">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
+                <div>
+                    <h1 className="text-3xl font-black tracking-tight text-slate-900 uppercase">Audit Trail</h1>
+                    <p className="text-slate-500 mt-1 font-medium italic">Transparency and accountability for every action.</p>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                            placeholder="Search actions..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-9 w-64 border-slate-200 focus:border-primary shadow-sm rounded-xl"
+                        />
+                    </div>
                     <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger className="w-40 h-10 bg-white border-border rounded-lg">
-                            <SelectValue />
+                        <SelectTrigger className="w-40 border-slate-200 shadow-sm rounded-xl">
+                            <SelectValue placeholder="Category" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">All Activities</SelectItem>
+                            <SelectItem value="all">All Logs</SelectItem>
                             <SelectItem value="attendance">Attendance</SelectItem>
-                            <SelectItem value="leave">Leave</SelectItem>
+                            <SelectItem value="leave">Leaves</SelectItem>
+                            <SelectItem value="admin">System/Admin</SelectItem>
                         </SelectContent>
                     </Select>
-
-                    {/* Date Range Inputs */}
-                    <div className="flex items-center gap-2 bg-white p-1 border border-border rounded-lg shadow-sm">
-                        <div className="flex items-center gap-2 px-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">From</span>
-                            <Input
-                                type="date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="h-8 w-32 border-none bg-transparent focus-visible:ring-0 text-xs font-medium"
-                            />
-                        </div>
-                        <div className="w-px h-6 bg-border mx-1" />
-                        <div className="flex items-center gap-2 px-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To</span>
-                            <Input
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="h-8 w-32 border-none bg-transparent focus-visible:ring-0 text-xs font-medium"
-                            />
-                        </div>
-                    </div>
                 </div>
             </div>
 
-            {/* Logs Timeline */}
-            <div id="tour-activity-list" className="space-y-8">
+            <div className="space-y-10">
                 {isLoading ? (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                            <Skeleton className="h-5 w-5 rounded-full" />
-                            <Skeleton className="h-5 w-48" />
-                        </div>
-                        <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                            <CardContent className="p-0">
-                                <div className="p-4 space-y-6">
-                                    {Array.from({ length: 5 }).map((_, i) => (
-                                        <div key={i} className="flex items-center gap-4">
-                                            <Skeleton className="h-10 w-10 rounded-full flex-shrink-0" />
-                                            <div className="space-y-2 flex-1">
-                                                <Skeleton className="h-4 w-1/3" />
-                                                <Skeleton className="h-3 w-1/4" />
-                                            </div>
-                                            <Skeleton className="h-4 w-16" />
-                                        </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-                ) : (
-                    Object.entries(groupedLogs).map(([date, logs]) => (
-                        <div key={date} className="space-y-4">
-                            <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-primary" />
-                                <h3 className="text-sm font-semibold text-foreground">
-                                    {format(new Date(date), "EEEE, MMMM d, yyyy")}
-                                </h3>
-                            </div>
-                            <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                    Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="space-y-4">
+                            <Skeleton className="h-6 w-48 rounded-full" />
+                            <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-white">
                                 <CardContent className="p-0">
-                                    <div className="max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
-                                        <div className="divide-y divide-border/50">
-                                            {logs.map((log) => (
-                                                <div key={log.id} className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
-                                                    <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground">
-                                                        {getTypeIcon(log.type)}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-3 flex-wrap mb-1">
-                                                            <span className="text-sm font-medium text-foreground">{log.details}</span>
-                                                            {getTypeBadge(log.type)}
-                                                        </div>
-                                                        {log.employeeName && (
-                                                            <p className="text-xs text-muted-foreground">{log.employeeName}</p>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                                                        <Clock className="w-3.5 h-3.5" />
-                                                        {log.time}
-                                                    </div>
+                                    <div className="p-4 space-y-6">
+                                        {Array.from({ length: 4 }).map((_, j) => (
+                                            <div key={j} className="flex items-center gap-4">
+                                                <Skeleton className="h-12 w-12 rounded-2xl flex-shrink-0" />
+                                                <div className="space-y-2 flex-1">
+                                                    <Skeleton className="h-4 w-1/4" />
+                                                    <Skeleton className="h-3 w-1/2" />
                                                 </div>
-                                            ))}
-                                        </div>
+                                                <Skeleton className="h-4 w-16" />
+                                            </div>
+                                        ))}
                                     </div>
                                 </CardContent>
                             </Card>
                         </div>
                     ))
-                )}
+                ) : Object.entries(groupedLogs).map(([date, dayLogs]: [string, any]) => (
+                    <div key={date} className="space-y-4">
+                        <div className="flex items-center gap-3 px-2">
+                            <div className="h-8 w-8 rounded-xl bg-slate-900 flex items-center justify-center text-white">
+                                <Calendar className="w-4 h-4" />
+                            </div>
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
+                                {format(new Date(date), "EEEE, MMM d, yyyy")}
+                            </h3>
+                            <div className="h-px bg-slate-100 flex-1 ml-4" />
+                        </div>
 
-                {Object.keys(groupedLogs).length === 0 && (
-                    <Card className="border border-border shadow-sm rounded-xl bg-white">
-                        <CardContent className="p-12 text-center">
-                            <FileText className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                            <h3 className="text-lg font-semibold text-foreground">No logs found</h3>
-                            <p className="text-sm text-muted-foreground mt-1">No activity logs match your current filters.</p>
+                        <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-white hover:shadow-md transition-shadow duration-300">
+                            <CardContent className="p-0">
+                                <div className="divide-y divide-slate-50">
+                                    {dayLogs.map((log: any) => {
+                                        const info = getActionInfo(log.action)
+                                        const Icon = info.icon
+                                        return (
+                                            <div key={log.id} className="group flex items-center gap-5 p-5 hover:bg-slate-50/50 transition-all duration-200">
+                                                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110", info.bg)}>
+                                                    <Icon className={cn("w-6 h-6", info.color)} />
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-3 mb-1">
+                                                        <span className="text-sm font-bold text-slate-800 uppercase tracking-tight">
+                                                            {info.label}
+                                                        </span>
+                                                        <Badge variant="outline" className="text-[10px] font-black uppercase tracking-tighter py-0 px-2 rounded-md border-slate-200 text-slate-400">
+                                                            {log.entityType}
+                                                        </Badge>
+                                                    </div>
+
+                                                    <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs font-medium text-slate-500 italic">
+                                                        <span className="flex items-center gap-1.5">
+                                                            <UserCheck className="w-3.5 h-3.5" />
+                                                            {log.details?.actor || 'System'}
+                                                        </span>
+                                                        {log.details?.status && (
+                                                            <span className="bg-slate-100 px-2 py-0.5 rounded-full text-[10px] uppercase font-bold not-italic">
+                                                                {log.details.status}
+                                                            </span>
+                                                        )}
+                                                        {log.details?.reason && (
+                                                            <span className="text-slate-400 truncate max-w-[300px]">
+                                                                &quot;{log.details.reason}&quot;
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-right flex flex-col items-end gap-1">
+                                                    <div className="flex items-center gap-1.5 text-sm font-black text-slate-900">
+                                                        <Clock className="w-4 h-4 text-slate-300" />
+                                                        {format(new Date(log.createdAt), "h:mm a")}
+                                                    </div>
+                                                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                                                        {userTimeZone.split('/').pop()}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                ))}
+
+                {!isLoading && data?.logs?.length === 0 && (
+                    <Card className="rounded-3xl border-dashed border-2 border-slate-200 shadow-none bg-slate-50/30">
+                        <CardContent className="p-20 text-center">
+                            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+                                <Eye className="w-10 h-10 text-slate-300" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Nothing here yet</h3>
+                            <p className="text-slate-500 mt-2 font-medium">Activity logs will appear as you and the system interact.</p>
                         </CardContent>
                     </Card>
                 )}
             </div>
 
-            {/* Summary */}
-            <div className="flex items-center justify-between pt-2">
-                <p className="text-sm text-muted-foreground">
-                    Showing {filteredLogs.length} {filteredLogs.length === 1 ? 'entry' : 'entries'}
+            <div className="flex items-center justify-center pt-8 border-t border-slate-100">
+                <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-300">
+                    End of Ledger • End of Ledger • End of Ledger
                 </p>
             </div>
         </div>
     )
+}
+
+function cn(...classes: any[]) {
+    return classes.filter(Boolean).join(" ")
 }

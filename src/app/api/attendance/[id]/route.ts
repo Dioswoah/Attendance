@@ -4,6 +4,7 @@ import { broadcastUpdate } from "@/lib/eventBus"
 import { auth } from "@/auth"
 import { notifyUser, notifyRole } from "@/lib/notifications"
 import { sendGeneralEmail } from "@/lib/email"
+import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -94,6 +95,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {
+        const session = await auth()
         const body = await req.json()
 
         // 1. Fetch current record to get userId and check state
@@ -122,7 +124,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
 
         // 3. Update User Availability Status if session state changed
-        // If clocking out an active session
         if (existing.clockOut === null && attendance.clockOut !== null) {
             await prisma.user.update({
                 where: { id: attendance.userId },
@@ -140,7 +141,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 }
             })
         }
-        // If re-opening a session
         else if (existing.clockOut !== null && attendance.clockOut === null) {
             await prisma.user.update({
                 where: { id: attendance.userId },
@@ -148,22 +148,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             })
         }
 
+        // --- Log & Summary ---
+        await updateAttendanceSummary(attendance.userId, attendance.date)
+        const editor = session?.user?.name || "System"
+        await logActivity({
+            userId: attendance.userId,
+            action: 'ADMIN_EDIT',
+            entityType: 'ATTENDANCE',
+            entityId: id,
+            details: {
+                editedBy: editor,
+                oldStatus: existing.status,
+                newStatus: attendance.status,
+                date: attendance.date
+            }
+        })
+
         // 4. Notifications Logic
-        const session = await auth();
         if (session?.user) {
             const actorId = session.user.id;
             const targetUserId = attendance.userId;
             const isSelfUpdate = actorId === targetUserId;
-            // Assuming roles are available on session.user (checking typings might be needed, but assuming standard NextAuth augmentation)
             const actorRoles = (session.user as any).roles || [];
             const isManager = actorRoles.includes('MANAGER');
 
-            // Rule 1: Admin/Manager updates User -> Notify User
             if (!isSelfUpdate) {
-                // Determine if actor is Admin or Manager (if logic requires distinction)
-                // For now, any non-self update triggers this
-
-                // App Notification
                 await notifyUser({
                     userId: targetUserId,
                     title: "Attendance Updated",
@@ -172,8 +181,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     link: `/user?date=${attendance.date.toISOString().split('T')[0]}`
                 });
 
-                // Email Notification
-                if (session.accessToken) { // Need sender token
+                if (session.accessToken) {
                     await sendGeneralEmail({
                         toEmail: attendance.user.email,
                         subject: "Attendance Record Updated",
@@ -184,18 +192,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     });
                 }
 
-                // Rule 3 (Partial): If Manager edits record -> Notify Admin
-                // Wait, if Manager edits User, we notify User (done above).
-                // Do we also notify Admin? "when the manager delete or edit ... email to the admin"
                 if (isManager) {
                     await notifyRole("ADMIN", "Manager Activity", `Manager ${session.user.name} edited a record for ${attendance.user.name}.`, "INFO");
-                    // Email to admins? We'd need to fetch admins or use a system email.
-                    // Since we can't easily fetch all admin emails without a query, we'll skip email to admin or implement if critical.
-                    // Attempting to notify ADMIN role in app notification is done.
                 }
             }
 
-            // Rule 2: User edits/deletes record (Self) -> Notify Manager
             if (isSelfUpdate) {
                 if (attendance.user.manager) {
                     await notifyUser({
@@ -203,7 +204,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         title: "Staff Activity",
                         message: `${attendance.user.name} edited their attendance record.`,
                         type: "INFO",
-                        link: `/team` // Manager view
+                        link: `/team`
                     });
 
                     if (session.accessToken) {
@@ -219,7 +220,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             }
         }
 
-        // 5. Broadcast
         broadcastUpdate('attendance', attendance)
         broadcastUpdate('staff')
 
@@ -233,6 +233,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     try {
+        const session = await auth()
         // 1. Fetch to get userId and details for notification
         const existing = await prisma.attendance.findUnique({
             where: { id },
@@ -254,8 +255,21 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             })
         }
 
+        // --- Log & Summary ---
+        await updateAttendanceSummary(existing.userId, existing.date)
+        const deleter = session?.user?.name || "System"
+        await logActivity({
+            userId: existing.userId,
+            action: 'ADMIN_DELETE',
+            entityType: 'ATTENDANCE',
+            entityId: id,
+            details: {
+                deletedBy: deleter,
+                date: existing.date
+            }
+        })
+
         // 4. Notification Logic
-        const session = await auth()
         if (session?.user) {
             const actorId = session.user.id
             const targetUserId = existing.userId
@@ -264,7 +278,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             const isManager = actorRoles.includes('MANAGER')
 
             if (!isSelfAction) {
-                // Admin/Manager deleted User record -> Notify User
                 await notifyUser({
                     userId: targetUserId,
                     title: "Attendance Record Deleted",
@@ -284,14 +297,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
                     });
                 }
 
-                // If Manager deleted User record -> Notify Admin
                 if (isManager) {
                     await notifyRole("ADMIN", "Manager Activity", `Manager ${session.user.name} deleted a record for ${existing.user.name}.`, "WARNING");
                 }
             }
 
             if (isSelfAction && existing.user.manager) {
-                // User deleted own record -> Notify Manager
                 await notifyUser({
                     userId: existing.user.manager.id,
                     title: "Staff Activity",
@@ -311,7 +322,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             }
         }
 
-        // 5. Broadcast
         broadcastUpdate('attendance', attendance)
         broadcastUpdate('staff')
 

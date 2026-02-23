@@ -44,6 +44,9 @@ model User {
   manager             User?               @relation("UserManager", fields: [managerId], references: [id])
   managedUsers        User[]              @relation("UserManager")
   team                Team?               @relation(fields: [teamId], references: [id])
+  attendanceSummaries AttendanceSummary[]
+  activityLogs        ActivityLog[]
+  overriddenSummaries AttendanceSummary[] @relation("OverrideManager")
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
@@ -135,7 +138,9 @@ model Attendance {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   deletedAt      DateTime?
+  summaryId      String?
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  summary        AttendanceSummary? @relation(fields: [summaryId], references: [id])
   breaks         Break[]
   breakWarningSent      Boolean   @default(false)
   breakLimitExceededSent Boolean  @default(false)
@@ -302,4 +307,49 @@ model WorkHoursChangeLog {
 
   @@index([userId, date])
   @@index([attendanceId])
+}
+
+model AttendanceSummary {
+  id                String           @id @default(cuid())
+  userId            String
+  date              DateTime
+  clockIn           DateTime?
+  clockOut          DateTime?
+  totalWorkDuration Int              @default(0)
+  totalBreakDuration Int             @default(0)
+  status            AttendanceStatus @default(ABSENT)
+  mode              WorkMode         @default(OFFICE)
+  
+  // Manual Overrides
+  isManualOverride  Boolean          @default(false)
+  overriddenById    String?
+  overrideReason    String?
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  overriddenBy      User?            @relation("OverrideManager", fields: [overriddenById], references: [id])
+  rawRecords        Attendance[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entityType String?
+  entityId   String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
