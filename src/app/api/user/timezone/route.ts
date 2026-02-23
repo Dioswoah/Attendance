@@ -45,9 +45,9 @@ export async function PATCH(req: NextRequest) {
         // This ensures the Admin Portal directory stays in sync with user's manual settings
         if (!useCurrentTimezone && selectedTimezone) {
             if (selectedTimezone === 'Asia/Manila') {
-                updateData.location = 'Philippines'
+                updateData.employmentLocation = 'Philippines'
             } else if (selectedTimezone.startsWith('Australia/')) {
-                updateData.location = 'Australia'
+                updateData.employmentLocation = 'Australia'
             }
         }
 
@@ -58,7 +58,7 @@ export async function PATCH(req: NextRequest) {
                 id: true,
                 useCurrentTimezone: true,
                 selectedTimezone: true,
-                location: true
+                employmentLocation: true
             }
         })
 

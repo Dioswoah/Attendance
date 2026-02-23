@@ -36,9 +36,10 @@ interface TimezoneSettingsProps {
     compact?: boolean
     showLabel?: boolean
     showNote?: boolean
+    trigger?: React.ReactNode
 }
 
-export function TimezoneSettings({ compact = false, showLabel = true, showNote = true }: TimezoneSettingsProps) {
+export function TimezoneSettings({ compact = false, showLabel = true, showNote = true, trigger }: TimezoneSettingsProps) {
     const { data: session, update } = useSession()
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
@@ -118,7 +119,9 @@ export function TimezoneSettings({ compact = false, showLabel = true, showNote =
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                {compact ? (
+                {trigger ? (
+                    trigger
+                ) : compact ? (
                     <Button
                         variant="ghost"
                         size="icon"

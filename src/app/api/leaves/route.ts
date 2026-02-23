@@ -78,7 +78,8 @@ export async function GET(req: Request) {
             duration: l.duration,
             declineReason: l.declineReason,
             createdAt: l.createdAt.toISOString(),
-            isRequest // Flag to help frontend or API distinguish if needed, though ID collision is possible if CUIDs clash (unlikely)
+            userTimeZone: l.user.selectedTimezone,
+            isRequest // Flag to help frontend or API distinguish if needed
         })
 
         const transformedLeaves = leaves.map(l => transform(l, false))
@@ -233,6 +234,22 @@ export async function POST(req: Request) {
             if (user.manager && user.manager.email) {
                 const accessToken = session?.accessToken;
                 if (accessToken) {
+                    let durationDisplay = duration;
+                    if (startTime && endTime) {
+                        const startObj = new Date(startTime);
+                        const endObj = new Date(endTime);
+                        const managerTz = user.manager?.selectedTimezone || 'Asia/Manila';
+                        const staffTz = user.selectedTimezone || (user.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila');
+
+                        const mStart = startObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: managerTz });
+                        const mEnd = endObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: managerTz });
+
+                        const sStart = startObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: staffTz });
+                        const sEnd = endObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: staffTz });
+
+                        durationDisplay = `${duration} (${mStart}-${mEnd} Local / ${sStart}-${sEnd} Staff)`;
+                    }
+
                     await sendLeaveRequestEmail({
                         managerName: user.manager.name || 'Manager',
                         managerEmail: user.manager.email,
@@ -242,7 +259,7 @@ export async function POST(req: Request) {
                         leaveType: type,
                         startDate: new Date(startDate).toLocaleDateString(),
                         endDate: new Date(endDate).toLocaleDateString(),
-                        duration: duration,
+                        duration: durationDisplay,
                         reason: reason,
                         leaveId: leaveRequest.id
                     });

@@ -17,6 +17,7 @@ import { format, subDays, isSameDay, parseISO, eachDayOfInterval, startOfDay, en
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
+import { getBrowserTimezone } from "@/lib/timezone"
 
 type RequestStatus = "PENDING" | "APPROVED" | "DECLINED"
 
@@ -50,8 +51,21 @@ export default function AmendRecordsPage() {
                 const res = await fetch('/api/user/me')
                 if (res.ok) {
                     const data = await res.json()
-                    if (data.location === 'Philippines') setUserTimeZone('Asia/Manila')
-                    else if (data.location === 'Australia') setUserTimeZone('Australia/Sydney')
+                    // 1. Priority: Explictly selected timezone
+                    if (data.selectedTimezone) {
+                        setUserTimeZone(data.selectedTimezone)
+                    }
+                    // 2. Fallback: Region-based defaults
+                    else if (data.employmentLocation === 'Philippines') {
+                        setUserTimeZone('Asia/Manila')
+                    }
+                    else if (data.employmentLocation === 'Australia') {
+                        setUserTimeZone('Australia/Sydney')
+                    }
+                    // 3. Last Resort: Browser timezone
+                    else {
+                        setUserTimeZone(getBrowserTimezone())
+                    }
                 }
             } catch { }
         }

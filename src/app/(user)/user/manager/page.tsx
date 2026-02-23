@@ -51,6 +51,7 @@ interface Request {
     createdAt: string
     kind?: 'LEAVE' | 'ATTENDANCE'
     declineReason?: string
+    userTimeZone?: string
 }
 
 export default function ManagerControlPage() {
@@ -83,6 +84,7 @@ export default function ManagerControlPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [reportStartDate, setReportStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [reportEndDate, setReportEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [viewerTimeZone, setViewerTimeZone] = useState(getBrowserTimezone())
     const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
     const [isGeneratingReport, setIsGeneratingReport] = useState(false)
     const [performanceRange, setPerformanceRange] = useState("7") // Days
@@ -129,6 +131,7 @@ export default function ManagerControlPage() {
             const tz = (session.user as any).useCurrentTimezone
                 ? getBrowserTimezone()
                 : (session.user as any).selectedTimezone || getBrowserTimezone()
+            setViewerTimeZone(tz)
             setReportTimezone(tz)
         }
     }, [session])
@@ -157,7 +160,8 @@ export default function ManagerControlPage() {
     const { data: approvedLeavesData, mutate: mutateApprovedLeaves } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=APPROVED` : null, fetcher)
 
     // 6. Request History
-    const { data: historyLeavesData, mutate: mutateHistory } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=APPROVED,DECLINED` : null, fetcher)
+    const { data: historyLeavesData, mutate: mutateHistoryLeaves } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=APPROVED,DECLINED` : null, fetcher)
+    const { data: historyAttendanceData, mutate: mutateHistoryAttendance } = useSWR(uid ? `/api/attendance-requests?managerId=${uid}&status=APPROVED,DECLINED` : null, fetcher)
 
     // 7. Today's Attendance (for sidebar status)
     const { data: todayAttendanceData } = useSWR(uid ? '/api/attendance' : null, fetcher)
@@ -231,7 +235,8 @@ export default function ManagerControlPage() {
                     startDate: r.date,
                     endDate: r.date,
                     duration: 'Correction',
-                    type: r.type
+                    type: r.type,
+                    userTimeZone: r.user.selectedTimezone
                 }))]
             }
             setPendingRequests(combined)
@@ -242,10 +247,30 @@ export default function ManagerControlPage() {
 
     // Sync History
     useEffect(() => {
-        if (historyLeavesData) {
-            setRequestHistory(historyLeavesData.map((l: any) => ({ ...l, kind: 'LEAVE' })))
+        if (historyLeavesData || historyAttendanceData) {
+            let combined: Request[] = []
+            if (historyLeavesData) {
+                combined = [...combined, ...historyLeavesData.map((l: any) => ({ ...l, kind: 'LEAVE' }))]
+            }
+            if (historyAttendanceData) {
+                combined = [...combined, ...historyAttendanceData.map((r: any) => ({
+                    ...r,
+                    kind: 'ATTENDANCE',
+                    userName: r.user.name,
+                    userImage: r.user.image,
+                    department: r.user.department?.name,
+                    startDate: r.date,
+                    endDate: r.date,
+                    duration: 'Correction',
+                    type: r.type,
+                    userTimeZone: r.user.selectedTimezone
+                }))]
+            }
+            // Sort by createdAt desc
+            combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            setRequestHistory(combined)
         }
-    }, [historyLeavesData])
+    }, [historyLeavesData, historyAttendanceData])
 
     // Sync Approved Leaves
     useEffect(() => {
@@ -428,9 +453,13 @@ export default function ManagerControlPage() {
                 setActionType(null)
 
                 // Trigger Background Revalidation
-                if (request.kind === 'ATTENDANCE') mutatePendingAttendance()
-                else mutatePendingLeaves()
-                mutateHistory()
+                if (request.kind === 'ATTENDANCE') {
+                    mutatePendingAttendance()
+                    mutateHistoryAttendance()
+                } else {
+                    mutatePendingLeaves()
+                    mutateHistoryLeaves()
+                }
                 mutateApprovedLeaves()
             } else {
                 alert("Failed to update request")
@@ -890,11 +919,25 @@ export default function ManagerControlPage() {
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-lg">
                                                             <p className="text-xs text-muted-foreground mb-1">Duration/Time</p>
-                                                            <p className="font-semibold">
-                                                                {request.kind === 'ATTENDANCE' && request.time
-                                                                    ? format(new Date(request.time), 'hh:mm a')
-                                                                    : request.duration}
-                                                            </p>
+                                                            <div className="flex flex-col">
+                                                                <p className="font-semibold">
+                                                                    {request.kind === 'ATTENDANCE' && request.time
+                                                                        ? formatWithTimezone(new Date(request.time), viewerTimeZone, 'time')
+                                                                        : (request.kind === 'LEAVE' && request.startTime
+                                                                            ? `${request.duration} (${formatWithTimezone(new Date(request.startTime), viewerTimeZone, 'time')})`
+                                                                            : request.duration)}
+                                                                </p>
+                                                                {((request.kind === 'ATTENDANCE' && request.time) || (request.kind === 'LEAVE' && request.startTime)) && (
+                                                                    <div className="flex flex-col">
+                                                                        <p className="text-[8px] text-primary/60 font-bold uppercase tracking-wider">
+                                                                            Your Local Time
+                                                                        </p>
+                                                                        <p className="text-[8px] text-muted-foreground font-medium">
+                                                                            Staff Local: {formatWithTimezone(new Date(request.kind === 'ATTENDANCE' ? request.time! : request.startTime!), (request as any).userTimeZone || 'UTC', 'time')}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-lg col-span-2">
                                                             <p className="text-xs text-muted-foreground mb-1">Date Range</p>
@@ -971,10 +1014,15 @@ export default function ManagerControlPage() {
                                                             <p className="font-medium text-foreground">
                                                                 {format(parseISO(request.startDate), 'MMM dd, yyyy')}
                                                             </p>
-                                                            {request.kind === 'ATTENDANCE' && request.time && (
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    {format(new Date(request.time), 'hh:mm a')}
-                                                                </p>
+                                                            {((request.kind === 'ATTENDANCE' && request.time) || (request.kind === 'LEAVE' && request.startTime)) && (
+                                                                <div className="flex flex-col">
+                                                                    <p className="text-xs text-foreground font-medium">
+                                                                        {formatWithTimezone(new Date(request.kind === 'ATTENDANCE' ? request.time! : request.startTime!), viewerTimeZone, 'time')}
+                                                                    </p>
+                                                                    <p className="text-[8px] text-muted-foreground uppercase font-bold tracking-tighter">
+                                                                        Staff: {formatWithTimezone(new Date(request.kind === 'ATTENDANCE' ? request.time! : request.startTime!), (request as any).userTimeZone || 'UTC', 'time')}
+                                                                    </p>
+                                                                </div>
                                                             )}
                                                             {request.startDate !== request.endDate && (
                                                                 <p className="text-xs text-muted-foreground">
@@ -1141,8 +1189,21 @@ export default function ManagerControlPage() {
                                                             <p className="font-semibold capitalize">{request.type.toLowerCase().replace('_', ' ')}</p>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-lg">
-                                                            <p className="text-xs text-muted-foreground mb-1">Duration</p>
-                                                            <p className="font-semibold">{request.duration}</p>
+                                                            <p className="text-xs text-muted-foreground mb-1">Duration / Time</p>
+                                                            <div className="flex flex-col">
+                                                                <p className="font-semibold">
+                                                                    {request.kind === 'ATTENDANCE' && request.time
+                                                                        ? formatWithTimezone(new Date(request.time), viewerTimeZone, 'time')
+                                                                        : (request.kind === 'LEAVE' && request.startTime
+                                                                            ? `${request.duration} (${formatWithTimezone(new Date(request.startTime), viewerTimeZone, 'time')})`
+                                                                            : request.duration)}
+                                                                </p>
+                                                                {((request.kind === 'ATTENDANCE' && request.time) || (request.kind === 'LEAVE' && request.startTime)) && (
+                                                                    <p className="text-[8px] text-muted-foreground font-medium uppercase tracking-widest">
+                                                                        {viewerTimeZone === (request as any).userTimeZone ? 'Local' : (request as any).userTimeZone?.split('/').pop()?.replace('_', ' ')}
+                                                                    </p>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-lg col-span-2">
                                                             <p className="text-xs text-muted-foreground mb-1">Date Range</p>
@@ -2111,7 +2172,7 @@ export default function ManagerControlPage() {
                                                 ]
                                                 XLSX.utils.book_append_sheet(wb, wsSummary, "Team Summary Matrix")
 
-                                                const deptName = selectedDepartment === 'all' ? 'All_Depts' : (managerDepartments.find(d => d.id === selectedDepartment)?.name || 'Dept');
+                                                const deptName = selectedDepartments.length === managerDepartments.length ? 'All_Depts' : selectedDepartments.length > 1 ? 'Multiple_Depts' : selectedDepartments.length === 1 ? (managerDepartments.find(d => d.id === selectedDepartments[0])?.name || 'Dept') : 'No_Dept';
                                                 const filename = `Team_Report_${deptName.replace(/\s+/g, '_')}_${reportStartDate}-to-${reportEndDate}.xlsx`
                                                 XLSX.writeFile(wb, filename)
                                             } catch (error) {

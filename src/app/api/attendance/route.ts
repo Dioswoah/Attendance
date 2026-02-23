@@ -77,7 +77,6 @@ async function cleanupOldSessions(sessionToken?: string) {
                     name: true,
                     email: true,
                     selectedTimezone: true,
-                    location: true,
                     shiftEndTime: true
                 }
             }
