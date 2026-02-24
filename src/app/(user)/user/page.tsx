@@ -2657,14 +2657,6 @@ export default function UserPortal() {
                                             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pending Leave</span>
                                         </div>
                                         <div className="flex items-center gap-1.5">
-                                            <div className="w-2 h-2 rounded-full bg-amber-500" />
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">On Break</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Present</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
                                             <div className="w-2 h-2 rounded-full bg-red-500" />
                                             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Public Holiday</span>
                                         </div>
@@ -2733,29 +2725,9 @@ export default function UserPortal() {
                                                                 })
                                                             }).map((l: any) => ({ type: 'leave-pending', data: l }))
 
-                                                            // 3. Attendance (Present/On Break) - Filter Dept
-                                                            const attendanceEvents = monthlyAttendance.filter((a: any) => {
-                                                                const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
-                                                                if (attDate !== dateStr) return false
+                                                            // 3. Attendance (Present/On Break) - REMOVED
 
-                                                                // Dept Filter
-                                                                if (calendarFilterDepartment !== 'all') {
-                                                                    const staff = employees.find((e: any) => e.id === a.userId)
-                                                                    const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                                    if (dept !== calendarFilterDepartment) return false
-                                                                }
-                                                                return true
-                                                            }).reduce((acc: any[], a: any) => {
-                                                                // Deduplicate: Only show one record per user per day (the most recent)
-                                                                const existing = acc.find(item => item.data.userId === a.userId)
-                                                                if (!existing) {
-                                                                    const isBreak = (a.status === 'on-break' || (a.breaks?.some((b: any) => !b.endTime)))
-                                                                    acc.push({ type: isBreak ? 'on-break' : 'present', data: a })
-                                                                }
-                                                                return acc
-                                                            }, [])
-
-                                                            const events: any[] = [...approvedLeaves, ...pendingLeaves, ...attendanceEvents]
+                                                            const events: any[] = [...approvedLeaves, ...pendingLeaves]
 
                                                             // Holidays
                                                             if (NSW_HOLIDAYS_2026[dateStr]) {
@@ -2790,9 +2762,7 @@ export default function UserPortal() {
                                                                                 event.type === 'holiday' ? "bg-red-50 text-red-600 border-red-100" :
                                                                                     event.type === 'leave-approved' ? "bg-blue-50 text-blue-600 border-blue-100" :
                                                                                         event.type === 'leave-pending' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
-                                                                                            event.type === 'on-break' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                                                                                                event.type === 'present' ? "bg-green-50 text-green-600 border-green-100" :
-                                                                                                    "bg-slate-50 text-slate-600 border-slate-100"
+                                                                                            "bg-slate-50 text-slate-600 border-slate-100"
                                                                             )}>
                                                                                 {event.type === 'holiday' ? event.name : (event.data.userName || event.data.name || event.data.user?.name || 'Staff')}
                                                                             </div>
