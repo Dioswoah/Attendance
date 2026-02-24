@@ -2,11 +2,14 @@
 
 import { SessionProvider } from "next-auth/react"
 import { Toaster } from "sonner"
+import { SessionGuard } from "@/components/SessionGuard"
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <SessionProvider>
-            {children}
+            <SessionGuard>
+                {children}
+            </SessionGuard>
             <Toaster
                 position="top-right"
                 richColors

@@ -3,8 +3,8 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import {
     ShieldAlert,
@@ -18,14 +18,24 @@ import {
 } from "lucide-react"
 
 export default function UnauthorizedPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-muted/20" />}>
+            <UnauthorizedContent />
+        </Suspense>
+    )
+}
+
+function UnauthorizedContent() {
     const { data: session, status } = useSession()
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const reason = searchParams ? searchParams.get('reason') : null
 
     useEffect(() => {
-        if (status === "authenticated" && session?.user?.email?.endsWith("@redadair.com.au")) {
+        if (status === "authenticated" && session?.user?.email?.endsWith("@redadair.com.au") && reason !== 'archived') {
             router.push("/user")
         }
-    }, [session, status, router])
+    }, [session, status, router, reason])
 
     return (
         <div className="min-h-screen w-full flex items-center justify-center bg-muted/20 p-4 relative overflow-hidden">
@@ -49,17 +59,29 @@ export default function UnauthorizedPage() {
                         <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
 
-                    <h1 className="text-2xl font-black italic text-white uppercase tracking-tight relative z-10">Access Restricted</h1>
+                    <h1 className="text-2xl font-black italic text-white uppercase tracking-tight relative z-10">
+                        {reason === 'archived' ? 'Account Deactivated' : 'Access Restricted'}
+                    </h1>
                     <p className="text-white/60 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
-                        Workspace Verification Failed
+                        {reason === 'archived' ? 'Administrator Action Required' : 'Workspace Verification Failed'}
                     </p>
                 </div>
 
                 <CardContent className="p-8 text-center space-y-6">
                     <p className="text-slate-600 font-medium text-sm leading-relaxed">
-                        Our system has identified your account, but it is not associated with the authorized <strong>Google Workspace</strong>.
-                        <br /><br />
-                        Please sign in using your corporate credentials to proceed.
+                        {reason === 'archived' ? (
+                            <>
+                                Your profile has been archived or removed from the system.
+                                <br /><br />
+                                Please contact your administrator if you believe this is an error or need access restored.
+                            </>
+                        ) : (
+                            <>
+                                Our system has identified your account, but it is not associated with the authorized <strong>Google Workspace</strong>.
+                                <br /><br />
+                                Please sign in using your corporate credentials to proceed.
+                            </>
+                        )}
                     </p>
 
                     <div className="bg-red-50 border border-red-100 rounded-xl p-4 w-full flex items-center gap-3">
@@ -68,7 +90,9 @@ export default function UnauthorizedPage() {
                         </div>
                         <div className="text-left">
                             <p className="text-[10px] font-black uppercase tracking-widest text-red-800/60">Authentication Requirement</p>
-                            <p className="text-sm font-bold text-red-900">Verified Organization Account</p>
+                            <p className="text-sm font-bold text-red-900">
+                                {reason === 'archived' ? 'Active Account Verification' : 'Verified Organization Account'}
+                            </p>
                         </div>
                     </div>
 
@@ -82,7 +106,7 @@ export default function UnauthorizedPage() {
                     </div>
 
                     <p className="text-[10px] font-mono text-muted-foreground/40 pt-4">
-                        ERR_403_INVALID_WORKSPACE_DOMAIN
+                        {reason === 'archived' ? 'ERR_403_USER_ARCHIVED' : 'ERR_403_INVALID_WORKSPACE_DOMAIN'}
                     </p>
                 </CardContent>
             </Card>

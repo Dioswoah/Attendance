@@ -313,7 +313,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
                     console.log('[Auth] DB User found:', dbUser?.email, 'Roles:', dbUser?.roles)
 
-                    if (dbUser && session.user) {
+                    if (dbUser && (dbUser.isArchived || dbUser.deletedAt)) {
+                        (session as any).error = "ArchivedUserError";
+                    } else if (dbUser && session.user) {
                         (session.user as any).department = dbUser.department?.name || "Unassigned";
                         (session.user as any).roles = dbUser.roles || [dbUser.role] || ["USER"];
                         (session.user as any).managerId = dbUser.managerId;
