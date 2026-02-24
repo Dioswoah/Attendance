@@ -204,18 +204,18 @@ async function cleanupOldSessions(sessionToken?: string) {
             // 1. In-App Notification
             const formattedClockOutTime = finalClockOut.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: timeZone });
 
-            let humanReason = "";
+            let messageStr = "";
             if (reason === "shift ended") {
-                humanReason = `it reached your scheduled shift end time of ${session.user.shiftEndTime || 'unknown'}`;
+                messageStr = `Hello! The system noticed that you did not clock out yesterday. We have automatically clocked you out using the end time of your nominal hours (${formattedClockOutTime}). If you forgot to clock out earlier or worked overtime, please request an amended record from your manager.`;
             } else {
-                humanReason = reason; // "reached the maximum 14-hour system limit" or "reached the standard 9-hour limit"
+                messageStr = `Hello! The system noticed that you did not clock out yesterday. We have automatically clocked you out at ${formattedClockOutTime} (${reason}). If this is incorrect, please request an amended record from your manager.`;
             }
 
             await prisma.notification.create({
                 data: {
                     userId,
-                    title: "Attendance Auto-Closed",
-                    message: `Your session for ${dateStr} was automatically closed at ${formattedClockOutTime} because ${humanReason}.`,
+                    title: "System Auto-Clock Out",
+                    message: messageStr,
                     type: "SYSTEM",
                     link: "/user"
                 }
