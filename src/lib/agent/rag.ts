@@ -12,7 +12,7 @@ export interface ChatContext {
     };
     attendance: any[];
     leaves: any[];
-    managedEmployees?: any[]; // For managers/admins
+    managedEmployees?: any[]; // For managers/admins to hold their team's today status
 }
 
 export async function getAgentContext(userId: string, roles: UserRole[]): Promise<ChatContext> {
@@ -67,25 +67,40 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
 
     // If Manager or Admin, fetch some aggregated team data (Safe summary)
     if (roles.includes('ADMIN') || roles.includes('MANAGER')) {
+        const todayStr = new Date().toISOString().split('T')[0];
+
         const managedEmployees = await prisma.user.findMany({
             where: {
                 OR: [
                     { managerId: userId },
-                    roles.includes('ADMIN') ? {} : { id: 'nothing' } // Admin sees all if needed, but lets keep it specific
+                    roles.includes('ADMIN') ? {} : { id: 'nothing' } // Admin sees all
                 ],
                 deletedAt: null
             },
             select: {
                 id: true,
                 name: true,
-                department: { select: { name: true } }
+                department: { select: { name: true } },
+                roles: true,
+                availabilityStatus: true,
+                attendanceSummaries: {
+                    where: { date: new Date(`${todayStr}T00:00:00.000Z`) },
+                    take: 1
+                },
+                leaveRequests: {
+                    where: { status: 'PENDING', deletedAt: null },
+                    take: 2
+                }
             },
-            take: 20
+            take: 50 // Limit to prevent massive token inflation
         });
 
         context.managedEmployees = managedEmployees.map(e => ({
-            name: e.name,
-            department: e.department?.name || "N/A"
+            name: e.name || "Unknown",
+            department: e.department?.name || "N/A",
+            currentStatus: e.attendanceSummaries[0]?.status || e.availabilityStatus,
+            clockInToday: e.attendanceSummaries[0]?.clockIn?.toLocaleTimeString() || "Not Clocked In",
+            pendingLeaves: e.leaveRequests.length
         }));
     }
 
