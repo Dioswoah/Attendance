@@ -113,6 +113,8 @@ export default function UserPortal() {
     const [calendarFilterDepartment, setCalendarFilterDepartment] = useState("all")
     const [showBreakStartDialog, setShowBreakStartDialog] = useState(false)
     const [breakReturnTime, setBreakReturnTime] = useState("")
+    const [breakInputMode, setBreakInputMode] = useState<"minutes" | "time">("minutes")
+    const [breakMinutes, setBreakMinutes] = useState("15")
     const [selectedLocationMode, setSelectedLocationMode] = useState<string | null>(null)
     const [locationDetails, setLocationDetails] = useState("")
     const [activeTab, setActiveTab] = useState("overview")
@@ -993,16 +995,23 @@ export default function UserPortal() {
             if (action === 'start-break') {
                 updatedRecord.status = 'on-break'
                 // Add a new break
+                let resolvedOptimisticTime = null
+                if (breakInputMode === "minutes" && breakMinutes) {
+                    const d = new Date()
+                    d.setMinutes(d.getMinutes() + parseInt(breakMinutes, 10))
+                    resolvedOptimisticTime = d.toISOString()
+                } else if (breakInputMode === "time" && breakReturnTime) {
+                    const [h, m] = breakReturnTime.split(':').map(Number)
+                    const d = new Date()
+                    d.setHours(h, m, 0, 0)
+                    resolvedOptimisticTime = d.toISOString()
+                }
+
                 const newBreak = {
                     id: `temp-break-${Date.now()}`,
                     startTime: nowISO,
                     endTime: null,
-                    expectedReturnTime: breakReturnTime ? (() => {
-                        const [h, m] = breakReturnTime.split(':').map(Number)
-                        const d = new Date()
-                        d.setHours(h, m, 0, 0)
-                        return d.toISOString()
-                    })() : null
+                    expectedReturnTime: resolvedOptimisticTime
                 }
                 updatedRecord.breaks = updatedRecord.breaks ? [...updatedRecord.breaks, newBreak] : [newBreak]
             } else if (action === 'end-break') {
@@ -1121,11 +1130,21 @@ export default function UserPortal() {
             } else {
                 // Normal API Call
                 const body: any = { userId: session.user.id, action }
-                if (action === 'start-break' && breakReturnTime) {
-                    const [h, m] = breakReturnTime.split(':').map(Number)
-                    const d = new Date()
-                    d.setHours(h, m, 0, 0)
-                    body.expectedReturnTime = d.toISOString()
+                if (action === 'start-break') {
+                    let resolvedTime = null
+                    if (breakInputMode === "minutes" && breakMinutes) {
+                        const d = new Date()
+                        d.setMinutes(d.getMinutes() + parseInt(breakMinutes, 10))
+                        resolvedTime = d.toISOString()
+                    } else if (breakInputMode === "time" && breakReturnTime) {
+                        const [h, m] = breakReturnTime.split(':').map(Number)
+                        const d = new Date()
+                        d.setHours(h, m, 0, 0)
+                        resolvedTime = d.toISOString()
+                    }
+                    if (resolvedTime) {
+                        body.expectedReturnTime = resolvedTime
+                    }
                 }
 
                 const res = await fetch('/api/attendance', {
@@ -3085,16 +3104,50 @@ export default function UserPortal() {
                         </DialogDescription>
                     </div>
                     <div className="p-8 space-y-6 bg-white">
-                        <div className="space-y-2">
-                            <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Expected Return Time (Optional)</Label>
-                            <Input
-                                type="time"
-                                value={breakReturnTime}
-                                onChange={(e) => setBreakReturnTime(e.target.value)}
-                                className="h-12 bg-muted/40 border-border rounded-xl font-bold text-lg text-center"
-                            />
+                        <div className="space-y-4">
+                            <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Expected Return (Mandatory)</Label>
+
+                            <div className="flex bg-slate-50 border border-slate-100 rounded-xl p-1 relative">
+                                <div className={cn("absolute inset-y-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300", breakInputMode === "time" ? "left-1/2" : "left-1")} />
+                                <button
+                                    onClick={() => setBreakInputMode("minutes")}
+                                    className={cn("relative z-10 w-1/2 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors", breakInputMode === "minutes" ? "text-slate-900" : "text-slate-400")}
+                                >
+                                    Duration
+                                </button>
+                                <button
+                                    onClick={() => setBreakInputMode("time")}
+                                    className={cn("relative z-10 w-1/2 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors", breakInputMode === "time" ? "text-slate-900" : "text-slate-400")}
+                                >
+                                    Exact Time
+                                </button>
+                            </div>
+
+                            {breakInputMode === "minutes" ? (
+                                <Select value={breakMinutes} onValueChange={setBreakMinutes}>
+                                    <SelectTrigger className="h-12 bg-muted/40 border-border rounded-xl font-bold justify-between px-4">
+                                        <SelectValue placeholder="Select Duration" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="5">5 minutes</SelectItem>
+                                        <SelectItem value="10">10 minutes</SelectItem>
+                                        <SelectItem value="15">15 minutes</SelectItem>
+                                        <SelectItem value="20">20 minutes</SelectItem>
+                                        <SelectItem value="30">30 minutes</SelectItem>
+                                        <SelectItem value="45">45 minutes</SelectItem>
+                                        <SelectItem value="60">1 hour</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <Input
+                                    type="time"
+                                    value={breakReturnTime}
+                                    onChange={(e) => setBreakReturnTime(e.target.value)}
+                                    className="h-12 bg-muted/40 border-border rounded-xl font-bold text-lg text-center"
+                                />
+                            )}
                             <p className="text-[10px] text-muted-foreground text-center">
-                                Providing this helps your team know when to expect you back.
+                                {breakInputMode === "minutes" ? `You are expected to return in ${breakMinutes} minutes.` : "Providing this helps your team know when to expect you back."}
                             </p>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -3108,6 +3161,10 @@ export default function UserPortal() {
                             </Button>
                             <Button
                                 onClick={async () => {
+                                    if (breakInputMode === "time" && !breakReturnTime) {
+                                        toast.error("Please provide your expected return time.");
+                                        return;
+                                    }
                                     await handleAction('start-break');
                                     setShowBreakStartDialog(false);
                                 }}
