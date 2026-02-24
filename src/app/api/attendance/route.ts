@@ -143,11 +143,11 @@ async function cleanupOldSessions(sessionToken?: string) {
                     reason = "shift ended";
                 } catch (e) {
                     targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
-                    reason = "maximum duration exceeded";
+                    reason = "reached the standard 9-hour limit";
                 }
             } else {
                 targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
-                reason = "maximum duration exceeded";
+                reason = "reached the standard 9-hour limit";
             }
 
             // 3. Apply Cap: No later than 23:59 Local Time NEXT DAY, normally just targetTime.
@@ -157,7 +157,7 @@ async function cleanupOldSessions(sessionToken?: string) {
             const maxAllowedTime = new Date(session.clockIn.getTime() + 14 * 60 * 60 * 1000); // hard cap at 14 hours
             if (finalClockOut > maxAllowedTime) {
                 finalClockOut = maxAllowedTime;
-                reason = "maximum duration exceeded";
+                reason = "reached the maximum 14-hour system limit";
             }
 
             // Fallback if targetTime is somehow earlier than clockIn (shouldn't happen with the fix above)
@@ -202,12 +202,21 @@ async function cleanupOldSessions(sessionToken?: string) {
             })
 
             // 1. In-App Notification
+            const formattedClockOutTime = finalClockOut.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: timeZone });
+
+            let humanReason = "";
+            if (reason === "shift ended") {
+                humanReason = `it reached your scheduled shift end time of ${session.user.shiftEndTime || 'unknown'}`;
+            } else {
+                humanReason = reason; // "reached the maximum 14-hour system limit" or "reached the standard 9-hour limit"
+            }
+
             await prisma.notification.create({
                 data: {
                     userId,
-                    title: "Attendance Record Finalized",
-                    message: `Your session for ${dateStr} was automatically closed (${reason}).`,
-                    type: "ADMIN_ACTION",
+                    title: "Attendance Auto-Closed",
+                    message: `Your session for ${dateStr} was automatically closed at ${formattedClockOutTime} because ${humanReason}.`,
+                    type: "SYSTEM",
                     link: "/user"
                 }
             })
