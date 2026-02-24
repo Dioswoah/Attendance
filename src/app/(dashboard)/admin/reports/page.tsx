@@ -226,12 +226,14 @@ export default function ExportPage() {
                         'Date': record.date,
                         'Clock In (UTC)': clockInData?.utcTime || '-',
                         'Clock In (TZ Offset)': clockInData?.timezoneOffset || '-',
-                        'Clock In (Adjusted)': clockInData ? formatWithTimezone(record.clockIn, reportTimezone, 'time') : '-',
+                        'Clock In (Adjusted)': record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { timeZone: reportTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-',
                         'Clock Out (UTC)': clockOutData?.utcTime || '-',
                         'Clock Out (TZ Offset)': clockOutData?.timezoneOffset || '-',
-                        'Clock Out (Adjusted)': clockOutData ? formatWithTimezone(record.clockOut, reportTimezone, 'time') : '-',
+                        'Clock Out (Adjusted)': record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { timeZone: reportTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-',
                         'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
-                        'Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2)),
+                        'Actual Hours': Math.floor(stats.workMs / (1000 * 60 * 60)),
+                        'Actual Minutes': Math.floor((stats.workMs % (1000 * 60 * 60)) / (1000 * 60)),
+                        'Leave Hours': Math.floor(stats.leaveMs / (1000 * 60 * 60)),
                         'Work Location': record.mode,
                         'Comments': comments.join('; '),
                         'Report Timezone': reportTimezone
@@ -249,8 +251,10 @@ export default function ExportPage() {
                         'Department': firstRec.department,
                         'Days Worked': empRecs.filter((r: any) => r.clockIn).length,
                         'Total Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
+                        'Actual Hours': Math.floor(stats.workMs / (1000 * 60 * 60)),
+                        'Actual Minutes': Math.floor((stats.workMs % (1000 * 60 * 60)) / (1000 * 60)),
                         'Days Leave': empRecs.filter((r: any) => r.status === 'on-leave' || r.mode === 'LEAVE' || r.status === 'LEAVE').length,
-                        'Total Leave Hours': Number((stats.leaveMs / (1000 * 60 * 60)).toFixed(2))
+                        'Total Leave Hours': Math.floor(stats.leaveMs / (1000 * 60 * 60))
                     }
                 }).sort((a, b) => a.Employee.localeCompare(b.Employee))
 
