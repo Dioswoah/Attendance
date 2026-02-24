@@ -9,7 +9,8 @@ export function generateMagicLink(userId: string, action: MagicAction): string {
     const data = `${userId}:${action}:${timestamp}`;
     const signature = crypto.createHmac('sha256', SECRET).update(data).digest('hex');
 
-    return `https://attendance-app-712513641417.us-central1.run.app/api/magic/action?userId=${userId}&action=${action}&ts=${timestamp}&sig=${signature}`;
+    const baseUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
+    return `${baseUrl}/api/magic/action?userId=${userId}&action=${action}&ts=${timestamp}&sig=${signature}`;
 }
 
 export function verifyMagicLink(userId: string, action: string, timestamp: string, signature: string): boolean {

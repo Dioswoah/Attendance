@@ -42,20 +42,31 @@ export async function GET() {
                 }
             }),
             // 2. My Recent Attendance (limit to 20 for history)
-            prisma.attendance.findMany({
-                where: { userId, deletedAt: null },
-                include: { breaks: true },
-                orderBy: { clockIn: 'desc' },
+            prisma.attendanceSummary.findMany({
+                where: { userId },
+                include: {
+                    rawRecords: {
+                        where: { deletedAt: null },
+                        include: { breaks: true },
+                        orderBy: { clockIn: 'asc' }
+                    }
+                },
+                orderBy: { date: 'desc' },
                 take: 20
             }),
             // 3. All Attendance for today (Staff Table)
-            prisma.attendance.findMany({
+            prisma.attendanceSummary.findMany({
                 where: {
-                    date: { gte: safetyStart },
-                    deletedAt: null
+                    date: { gte: safetyStart }
                 },
-                include: { breaks: true },
-                orderBy: { clockIn: 'desc' }
+                include: {
+                    rawRecords: {
+                        where: { deletedAt: null },
+                        include: { breaks: true },
+                        orderBy: { clockIn: 'asc' }
+                    }
+                },
+                orderBy: { date: 'desc' }
             }),
             // 4. My Leave Requests 
             prisma.leave.findMany({
@@ -82,11 +93,16 @@ export async function GET() {
                     customStatusMessage: true,
                     employmentLocation: true,
                     selectedTimezone: true,
-                    attendance: {
+                    attendanceSummaries: {
                         take: 1,
-                        orderBy: { clockIn: 'desc' },
-                        where: { deletedAt: null },
-                        include: { breaks: true }
+                        orderBy: { date: 'desc' },
+                        include: {
+                            rawRecords: {
+                                where: { deletedAt: null },
+                                include: { breaks: true },
+                                orderBy: { clockIn: 'asc' }
+                            }
+                        }
                     }
                 },
                 orderBy: { name: 'asc' }
@@ -101,39 +117,56 @@ export async function GET() {
             })
         ])
 
-        // Transform records to include UI-friendly status strings (matching /api/attendance)
-        const transformRecord = (a: any) => ({
-            ...a,
-            status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
-            // Ensure dates are stringified if they are Date objects (Prisma returns Dates)
-            clockIn: a.clockIn?.toISOString(),
-            clockOut: a.clockOut?.toISOString(),
-            breakStart: a.breakStart?.toISOString(),
-            breakEnd: a.breakEnd?.toISOString(),
-            date: a.date instanceof Date ? a.date.toISOString().split('T')[0] : a.date,
-            breaks: a.breaks?.map((b: any) => ({
-                id: b.id,
-                startTime: b.startTime.toISOString(),
-                endTime: b.endTime?.toISOString(),
-                expectedReturnTime: b.expectedReturnTime?.toISOString()
-            }))
-        })
+        // Transform summary records to include UI-friendly status strings 
+        // Safely transform from Summary back to granular records so frontend feeds/timers don't break
+        const transformMine = (summaryList: any[]) => {
+            return summaryList.flatMap((s: any) => {
+                if (!s.rawRecords || s.rawRecords.length === 0) return []
+
+                return s.rawRecords.map((raw: any) => {
+                    const activeBreak = raw.breaks?.find((b: any) => !b.endTime)
+                    return {
+                        ...raw,
+                        status: raw.clockOut ? 'clocked-out' : (activeBreak ? 'on-break' : 'clocked-in'),
+                        clockIn: raw.clockIn?.toISOString(),
+                        clockOut: raw.clockOut?.toISOString(),
+                        breakStart: activeBreak ? activeBreak.startTime.toISOString() : null,
+                        date: raw.date instanceof Date ? raw.date.toISOString().split('T')[0] : raw.date,
+                        breaks: raw.breaks?.map((b: any) => ({
+                            id: b.id,
+                            startTime: b.startTime.toISOString(),
+                            endTime: b.endTime?.toISOString(),
+                            expectedReturnTime: b.expectedReturnTime?.toISOString(),
+                        })) || [],
+                        // Inject Summary bounds & overrides so the UI can use them if needed
+                        summaryWorkMs: s.totalWorkDuration * 1000,
+                        summaryBreakMs: s.totalBreakDuration * 1000,
+                        isManualOverride: s.isManualOverride,
+                        summaryStatus: s.status
+                    }
+                })
+            }).sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime())
+        }
+
+        // For the Staff List and All Today, we also ensure we flatten it to maintain UI logic
+        const transformStaff = (summaryList: any[]) => {
+            return transformMine(summaryList)
+        }
 
         const detailedEmployees = employees.map((emp: any) => {
-            const lastRecord = emp.attendance && emp.attendance[0] ? transformRecord(emp.attendance[0]) : null
-            // Remove the raw attendance array from the output to keep it clean
-            const { attendance, ...rest } = emp
+            const lastRecords = emp.attendanceSummaries && emp.attendanceSummaries.length > 0 ? transformStaff(emp.attendanceSummaries) : []
+            const { attendanceSummaries, ...rest } = emp
             return {
                 ...rest,
-                lastAttendance: lastRecord
+                lastAttendance: lastRecords.length > 0 ? lastRecords[0] : null
             }
         })
 
         return NextResponse.json({
             user,
             attendance: {
-                mine: myAttendance.map(transformRecord),
-                allToday: allAttendanceToday.map(transformRecord)
+                mine: transformMine(myAttendance),
+                allToday: transformStaff(allAttendanceToday)
             },
             leaves: myLeaves,
             attendanceRequests: myAttendanceRequests,

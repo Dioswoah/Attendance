@@ -97,7 +97,7 @@ app.prepare().then(() => {
                 const googleAccount = att.user.accounts.find(a => a.provider === 'google');
                 const accessToken = googleAccount?.access_token;
                 const refreshToken = googleAccount?.refresh_token || undefined;
-                const nextAuthUrl = 'https://attendance-app-712513641417.us-central1.run.app';
+                const nextAuthUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
                 if (accessToken) {
                     // Check Limit (60m)

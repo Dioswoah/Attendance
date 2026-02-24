@@ -613,49 +613,58 @@ export default function UserPortal() {
             let totalWorkedMs = 0
             let totalBreakMs = 0
 
-            modifiedTodayRecords.forEach((record: any, index: number) => {
-                const start = new Date(record.clockIn)
-                // Only the LATEST session should be "Active" optimistically
-                const isSessionActive = index === 0 && ['clocked-in', 'on-break'].includes(optimisticStatus)
-                    ? true
-                    : !record.clockOut;
-                const end = isSessionActive ? now : new Date(record.clockOut)
+            // Check if today's summary was explicitly locked/overridden by an Admin
+            const summaryOverride = modifiedTodayRecords.find((r: any) => r.isManualOverride)
 
-                // Calculate total breaks for this record
-                let sessionBreakMs = 0
-                if (record.breaks && record.breaks.length > 0) {
-                    // Sort breaks by startTime ASC to identify the latest
-                    const sortedBreaks = [...record.breaks].sort((a, b) =>
-                        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-                    )
+            if (summaryOverride) {
+                totalWorkedMs = summaryOverride.summaryWorkMs || 0
+                totalBreakMs = summaryOverride.summaryBreakMs || 0
+            } else {
+                // Perform live ticking for active regular sessions
+                modifiedTodayRecords.forEach((record: any, index: number) => {
+                    const start = new Date(record.clockIn)
+                    // Only the LATEST session should be "Active" optimistically
+                    const isSessionActive = index === 0 && ['clocked-in', 'on-break'].includes(optimisticStatus)
+                        ? true
+                        : !record.clockOut;
+                    const end = isSessionActive ? now : new Date(record.clockOut)
 
-                    sortedBreaks.forEach((b: any, bIndex: number) => {
-                        const bStart = new Date(b.startTime)
-                        let bEnd: Date
-                        const isLatestBreak = bIndex === sortedBreaks.length - 1
+                    // Calculate total breaks for this record
+                    let sessionBreakMs = 0
+                    if (record.breaks && record.breaks.length > 0) {
+                        // Sort breaks by startTime ASC to identify the latest
+                        const sortedBreaks = [...record.breaks].sort((a, b) =>
+                            new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+                        )
 
-                        if (b.endTime) {
-                            bEnd = new Date(b.endTime)
-                        } else if (!isSessionActive) {
-                            // If session ended, break must have ended too (safety fallback)
-                            bEnd = end
-                        } else if (optimisticStatus === 'on-break' && index === 0 && isLatestBreak) {
-                            // Only tick if we are CURRENTLY supposed to be on break AND this is the latest session AND the latest break
-                            bEnd = now
-                        } else {
-                            // If we are "Working", or this is an old session, or its a ghost open break (not latest)
-                            bEnd = bStart
-                        }
-                        sessionBreakMs += Math.max(0, bEnd.getTime() - bStart.getTime())
-                    })
-                }
+                        sortedBreaks.forEach((b: any, bIndex: number) => {
+                            const bStart = new Date(b.startTime)
+                            let bEnd: Date
+                            const isLatestBreak = bIndex === sortedBreaks.length - 1
 
-                const sessionDuration = end.getTime() - start.getTime()
-                const workedDuration = Math.max(0, sessionDuration - sessionBreakMs)
+                            if (b.endTime) {
+                                bEnd = new Date(b.endTime)
+                            } else if (!isSessionActive) {
+                                // If session ended, break must have ended too (safety fallback)
+                                bEnd = end
+                            } else if (optimisticStatus === 'on-break' && index === 0 && isLatestBreak) {
+                                // Only tick if we are CURRENTLY supposed to be on break AND this is the latest session AND the latest break
+                                bEnd = now
+                            } else {
+                                // If we are "Working", or this is an old session, or its a ghost open break (not latest)
+                                bEnd = bStart
+                            }
+                            sessionBreakMs += Math.max(0, bEnd.getTime() - bStart.getTime())
+                        })
+                    }
 
-                totalWorkedMs += workedDuration
-                totalBreakMs += sessionBreakMs
-            })
+                    const sessionDuration = end.getTime() - start.getTime()
+                    const workedDuration = Math.max(0, sessionDuration - sessionBreakMs)
+
+                    totalWorkedMs += workedDuration
+                    totalBreakMs += sessionBreakMs
+                })
+            }
 
             setWorkedTime(formatDuration(totalWorkedMs))
             setBreakTime(formatDuration(totalBreakMs))

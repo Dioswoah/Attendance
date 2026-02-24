@@ -74,7 +74,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request Notification</h2>
   </div>
@@ -91,7 +91,7 @@ Content-Type: text/html; charset=utf-8
 
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">Whenever you have a moment, please log in to the User Portal to review and take action.</p>
     <div style="text-align: center;">
-      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Request</a>
+      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Request</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -179,7 +179,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request Update</h2>
   </div>
@@ -196,7 +196,7 @@ Content-Type: text/html; charset=utf-8
 
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">You can view the full details and history of your requests on the portal.</p>
     <div style="text-align: center;">
-      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Dashboard</a>
+      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Dashboard</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -276,7 +276,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request ${actionText === 'updated' ? 'Updated' : 'Cancelled'}</h2>
   </div>
@@ -292,7 +292,7 @@ Content-Type: text/html; charset=utf-8
 
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">For full details and to keep our records aligned, please log in to the portal.</p>
     <div style="text-align: center;">
-      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Go to Portal</a>
+      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Go to Portal</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -368,7 +368,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Record Update</h2>
   </div>
@@ -389,7 +389,7 @@ Content-Type: text/html; charset=utf-8
 
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">You can review this new entry and all your other records anytime on your dashboard.</p>
     <div style="text-align: center;">
-      <a href="\${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
+      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -472,7 +472,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Time Check-in</h2>
   </div>
@@ -483,7 +483,7 @@ Content-Type: text/html; charset=utf-8
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">If you're refreshed and ready to jump back in, you can easily end your break and get back to work by clicking below.</p>
 
     <div style="text-align: center; margin-bottom: 16px;">
-      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break & Clock In</a>
+      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break & Clock In</a>
     </div>
 
     <p style="font-size: 14px; color: #6b7280; text-align: center; margin-top: 16px;">(No worries if you still need a bit more time! This is just to help you keep track.)</p>
@@ -565,7 +565,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Status Check</h2>
   </div>
@@ -575,7 +575,7 @@ Content-Type: text/html; charset=utf-8
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">If you're already back at your desk and working hard, you can easily end your break using the button below to update your status.</p>
 
     <div style="text-align: center; margin-bottom: 16px;">
-      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break Now</a>
+      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break Now</a>
     </div>
 
     <p style="font-size: 14px; color: #6b7280; text-align: center; margin-top: 16px;">If you need a little more time, zero problems! We just want to help you stay on track.</p>
@@ -765,7 +765,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Time to Clock In?</h2>
   </div>
@@ -775,7 +775,7 @@ Content-Type: text/html; charset=utf-8
     <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">If you're already online and simply forgot, you can clock in immediately using the button below. If you're running late or on leave, feel free to ignore this safely!</p>
 
     <div style="text-align: center; margin-bottom: 16px;">
-      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock In Now</a>
+      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock In Now</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -857,7 +857,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Shift Wrap-Up</h2>
   </div>
@@ -867,7 +867,7 @@ Content-Type: text/html; charset=utf-8
     <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">If you're all done for the day, please click below to clock out. If you're working a little late, no problem at all — feel free to ignore this message!</p>
 
     <div style="text-align: center; margin-bottom: 16px;">
-      <a href="\${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock Out Now</a>
+      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock Out Now</a>
     </div>
   </div>
   <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -920,7 +920,7 @@ Content-Type: text/html; charset=utf-8
 <div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
   <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
     <div style="margin-bottom: 16px;">
-       <img src="\${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
+       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
     </div>
     <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">${title}</h2>
   </div>
@@ -929,7 +929,7 @@ Content-Type: text/html; charset=utf-8
     
     ${link ? `
     <div style="text-align: center; margin-top: 32px; margin-bottom: 16px;">
-      <a href="\${link}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">${linkText}</a>
+      <a href="${link}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">${linkText}</a>
     </div>
     ` : ''}
   </div>
