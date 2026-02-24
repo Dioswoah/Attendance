@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { RisaChatbot } from "@/components/RisaChatbot"
 import { UserOnboardingTour } from "@/components/UserOnboardingTour"
@@ -29,14 +29,28 @@ export default function UserLayout({
 }: {
     children: React.ReactNode
 }) {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-background flex flex-col items-center justify-center space-y-4"><div className="h-20 w-20 bg-white rounded-3xl flex items-center justify-center shadow-xl mx-auto overflow-hidden"><img src="/logo.png" alt="Logo" className="w-full h-full object-contain" /></div><p className="text-xs font-black uppercase text-sidebar-foreground/50">Loading...</p></div>}>
+            <UserLayoutInner>{children}</UserLayoutInner>
+        </Suspense>
+    )
+}
+
+function UserLayoutInner({
+    children,
+}: {
+    children: React.ReactNode
+}) {
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({})
     const [pendingLeaveCount, setPendingLeaveCount] = useState(0)
     const [pendingAmendCount, setPendingAmendCount] = useState(0)
     const [managerPendingCount, setManagerPendingCount] = useState(0)
     const [managerPendingLeaves, setManagerPendingLeaves] = useState(0)
     const [managerPendingAttn, setManagerPendingAttn] = useState(0)
     const pathname = usePathname()
+    const searchParams = useSearchParams()
     const { data: session, status } = useSession()
 
     // Determine user roles
@@ -185,6 +199,11 @@ export default function UserLayout({
                 { name: "Reports", href: "/user/manager?tab=reports", icon: Download }
             ]
         }] : []),
+        ...(userRoles.includes('ADMIN') ? [{
+            name: "Admin Portal",
+            href: "/admin",
+            icon: Shield
+        }] : [])
     ]
 
     // Wait for session to load to prevent hydration errors
@@ -262,12 +281,22 @@ export default function UserLayout({
                         const Icon = item.icon
                         const isActive = pathname === item.href || (item.subItems?.some(sub => pathname + (window?.location?.search || '') === sub.href))
                         const hasSubItems = item.subItems && item.subItems.length > 0
-                        const isExpanded = !sidebarCollapsed && (isActive || hasSubItems) // Always expand if active or has subitems for now, or we can add state
+                        const isCurrentlyExpanded = expandedMenus[item.name] !== undefined ? expandedMenus[item.name] : (isActive && hasSubItems)
+                        const isExpanded = !sidebarCollapsed && isCurrentlyExpanded
 
                         return (
                             <div key={item.href} className="space-y-1">
                                 <Link
                                     href={item.href}
+                                    onClick={(e) => {
+                                        if (hasSubItems) {
+                                            e.preventDefault();
+                                            setExpandedMenus(prev => ({
+                                                ...prev,
+                                                [item.name]: !isCurrentlyExpanded
+                                            }));
+                                        }
+                                    }}
                                     className={cn(
                                         "flex items-center gap-3 px-3 h-10 rounded-lg font-medium text-sm transition-all duration-200 relative",
                                         isActive && !hasSubItems
@@ -285,14 +314,20 @@ export default function UserLayout({
                                         sidebarCollapsed ? (
                                             <div className="absolute top-0 right-0 h-3 w-3 rounded-full bg-white border-2 border-transparent" />
                                         ) : (
-                                            <span className="bg-white text-red-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                            <span className="bg-white text-red-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm mr-1">
                                                 {item.badge}
                                             </span>
                                         )
                                     ) : null}
+                                    {hasSubItems && !sidebarCollapsed && (
+                                        <ChevronRight className={cn(
+                                            "h-4 w-4 shrink-0 transition-transform duration-200 text-sidebar-foreground/50",
+                                            isExpanded ? "rotate-90" : ""
+                                        )} />
+                                    )}
                                 </Link>
 
-                                {hasSubItems && !sidebarCollapsed && (
+                                {isExpanded && !sidebarCollapsed && (
                                     <div className="ml-4 pl-4 border-l border-white/10 space-y-1 mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
                                         {item.subItems?.map((sub) => {
                                             const SubIcon = sub.icon
@@ -300,10 +335,10 @@ export default function UserLayout({
                                             // Extract tab from subHref if it exists
                                             const subTab = subHref.split('tab=')[1]
 
-                                            // Handle active state accurately via pathname + search
-                                            const currentSearch = typeof window !== 'undefined' ? window.location.search : ''
+                                            // Handle active state accurately via searchParams
+                                            const currentTab = searchParams ? searchParams.get('tab') : null;
                                             const isSubActive = (pathname === subHref.split('?')[0]) &&
-                                                (currentSearch.includes(`tab=${subTab}`) || (!currentSearch && subTab === 'requests'))
+                                                (currentTab === subTab || (!currentTab && subTab === 'requests'))
 
                                             return (
                                                 <Link
@@ -401,20 +436,6 @@ export default function UserLayout({
                                     />
                                 </DropdownMenuItem>
 
-                                {userRoles.includes('ADMIN') && (
-                                    <DropdownMenuItem asChild>
-                                        <Link href="/admin" className="flex items-center gap-3 px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer group">
-                                            <div className="h-8 w-8 rounded-lg bg-red-50 flex items-center justify-center text-red-600 shrink-0 group-hover:bg-red-100 transition-colors">
-                                                <Shield className="w-4 h-4" />
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-bold uppercase tracking-widest">Admin Portal</span>
-                                                <p className="text-[10px] text-red-400 font-medium">System Management</p>
-                                            </div>
-                                        </Link>
-                                    </DropdownMenuItem>
-                                )}
-
                                 <DropdownMenuSeparator className="bg-slate-50 my-1" />
 
                                 <DropdownMenuItem
@@ -483,12 +504,23 @@ export default function UserLayout({
                                     const Icon = item.icon
                                     const isActive = pathname === item.href
                                     const hasSubItems = item.subItems && item.subItems.length > 0
+                                    const isCurrentlyExpandedMobile = expandedMenus[item.name] !== undefined ? expandedMenus[item.name] : (isActive && hasSubItems);
 
                                     return (
                                         <div key={item.href} className="space-y-1">
                                             <Link
                                                 href={item.href}
-                                                onClick={() => !hasSubItems && setSidebarOpen(false)}
+                                                onClick={(e) => {
+                                                    if (hasSubItems) {
+                                                        e.preventDefault();
+                                                        setExpandedMenus(prev => ({
+                                                            ...prev,
+                                                            [item.name]: !isCurrentlyExpandedMobile
+                                                        }));
+                                                    } else {
+                                                        setSidebarOpen(false);
+                                                    }
+                                                }}
                                                 className={cn(
                                                     "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
                                                     isActive && !hasSubItems
@@ -499,22 +531,38 @@ export default function UserLayout({
                                                 <Icon className="h-6 w-6" />
                                                 <span className="text-xs font-black tracking-widest flex-1">{item.name}</span>
                                                 {item.badge ? (
-                                                    <span className="bg-red-100/80 text-red-900 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                                    <span className="bg-red-100/80 text-red-900 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm mr-1">
                                                         {item.badge}
                                                     </span>
                                                 ) : null}
+                                                {hasSubItems && (
+                                                    <ChevronRight className={cn(
+                                                        "h-4 w-4 shrink-0 transition-transform duration-200 text-sidebar-foreground/50",
+                                                        isCurrentlyExpandedMobile ? "rotate-90" : ""
+                                                    )} />
+                                                )}
                                             </Link>
 
-                                            {hasSubItems && (
+                                            {isCurrentlyExpandedMobile && (
                                                 <div className="ml-6 pl-4 border-l-2 border-slate-100 space-y-2 py-2 animate-in fade-in slide-in-from-top-1">
                                                     {item.subItems?.map((sub) => {
                                                         const SubIcon = sub.icon
+                                                        const subTab = sub.href.split('tab=')[1]
+                                                        const currentTab = searchParams ? searchParams.get('tab') : null;
+                                                        const isSubActive = (pathname === sub.href.split('?')[0]) &&
+                                                            (currentTab === subTab || (!currentTab && subTab === 'requests'));
+
                                                         return (
                                                             <Link
                                                                 key={sub.href}
                                                                 href={sub.href}
                                                                 onClick={() => setSidebarOpen(false)}
-                                                                className="flex items-center gap-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 transition-colors w-full"
+                                                                className={cn(
+                                                                    "flex items-center gap-3 py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-[0.2em] transition-all w-full",
+                                                                    isSubActive
+                                                                        ? "bg-red-50 text-red-700"
+                                                                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                                                                )}
                                                             >
                                                                 <SubIcon className="h-4 w-4" />
                                                                 <span className="flex-1">{sub.name}</span>
