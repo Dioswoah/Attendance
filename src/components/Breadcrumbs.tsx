@@ -1,13 +1,22 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { ChevronRight, Home } from "lucide-react"
-import { Fragment } from "react"
+import { Fragment, Suspense } from "react"
 import { cn } from "@/lib/utils"
 
 export function Breadcrumbs({ className }: { className?: string }) {
+    return (
+        <Suspense fallback={<nav aria-label="Breadcrumb" className={cn("flex items-center", className)} />}>
+            <BreadcrumbsInner className={className} />
+        </Suspense>
+    )
+}
+
+function BreadcrumbsInner({ className }: { className?: string }) {
     const pathname = usePathname()
+    const searchParams = useSearchParams()
 
     // Split pathname into segments and remove empty strings
     const segments = pathname.split('/').filter(Boolean)
@@ -45,6 +54,27 @@ export function Breadcrumbs({ className }: { className?: string }) {
 
         return { href, label, isLast }
     })
+
+    const tab = searchParams ? searchParams.get('tab') : null;
+    if (tab && crumbs.length > 0 && (crumbs[crumbs.length - 1]?.href?.includes('/manager') || crumbs[crumbs.length - 1]?.href?.includes('/admin/'))) {
+        crumbs[crumbs.length - 1].isLast = false;
+
+        // Define special labels for tabs if needed
+        const tabLabels: Record<string, string> = {
+            "requests": "Pending Requests",
+            "history": "History",
+            "calendar": "Calendar",
+            "performance": "Performance",
+            "reports": "Reports",
+        };
+        const tabLabel = tabLabels[tab] || tab.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+        crumbs.push({
+            href: `${crumbs[crumbs.length - 1].href}?tab=${tab}`,
+            label: tabLabel,
+            isLast: true
+        });
+    }
 
     // Don't show breadcrumbs on root path (though typically we are in /admin or /user)
     if (crumbs.length === 0) return null
