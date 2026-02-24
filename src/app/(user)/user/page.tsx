@@ -251,17 +251,15 @@ export default function UserPortal() {
         // We consider the sync "done" once we have a userProfile and a userTimeZone.
         if (isFirstTimezoneSync.current) {
             if (userProfile && userTimeZone) {
+                // Only consider sync complete when we have both the profile and the final resolved timezone from the database.
                 isFirstTimezoneSync.current = false
-                setPreviousTimezone(userTimeZone)
-            } else if (userTimeZone) {
-                // If we have a timezone but no profile yet, track it but stay in first sync
                 setPreviousTimezone(userTimeZone)
             }
             return
         }
 
         if (userTimeZone && previousTimezone && userTimeZone !== previousTimezone) {
-            // Timezone has changed - prompt user to confirm work hours
+            // Timezone has changed AFTER the initial load - prompt user to confirm work hours
             // ONLY if the user is based in the Philippines (as per request)
             if (userProfile?.employmentLocation === 'Philippines') {
                 setTempWorkHoursStart(userProfile?.shiftStartTime || "09:00")

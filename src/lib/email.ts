@@ -608,13 +608,17 @@ interface ForgottenClockOutEmailProps {
   userEmail: string;
   userAccessToken: string;
   date: string;
+  clockOutTime: string;
+  reason: string;
 }
 
 export async function sendForgottenClockOutEmail({
   userName,
   userEmail,
   userAccessToken,
-  date
+  date,
+  clockOutTime,
+  reason
 }: ForgottenClockOutEmailProps) {
   try {
     const enabled = await isEmailEnabled();
@@ -648,17 +652,17 @@ Content-Type: text/html; charset=utf-8
     <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
     
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      Hope you're having a good rest! We noticed that your session for <strong>${date}</strong> remained active after your scheduled shift ended. No worries — to save you the hassle and keep your records accurate, we've automatically closed it out for you.
+      Hello! The system noticed that you did not clock out yesterday. We have automatically clocked you out <strong>${reason === 'shift ended' ? 'using the end time of your nominal hours' : 'at'} (${clockOutTime})</strong>.
     </p>
 
     <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca; text-align: center;">
       <p style="margin: 0; color: #991b1b; font-size: 14px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em;">Updated Record</p>
       <p style="margin: 8px 0; color: #7f1d1d; font-weight: 700; font-size: 18px;">${date}</p>
-      <p style="margin: 0; color: #b91c1c; font-size: 13px; font-weight: 600;">Status: Auto-Clocked Out (Shift Ended)</p>
+      <p style="margin: 0; color: #b91c1c; font-size: 13px; font-weight: 600;">Clock Out: ${clockOutTime} (${reason})</p>
     </div>
     
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      If you actually worked past your shift or if any adjustments are needed, please don't hesitate to reach out to your administrator to update the record manually.
+      If you forgot to clock out earlier or worked overtime, please request an amended record from your manager.
     </p>
 
     <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">

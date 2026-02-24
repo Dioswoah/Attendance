@@ -228,7 +228,9 @@ async function cleanupOldSessions(sessionToken?: string) {
                     userName: session.user.name || "Employee",
                     userEmail: session.user.email,
                     userAccessToken: sessionToken,
-                    date: dateStr
+                    date: dateStr,
+                    clockOutTime: formattedClockOutTime,
+                    reason: reason
                 })
             }
         }
