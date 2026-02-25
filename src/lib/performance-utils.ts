@@ -64,14 +64,19 @@ export function calculateTardiness(
     const expectedMinutes = timeToMinutes(expectedStart)
     const actualMinutes = timeToMinutes(new Date(attendance.clockIn))
 
-    let difference = actualMinutes - expectedMinutes
+    const difference = actualMinutes - expectedMinutes
 
-    // Apply 5-minute grace period for Philippine employment location
-    if (user?.employmentLocation === 'Philippines' && difference > 0 && difference <= 5) {
+    // Apply 5-minute grace period globally (return 0 if within 5 mins)
+    if (difference <= 5) {
         return 0
     }
 
-    // Only count as tardiness if positive (late)
+    // For Philippine employment location, treat the 5-min grace period as a deductible
+    if (user?.employmentLocation === 'Philippines') {
+        return Math.max(0, difference - 5)
+    }
+
+    // For other locations, return the full difference if it exceeds the grace period
     return Math.max(0, difference)
 }
 
@@ -115,7 +120,7 @@ export function calculatePunctualityRate(
 
     const onTimeDays = attendanceRecords.filter(record => {
         const tardiness = calculateTardiness(record, user)
-        return tardiness <= gracePeriodMinutes
+        return tardiness <= 0
     }).length
 
     return Math.round((onTimeDays / attendanceRecords.length) * 100)
@@ -258,7 +263,7 @@ export function calculateUserPerformanceMetrics(
     const totalHours = calculateTotalHours(attendanceRecords, user)
 
     const lateDays = attendanceRecords.filter(record =>
-        calculateTardiness(record, user) > gracePeriodMinutes
+        calculateTardiness(record, user) > 0
     ).length
 
     const totalLateMinutes = attendanceRecords.reduce((sum, record) => {
