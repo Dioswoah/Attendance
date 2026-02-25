@@ -50,8 +50,10 @@ app.prepare().then(() => {
             const { sendBreakLimitEmail, sendLateArrivalEmail, sendOverdueDepartureEmail, sendBreakExpectedReturnEmail } = await import("./src/lib/email");
             const { generateMagicLink } = await import("./src/lib/magic-link");
 
-            const startOfDay = new Date();
-            startOfDay.setHours(0, 0, 0, 0);
+            // Server-side UTC midnight (used for break checks which don't need timezone awareness)
+            const startOfDayUTC = new Date();
+            startOfDayUTC.setUTCHours(0, 0, 0, 0);
+            const startOfDay = startOfDayUTC;
 
             // ============================================================
             // 1. Break Limits Check
@@ -188,26 +190,50 @@ app.prepare().then(() => {
             // ============================================================
             // 2. Late Arrival Check
             // ============================================================
-            const potentialLateUsers = await prisma.user.findMany({
+            // Fetch ALL active users (not archived) - we will filter per user timezone below
+            const allActiveUsers = await prisma.user.findMany({
                 where: {
                     isArchived: false,
                     deletedAt: null,
-                    // No attendance record for Today
-                    attendance: { none: { date: { gte: startOfDay }, deletedAt: null } },
-                    // No Late Reminder sent Today
-                    notifications: { none: { type: 'LATE_REMINDER', createdAt: { gte: startOfDay } } }
                 },
                 include: { accounts: true, department: true }
             });
 
-            for (const user of potentialLateUsers) {
+            for (const user of allActiveUsers) {
                 const tz = user.selectedTimezone || 'Asia/Manila';
 
-                // Exclude Weekends
+                // Calculate the START OF TODAY in the user's own local timezone.
+                // e.g. for Australia/Sydney (AEDT = UTC+11), midnight local = 1:00 PM UTC previous day.
+                // This is critical: users in non-UTC timezones were being skipped because
+                // the previous server-wide startOfDay (UTC midnight) did not match their local day.
+                const userLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
+                const userStartOfDay = new Date(`${userLocalDateStr}T00:00:00Z`);
+
+                // Exclude Weekends (in user's timezone)
                 const todayInUserTz = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday: 'short' });
                 if (todayInUserTz === 'Sat' || todayInUserTz === 'Sun') continue;
 
-                // Parse Time
+                // Check: does the user already have an attendance record for their local today?
+                const todayAttendance = await prisma.attendance.findFirst({
+                    where: {
+                        userId: user.id,
+                        date: { gte: userStartOfDay },
+                        deletedAt: null
+                    }
+                });
+                if (todayAttendance) continue; // Already clocked in today
+
+                // Check: was a late reminder already sent today (in user's local time)?
+                const alreadyNotified = await prisma.notification.findFirst({
+                    where: {
+                        userId: user.id,
+                        type: 'LATE_REMINDER',
+                        createdAt: { gte: userStartOfDay }
+                    }
+                });
+                if (alreadyNotified) continue; // Already sent
+
+                // Parse current time in user's timezone
                 const nowTimeStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour12: false }); // "HH:MM:SS"
                 const [nowH, nowM] = nowTimeStr.split(':').map(Number);
                 const nowTotalMins = nowH * 60 + nowM;
@@ -251,25 +277,31 @@ app.prepare().then(() => {
             // ============================================================
             // 3. Overdue Departure Check
             // ============================================================
-            // Get active sessions
+            // Get ALL active sessions (no date filter here - we filter per user timezone below)
             const activeSessions = await prisma.attendance.findMany({
                 where: {
                     clockOut: null,
                     deletedAt: null,
-                    date: { gte: startOfDay } // Only check sessions started today
                 },
                 include: { user: { include: { accounts: true } } }
             });
 
             for (const session of activeSessions) {
-                // Check if already notified
-                const sent = await prisma.notification.findFirst({
-                    where: { userId: session.userId, type: 'OVERDUE_REMINDER', createdAt: { gte: startOfDay } }
-                });
-                if (sent) continue;
-
                 const user = session.user;
                 const tz = user.selectedTimezone || 'Asia/Manila';
+
+                // Calculate start of today in this user's own timezone
+                const userLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+                const userStartOfDay = new Date(`${userLocalDateStr}T00:00:00Z`);
+
+                // Only consider sessions that started on the user's local today
+                if (session.date < userStartOfDay) continue;
+
+                // Check if already notified (using user's local today start)
+                const alreadyNotified = await prisma.notification.findFirst({
+                    where: { userId: session.userId, type: 'OVERDUE_REMINDER', createdAt: { gte: userStartOfDay } }
+                });
+                if (alreadyNotified) continue;
 
                 const nowTimeStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour12: false });
                 const [nowH, nowM] = nowTimeStr.split(':').map(Number);
