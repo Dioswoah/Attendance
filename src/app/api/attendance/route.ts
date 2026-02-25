@@ -65,7 +65,7 @@ function getPHTToday() {
  * Helper to automatically "seal" open sessions from previous days.
  * If someone forgot to clock out or end a break, we close them at 11:59:59 PM of that day.
  */
-async function cleanupOldSessions(sessionToken?: string, sessionRefreshToken?: string) {
+async function cleanupOldSessions() {
     const unclosed = await prisma.attendance.findMany({
         where: {
             clockOut: null,
@@ -79,7 +79,14 @@ async function cleanupOldSessions(sessionToken?: string, sessionRefreshToken?: s
                     email: true,
                     selectedTimezone: true,
                     shiftStartTime: true,
-                    shiftEndTime: true
+                    shiftEndTime: true,
+                    accounts: {
+                        select: {
+                            access_token: true,
+                            refresh_token: true,
+                            provider: true
+                        }
+                    }
                 }
             }
         }
@@ -222,17 +229,29 @@ async function cleanupOldSessions(sessionToken?: string, sessionRefreshToken?: s
             })
             broadcastUpdate('notification', { userId })
 
-            // 2. Email Notification (if access token available)
-            if (sessionToken && session.user.email) {
-                await sendForgottenClockOutEmail({
-                    userName: session.user.name || "Employee",
-                    userEmail: session.user.email,
-                    userAccessToken: sessionToken,
-                    date: dateStr,
-                    clockOutTime: formattedClockOutTime,
-                    reason: reason,
-                    refreshToken: sessionRefreshToken
-                })
+            // 2. Email Notification
+            // IMPORTANT: Always use the AFFECTED USER's OWN OAuth tokens (not the session of
+            // whoever triggered the cleanup). This ensures the email is sent self-to-self,
+            // i.e. the employee receives an email that appears to come from their own account.
+            if (session.user.email) {
+                // Find the user's own Google OAuth tokens stored in the Account table
+                const googleAccount = session.user.accounts?.find(
+                    (acc: any) => acc.provider === 'google' && acc.access_token
+                );
+
+                if (googleAccount?.access_token) {
+                    await sendForgottenClockOutEmail({
+                        userName: session.user.name || "Employee",
+                        userEmail: session.user.email,
+                        userAccessToken: googleAccount.access_token,
+                        date: dateStr,
+                        clockOutTime: formattedClockOutTime,
+                        reason: reason,
+                        refreshToken: googleAccount.refresh_token || undefined
+                    })
+                } else {
+                    console.warn(`[Auto Clock-Out Email] Skipped for ${session.user.email}: no Google OAuth token found in their Account record.`);
+                }
             }
         }
     }
@@ -304,7 +323,7 @@ async function syncAvailabilityWithAttendance() {
 export async function GET(req: Request) {
     const session = await auth() as any
     try {
-        await cleanupOldSessions(session?.accessToken, session?.refreshToken)
+        await cleanupOldSessions()
         await cleanupDuplicateBreaks()
         await syncAvailabilityWithAttendance()
     } catch (e) {
