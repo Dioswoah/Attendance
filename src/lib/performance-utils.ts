@@ -64,7 +64,12 @@ export function calculateTardiness(
     const expectedMinutes = timeToMinutes(expectedStart)
     const actualMinutes = timeToMinutes(new Date(attendance.clockIn))
 
-    const difference = actualMinutes - expectedMinutes
+    let difference = actualMinutes - expectedMinutes
+
+    // Apply 5-minute grace period for Philippine employment location
+    if (user?.employmentLocation === 'Philippines' && difference > 0 && difference <= 5) {
+        return 0
+    }
 
     // Only count as tardiness if positive (late)
     return Math.max(0, difference)
@@ -256,6 +261,10 @@ export function calculateUserPerformanceMetrics(
         calculateTardiness(record, user) > gracePeriodMinutes
     ).length
 
+    const totalLateMinutes = attendanceRecords.reduce((sum, record) => {
+        return sum + Math.max(0, calculateTardiness(record, user))
+    }, 0)
+
     const onTimeDays = attendanceRecords.length - lateDays
 
     return {
@@ -268,6 +277,7 @@ export function calculateUserPerformanceMetrics(
         totalDays: attendanceRecords.length,
         onTimeDays,
         lateDays,
+        totalLateMinutes,
         punctualityColor: getPunctualityColor(punctualityRate),
         tardinessColor: getTardinessColor(avgTardiness)
     }

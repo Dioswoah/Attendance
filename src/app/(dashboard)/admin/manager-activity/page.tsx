@@ -12,6 +12,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
+import { calculateTardiness } from "@/lib/performance-utils"
 import {
     Tabs,
     TabsContent,
@@ -260,16 +261,8 @@ export default function ManagerActivityPage() {
                         const user = team.find(u => u.id === a.userId)
                         if (!user) return false
 
-                        // Use scheduled time from attendance or user's default shift time
-                        const expectedStart = a.scheduledStart || user.shiftStartTime || "09:00"
-                        const clockInDate = new Date(a.clockIn)
-
-                        const [sHour, sMin] = expectedStart.split(':').map(Number)
-                        const actualTime = clockInDate.getHours() * 60 + clockInDate.getMinutes()
-                        const expectedTime = sHour * 60 + sMin
-
-                        // 5 minute grace period
-                        return actualTime > (expectedTime + 5)
+                        // Use centralized calculation which includes Philippine-specific grace period
+                        return calculateTardiness(a, user) > 0
                     }).length
 
                     return {

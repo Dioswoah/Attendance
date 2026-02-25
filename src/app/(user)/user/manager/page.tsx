@@ -1766,9 +1766,7 @@ export default function ManagerControlPage() {
                                                                 <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Punctuality</th>
                                                                 <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Avg. Lateness</th>
                                                                 <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">On-Time</th>
-                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Late Arrivals</th>
-                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Avg Early Dept</th>
-                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Hours Variance</th>
+                                                                <th className="text-center p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Late Time (Accumulated)</th>
                                                                 <th className="text-right p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
                                                             </tr>
                                                         </thead>
@@ -1809,24 +1807,18 @@ export default function ManagerControlPage() {
                                                                             <span className="text-sm font-semibold text-emerald-600">{metrics.onTimeDays}</span>
                                                                         </td>
                                                                         <td className="p-4 text-center">
-                                                                            <span className="text-sm font-semibold text-amber-600">{metrics.lateDays}</span>
-                                                                        </td>
-                                                                        <td className="p-4 text-center">
-                                                                            <span className="text-sm font-medium text-slate-600">{metrics.avgEarlyDeparture} min</span>
-                                                                        </td>
-                                                                        <td className="p-4 text-center">
-                                                                            <Badge variant="secondary" className={cn(
-                                                                                "font-mono font-bold",
-                                                                                metrics.hoursVariance < 0 ? "bg-red-50 text-red-700 hover:bg-red-100" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                                                            )}>
-                                                                                {metrics.hoursVariance > 0 ? '+' : ''}{metrics.hoursVariance} hrs
-                                                                            </Badge>
+                                                                            <span className={cn("text-sm font-semibold", metrics.totalLateMinutes > 0 ? "text-amber-600" : "text-slate-400")}>
+                                                                                {metrics.totalLateMinutes > 0 ? `${metrics.totalLateMinutes} min` : "--"}
+                                                                            </span>
                                                                         </td>
                                                                         <td className="p-4 text-right">
                                                                             <Button
                                                                                 size="sm"
                                                                                 variant="ghost"
-                                                                                onClick={() => openEditWorkHours(member)}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    openEditWorkHours(member);
+                                                                                }}
                                                                                 className="h-8 w-8 p-0"
                                                                                 title="Edit Shift Hours"
                                                                             >
@@ -2192,7 +2184,7 @@ export default function ManagerControlPage() {
 
             {/* Performance Detail Dialog */}
             <Dialog open={!!selectedStaffForLogs} onOpenChange={(open) => !open && setSelectedStaffForLogs(null)}>
-                <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+                <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
                     <DialogHeader className="border-b pb-4">
                         <div className="flex items-center gap-4">
                             <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
@@ -2220,6 +2212,7 @@ export default function ManagerControlPage() {
                                     <TableHead>Clock Out</TableHead>
                                     <TableHead>Breaks</TableHead>
                                     <TableHead>Total Hours</TableHead>
+                                    <TableHead>Lateness</TableHead>
                                     <TableHead className="text-right">Status</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -2234,7 +2227,7 @@ export default function ManagerControlPage() {
                                     if (logs.length === 0) {
                                         return (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="h-40 text-center text-muted-foreground">
+                                                <TableCell colSpan={7} className="h-40 text-center text-muted-foreground">
                                                     No attendance records found for this period.
                                                 </TableCell>
                                             </TableRow>
@@ -2245,6 +2238,7 @@ export default function ManagerControlPage() {
                                         const date = parseISO(log.date.split('T')[0])
                                         const clockIn = log.clockIn ? new Date(log.clockIn) : null
                                         const clockOut = log.clockOut ? new Date(log.clockOut) : null
+                                        const tardiness = calculateTardiness(log, selectedStaffForLogs)
 
                                         // Calculate break duration
                                         const breakDuration = log.breaks?.reduce((total: number, b: any) => {
@@ -2300,6 +2294,11 @@ export default function ManagerControlPage() {
                                                             const mins = Math.floor((diff / 1000 / 60) % 60)
                                                             return `${hours}h ${mins}m`
                                                         })()
+                                                    ) : <span className="text-slate-300">--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {tardiness > 0 ? (
+                                                        <span className="text-amber-600 font-bold">{tardiness} min</span>
                                                     ) : <span className="text-slate-300">--</span>}
                                                 </TableCell>
                                                 <TableCell className="text-right">
@@ -2463,6 +2462,6 @@ export default function ManagerControlPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }

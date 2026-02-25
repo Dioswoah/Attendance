@@ -20,6 +20,7 @@ interface StaffPerformanceCardProps {
         image?: string
         shiftStartTime?: string
         shiftEndTime?: string
+        employmentLocation?: string
     }
     attendanceRecords: any[]
     dateRange: { start: string, end: string }
@@ -108,29 +109,10 @@ export function StaffPerformanceCard({ user, attendanceRecords, dateRange, onEdi
                     </div>
 
                     <div className="flex justify-between items-center py-1 border-b border-dashed border-slate-100">
-                        <span className="text-slate-500 font-medium">Late Arrivals</span>
-                        <span className={cn("font-bold", metrics.lateDays > 0 ? "text-amber-600" : "text-slate-400")}>
-                            {metrics.lateDays} days
+                        <span className="text-slate-500 font-medium">{user.employmentLocation === 'Philippines' || 1 ? 'Total Late Time' : 'Late Arrivals'}</span>
+                        <span className={cn("font-bold", metrics.totalLateMinutes && metrics.totalLateMinutes > 0 ? "text-amber-600" : "text-slate-400")}>
+                            {metrics.totalLateMinutes && metrics.totalLateMinutes > 0 ? `${metrics.totalLateMinutes} min` : "None"}
                         </span>
-                    </div>
-
-                    <div className="flex justify-between items-center py-1 border-b border-dashed border-slate-100">
-                        <span className="text-slate-500 font-medium">Early Departures</span>
-                        <span className={cn("font-bold", metrics.avgEarlyDeparture > 0 ? "text-red-500" : "text-slate-400")}>
-                            {metrics.avgEarlyDeparture > 0 ? `${metrics.avgEarlyDeparture} min (avg)` : "None"}
-                        </span>
-                    </div>
-
-                    <div className="flex justify-between items-center py-1 text-slate-600 mt-1">
-                        <span className="font-medium text-[10px] uppercase tracking-wider text-slate-400">Hours Variance</span>
-                        <Badge variant="secondary" className={cn(
-                            "h-5 text-[10px] font-bold px-1.5",
-                            metrics.hoursVariance < 0 ? "bg-red-50 text-red-600 border-red-100" :
-                                metrics.hoursVariance > 0 ? "bg-green-50 text-green-600 border-green-100" :
-                                    "bg-slate-50 text-slate-500 border-slate-100"
-                        )}>
-                            {metrics.hoursVariance > 0 ? '+' : ''}{metrics.hoursVariance} hrs
-                        </Badge>
                     </div>
                 </div>
             </CardContent>
