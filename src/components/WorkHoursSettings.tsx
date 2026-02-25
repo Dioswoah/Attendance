@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Clock, Edit } from "lucide-react"
 import { toast } from "sonner"
+import { useSession } from "next-auth/react"
 import {
     Dialog,
     DialogContent,
@@ -16,10 +17,24 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 
 export function WorkHoursSettings() {
+    const { data: session } = useSession()
     const [userProfile, setUserProfile] = useState<any>(null)
     const [showScheduleInput, setShowScheduleInput] = useState(false)
     const [scheduledStart, setScheduledStart] = useState("09:00")
     const [scheduledEnd, setScheduledEnd] = useState("17:00")
+
+    // Use session data as initial state to avoid delay
+    useEffect(() => {
+        if (session?.user) {
+            const user = session.user as any
+            if (user.shiftStartTime) setScheduledStart(user.shiftStartTime)
+            if (user.shiftEndTime) setScheduledEnd(user.shiftEndTime)
+            // Still set userProfile so the UI knows we have data (or at least defaults)
+            if (!userProfile) {
+                setUserProfile(user)
+            }
+        }
+    }, [session])
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -78,8 +93,6 @@ export function WorkHoursSettings() {
         }
     }
 
-    if (!userProfile) return null; // Wait until loaded
-
     return (
         <>
             <button
@@ -95,9 +108,7 @@ export function WorkHoursSettings() {
                         <Edit className="w-3 h-3 text-slate-300 group-hover:text-red-500 transition-colors" />
                     </div>
                     <p className="text-[10px] font-mono font-bold text-red-600 mt-0.5">
-                        {(userProfile.shiftStartTime && userProfile.shiftEndTime) ?
-                            `${userProfile.shiftStartTime} - ${userProfile.shiftEndTime}` :
-                            'Not Set'}
+                        {scheduledStart} - {scheduledEnd}
                     </p>
                 </div>
             </button>

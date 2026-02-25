@@ -322,6 +322,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         (session.user as any).availabilityStatus = dbUser.availabilityStatus;
                         (session.user as any).useCurrentTimezone = dbUser.useCurrentTimezone ?? true;
                         (session.user as any).selectedTimezone = dbUser.selectedTimezone || "UTC";
+                        (session.user as any).shiftStartTime = dbUser.shiftStartTime;
+                        (session.user as any).shiftEndTime = dbUser.shiftEndTime;
                         (session.user as any).location = dbUser.location;
                         (session.user as any).customStatusMessage = dbUser.customStatusMessage;
                         console.log('[Auth] Updated session roles to:', (session.user as any).roles)

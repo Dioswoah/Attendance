@@ -232,16 +232,7 @@ export function TimezoneSettings({ compact = false, showLabel = true, showNote =
                         </div>
                     )}
 
-                    {/* Info Box */}
-                    {showNote && (
-                        <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                            <p className="text-xs text-blue-900 dark:text-blue-100">
-                                <strong>Note:</strong> All times are stored in UTC in the database.
-                                This setting only affects how times are displayed to you.
-                                Daylight Saving Time (DST) is handled automatically.
-                            </p>
-                        </div>
-                    )}
+
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t">
