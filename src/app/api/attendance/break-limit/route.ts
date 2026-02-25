@@ -63,6 +63,7 @@ export async function POST(req: Request) {
                 userName: userName || "Employee",
                 userEmail: userEmail,
                 userAccessToken: session.accessToken,
+                refreshToken: session.refreshToken,
                 totalBreakTime,
                 limit,
                 actionLink

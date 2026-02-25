@@ -103,6 +103,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                                 title: "Leave Approved",
                                 message: `Manager ${session.user.name} has approved a leave request for ${updatedRequest.user.name} (${updatedRequest.type}).`,
                                 accessToken: session.accessToken,
+                                refreshToken: session.refreshToken,
                                 link: `https://attendance-app-712513641417.us-central1.run.app/admin/leaves`
                             });
                         }
@@ -121,7 +122,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     actor: session.user.name,
                     status: updatedRequest.status,
                     type: updatedRequest.type,
-                    dateRange: `${updatedRequest.startDate.toLocaleDateString()} - ${updatedRequest.endDate.toLocaleDateString()}`
+                    dateRange: `${updatedRequest.startDate.toLocaleDateString()} - ${updatedRequest.endDate.toLocaleDateString()}`,
+                    adminRefreshToken: session.refreshToken
                 }
             })
 
@@ -148,7 +150,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     endDate: new Date(updatedRequest.endDate).toLocaleDateString(),
                     status: updatedRequest.status as 'APPROVED' | 'DECLINED',
                     updatedAt: new Date().toLocaleDateString(),
-                    declineReason: updatedRequest.declineReason || undefined
+                    declineReason: updatedRequest.declineReason || undefined,
+                    managerRefreshToken: session.refreshToken
                 })
             }
 
@@ -215,7 +218,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     endDate: new Date(updatedLeave.endDate).toLocaleDateString(),
                     status: updatedLeave.status as 'APPROVED' | 'DECLINED',
                     updatedAt: new Date().toLocaleDateString(),
-                    declineReason: updatedLeave.declineReason || undefined
+                    declineReason: updatedLeave.declineReason || undefined,
+                    managerRefreshToken: session.refreshToken
                 })
             }
 
@@ -240,7 +244,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         leaveType: updatedLeave.type,
                         startDate: new Date(updatedLeave.startDate).toLocaleDateString(),
                         endDate: new Date(updatedLeave.endDate).toLocaleDateString(),
-                        action: 'UPDATED'
+                        action: 'UPDATED',
+                        refreshToken: session.refreshToken
                     })
                 }
             }

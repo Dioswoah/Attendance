@@ -301,6 +301,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
                 // Add access token to session
                 (session as any).accessToken = token.accessToken;
+                (session as any).refreshToken = token.refreshToken;
                 (session as any).error = token.error;
 
                 // Fetch fresh user data from DB to ensure roles/dept are up to date

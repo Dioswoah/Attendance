@@ -65,7 +65,7 @@ function getPHTToday() {
  * Helper to automatically "seal" open sessions from previous days.
  * If someone forgot to clock out or end a break, we close them at 11:59:59 PM of that day.
  */
-async function cleanupOldSessions(sessionToken?: string) {
+async function cleanupOldSessions(sessionToken?: string, sessionRefreshToken?: string) {
     const unclosed = await prisma.attendance.findMany({
         where: {
             clockOut: null,
@@ -230,7 +230,8 @@ async function cleanupOldSessions(sessionToken?: string) {
                     userAccessToken: sessionToken,
                     date: dateStr,
                     clockOutTime: formattedClockOutTime,
-                    reason: reason
+                    reason: reason,
+                    refreshToken: sessionRefreshToken
                 })
             }
         }
@@ -303,7 +304,7 @@ async function syncAvailabilityWithAttendance() {
 export async function GET(req: Request) {
     const session = await auth() as any
     try {
-        await cleanupOldSessions(session?.accessToken)
+        await cleanupOldSessions(session?.accessToken, session?.refreshToken)
         await cleanupDuplicateBreaks()
         await syncAvailabilityWithAttendance()
     } catch (e) {
@@ -685,7 +686,8 @@ export async function POST(req: Request) {
                         adminAccessToken: session.accessToken,
                         actionType: 'ATTENDANCE',
                         details: details,
-                        date: new Date(attendance.date).toLocaleDateString()
+                        date: new Date(attendance.date).toLocaleDateString(),
+                        adminRefreshToken: session.refreshToken
                     })
                 }
             }

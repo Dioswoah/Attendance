@@ -28,6 +28,7 @@ interface LeaveRequestEmailProps {
   duration: string;
   reason?: string;
   leaveId: string;
+  refreshToken?: string;
 }
 
 
@@ -42,6 +43,7 @@ export async function sendLeaveRequestEmail({
   endDate,
   duration,
   reason,
+  refreshToken
 }: LeaveRequestEmailProps) {
   try {
     const enabled = await isEmailEnabled();
@@ -61,7 +63,18 @@ export async function sendLeaveRequestEmail({
 
     oauth2Client.setCredentials({
       access_token: userAccessToken,
+      refresh_token: refreshToken
     });
+
+    // Auto-refresh if possible (ensure fresh token)
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
+      }
+    }
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
@@ -134,6 +147,7 @@ interface LeaveStatusUpdateEmailProps {
   status: 'APPROVED' | 'DECLINED';
   updatedAt: string;
   declineReason?: string;
+  managerRefreshToken?: string;
 }
 
 export async function sendLeaveStatusUpdateEmail({
@@ -147,7 +161,8 @@ export async function sendLeaveStatusUpdateEmail({
   endDate,
   status,
   updatedAt,
-  declineReason
+  declineReason,
+  managerRefreshToken
 }: LeaveStatusUpdateEmailProps) {
   try {
     const enabled = await isEmailEnabled();
@@ -163,7 +178,20 @@ export async function sendLeaveStatusUpdateEmail({
       process.env.AUTH_GOOGLE_SECRET
     );
 
-    oauth2Client.setCredentials({ access_token: managerAccessToken });
+    oauth2Client.setCredentials({
+      access_token: managerAccessToken,
+      refresh_token: managerRefreshToken
+    });
+
+    // Auto-refresh if possible
+    if (managerRefreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh manager token", e);
+      }
+    }
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
@@ -232,6 +260,7 @@ interface LeaveActionEmailProps {
   endDate: string;
   action: 'UPDATED' | 'CANCELLED';
   originalSubject?: string; // To help with threading
+  refreshToken?: string;
 }
 
 export async function sendLeaveActionEmail({
@@ -244,6 +273,7 @@ export async function sendLeaveActionEmail({
   startDate,
   endDate,
   action,
+  refreshToken
 }: LeaveActionEmailProps) {
   try {
     const enabled = await isEmailEnabled();
@@ -260,7 +290,20 @@ export async function sendLeaveActionEmail({
       process.env.NEXTAUTH_URL
     );
 
-    oauth2Client.setCredentials({ access_token: userAccessToken });
+    oauth2Client.setCredentials({
+      access_token: userAccessToken,
+      refresh_token: refreshToken
+    });
+
+    // Auto-refresh if possible
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh user token", e);
+      }
+    }
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
@@ -326,6 +369,7 @@ interface AdminActionEmailProps {
   actionType: 'ATTENDANCE' | 'LEAVE' | 'BREAK';
   details: string; // "Clocked in at 09:00", "Annual Leave from ...", "Break: 12:00 - 13:00"
   date: string;
+  adminRefreshToken?: string;
 }
 
 export async function sendAdminActionEmail({
@@ -336,7 +380,8 @@ export async function sendAdminActionEmail({
   adminAccessToken,
   actionType,
   details,
-  date
+  date,
+  adminRefreshToken
 }: AdminActionEmailProps) {
   try {
     const enabled = await isEmailEnabled();
@@ -353,7 +398,20 @@ export async function sendAdminActionEmail({
       process.env.NEXTAUTH_URL
     );
 
-    oauth2Client.setCredentials({ access_token: adminAccessToken });
+    oauth2Client.setCredentials({
+      access_token: adminAccessToken,
+      refresh_token: adminRefreshToken
+    });
+
+    // Auto-refresh if possible
+    if (adminRefreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh admin token", e);
+      }
+    }
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
@@ -610,6 +668,7 @@ interface ForgottenClockOutEmailProps {
   date: string;
   clockOutTime: string;
   reason: string;
+  refreshToken?: string;
 }
 
 export async function sendForgottenClockOutEmail({
@@ -618,7 +677,8 @@ export async function sendForgottenClockOutEmail({
   userAccessToken,
   date,
   clockOutTime,
-  reason
+  reason,
+  refreshToken
 }: ForgottenClockOutEmailProps) {
   try {
     const enabled = await isEmailEnabled();
@@ -631,7 +691,20 @@ export async function sendForgottenClockOutEmail({
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
-    oauth2Client.setCredentials({ access_token: userAccessToken });
+    oauth2Client.setCredentials({
+      access_token: userAccessToken,
+      refresh_token: refreshToken
+    });
+
+    // Auto-refresh if possible
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh user token for auto-logout", e);
+      }
+    }
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
     const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
@@ -709,6 +782,7 @@ interface GeneralEmailProps {
   link?: string;
   linkText?: string;
   accessToken: string; // Sender's access token
+  refreshToken?: string;
 }
 
 // ... existing imports
@@ -904,14 +978,28 @@ export async function sendGeneralEmail({
   message,
   link,
   linkText = "View Details",
-  accessToken
+  accessToken,
+  refreshToken
 }: GeneralEmailProps) {
   try {
     const oauth2Client = new google.auth.OAuth2(
       process.env.AUTH_GOOGLE_ID,
       process.env.AUTH_GOOGLE_SECRET
     );
-    oauth2Client.setCredentials({ access_token: accessToken });
+    oauth2Client.setCredentials({
+      access_token: accessToken,
+      refresh_token: refreshToken
+    });
+
+    // Auto-refresh if possible
+    if (refreshToken) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        oauth2Client.setCredentials(credentials);
+      } catch (e) {
+        console.warn("[Email Service] Failed to refresh general token", e);
+      }
+    }
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
     const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';

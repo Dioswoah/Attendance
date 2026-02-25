@@ -215,7 +215,8 @@ export async function POST(req: Request) {
                         adminAccessToken: session.accessToken,
                         actionType: 'LEAVE',
                         details: `${type} - ${duration} (${reason || 'No reason specified'})`,
-                        date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`
+                        date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
+                        adminRefreshToken: session.refreshToken
                     })
                 }
             }
@@ -262,7 +263,8 @@ export async function POST(req: Request) {
                         endDate: new Date(endDate).toLocaleDateString(),
                         duration: durationDisplay,
                         reason: reason,
-                        leaveId: leaveRequest.id
+                        leaveId: leaveRequest.id,
+                        refreshToken: accessToken === session.accessToken ? session.refreshToken : undefined
                     });
                 }
             }
