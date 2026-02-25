@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users, Edit, Briefcase, MoreHorizontal } from "lucide-react"
+import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users, Edit, Briefcase, MoreHorizontal, Plus, Minus } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
@@ -2811,28 +2811,7 @@ export default function UserPortal() {
                     </div>
 
                     <div className="p-8 space-y-4 bg-white">
-                        {customClockInTime && (
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4 space-y-3">
-                                <div className="space-y-1">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Time of Entry</Label>
-                                    <Input
-                                        type="time"
-                                        value={customClockInTime}
-                                        onChange={(e) => setCustomClockInTime(e.target.value)}
-                                        className="h-12 bg-white border-slate-200 rounded-xl font-mono font-bold text-lg"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-slate-400 ml-1">Amendment Reason (Optional)</Label>
-                                    <Input
-                                        placeholder="Required if adjusting time..."
-                                        value={customReason}
-                                        onChange={(e) => setCustomReason(e.target.value)}
-                                        className="bg-white border-slate-200 rounded-xl text-xs"
-                                    />
-                                </div>
-                            </div>
-                        )}
+
 
                         <div className="grid grid-cols-2 gap-4">
                             <Button
@@ -3075,20 +3054,32 @@ export default function UserPortal() {
                             </div>
 
                             {breakInputMode === "minutes" ? (
-                                <Select value={breakMinutes} onValueChange={setBreakMinutes}>
-                                    <SelectTrigger className="h-12 bg-muted/40 border-border rounded-xl font-bold justify-between px-4">
-                                        <SelectValue placeholder="Select Duration" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="5">5 minutes</SelectItem>
-                                        <SelectItem value="10">10 minutes</SelectItem>
-                                        <SelectItem value="15">15 minutes</SelectItem>
-                                        <SelectItem value="20">20 minutes</SelectItem>
-                                        <SelectItem value="30">30 minutes</SelectItem>
-                                        <SelectItem value="45">45 minutes</SelectItem>
-                                        <SelectItem value="60">1 hour</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <div className="flex items-center justify-between border-2 border-slate-100 bg-slate-50/50 rounded-2xl h-16 px-4 overflow-hidden mb-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setBreakMinutes(String(Math.max(1, parseInt(breakMinutes || '15', 10) - 5)))}
+                                        className="h-10 w-10 flex items-center justify-center rounded-xl bg-white border shadow-sm border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-200"
+                                    >
+                                        <Minus className="w-5 h-5" />
+                                    </button>
+                                    <div className="flex-1 text-center font-bold text-lg text-slate-800 flex items-center justify-center gap-1.5 focus-within:ring-0">
+                                        <Input
+                                            type="number"
+                                            value={breakMinutes}
+                                            onChange={(e) => setBreakMinutes(e.target.value)}
+                                            className="w-16 h-10 text-center bg-transparent border-none p-0 focus-visible:ring-0 text-xl font-black shadow-none appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            min="1"
+                                        />
+                                        <span className="text-xs uppercase tracking-widest text-slate-400 font-bold mt-1">Minutes</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBreakMinutes(String(parseInt(breakMinutes || '15', 10) + 5))}
+                                        className="h-10 w-10 flex items-center justify-center rounded-xl bg-white border shadow-sm border-slate-200 text-slate-500 hover:text-green-600 hover:border-green-200 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-green-200"
+                                    >
+                                        <Plus className="w-5 h-5" />
+                                    </button>
+                                </div>
                             ) : (
                                 <Input
                                     type="time"
