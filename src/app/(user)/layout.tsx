@@ -23,6 +23,7 @@ import { UserOnboardingTour } from "@/components/UserOnboardingTour"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
 import { Breadcrumbs } from "@/components/Breadcrumbs"
+import { WorkHoursSettings } from "@/components/WorkHoursSettings"
 
 export default function UserLayout({
     children,
@@ -409,7 +410,7 @@ function UserLayoutInner({
                                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Settings & Preferences</p>
                                 </div>
 
-                                <div id="sidebar-workhours-container"></div>
+                                <WorkHoursSettings />
 
                                 <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
                                     <TimezoneSettings

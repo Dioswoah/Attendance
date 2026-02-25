@@ -51,18 +51,22 @@ export default function AmendRecordsPage() {
                 const res = await fetch('/api/user/me')
                 if (res.ok) {
                     const data = await res.json()
-                    // 1. Priority: Explictly selected timezone
-                    if (data.selectedTimezone) {
+                    // 1. Priority: Force current browser timezone if flagged
+                    if (data.useCurrentTimezone) {
+                        setUserTimeZone(getBrowserTimezone())
+                    }
+                    // 2. Priority: Explictly selected timezone
+                    else if (data.selectedTimezone) {
                         setUserTimeZone(data.selectedTimezone)
                     }
-                    // 2. Fallback: Region-based defaults
+                    // 3. Fallback: Region-based defaults
                     else if (data.employmentLocation === 'Philippines') {
                         setUserTimeZone('Asia/Manila')
                     }
                     else if (data.employmentLocation === 'Australia') {
                         setUserTimeZone('Australia/Sydney')
                     }
-                    // 3. Last Resort: Browser timezone
+                    // 4. Last Resort: Browser timezone
                     else {
                         setUserTimeZone(getBrowserTimezone())
                     }

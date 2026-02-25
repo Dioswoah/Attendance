@@ -39,7 +39,10 @@ export default function ActivityLogsPage() {
 
     useEffect(() => {
         if (session?.user) {
-            setUserTimeZone((session.user as any).selectedTimezone || getBrowserTimezone())
+            const tz = (session.user as any).useCurrentTimezone
+                ? getBrowserTimezone()
+                : ((session.user as any).selectedTimezone || getBrowserTimezone());
+            setUserTimeZone(tz);
         }
     }, [session])
 
