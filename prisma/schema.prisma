@@ -146,6 +146,7 @@ model Attendance {
   breakLimitExceededSent Boolean  @default(false)
 
   @@index([userId, date])
+  @@index([summaryId])
 }
 
 model Leave {
@@ -201,6 +202,7 @@ model Break {
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?
   attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  @@index([attendanceId])
 }
 
 model Notification {
@@ -334,6 +336,7 @@ model AttendanceSummary {
 
   @@unique([userId, date])
   @@index([userId, date])
+  @@index([date])
 }
 
 model ActivityLog {

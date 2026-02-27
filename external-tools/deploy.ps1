@@ -51,7 +51,10 @@ if (-not $SkipBuild) {
 
 Write-Host "Step 2: Running database migrations..." -ForegroundColor Yellow
 $CLOUD_SQL_CONN = "${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
-$CLOUD_RUN_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=3"
+# Migration job uses a low connection limit (3) since it runs briefly and sequentially
+$CLOUD_RUN_MIGRATION_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=3"
+# Main app uses a higher connection limit (10) so button clicks don't queue waiting for a DB connection
+$CLOUD_RUN_APP_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=10"
 
 # Check if migration job exists, create if not, then update and execute
 $jobExists = gcloud run jobs describe migrate-db --region $REGION --quiet 2>$null
@@ -60,7 +63,7 @@ if (-not $jobExists) {
     gcloud run jobs create migrate-db `
       --image $IMAGE_TAG `
       --region $REGION `
-      --set-env-vars "NODE_ENV=production,DATABASE_URL=$CLOUD_RUN_DATABASE_URL" `
+      --set-env-vars "NODE_ENV=production,DATABASE_URL=$CLOUD_RUN_MIGRATION_URL" `
       --set-cloudsql-instances $CLOUD_SQL_CONN `
       --command "npm" `
       --args "run,db:setup" `
@@ -70,7 +73,7 @@ if (-not $jobExists) {
     gcloud run jobs update migrate-db `
       --image $IMAGE_TAG `
       --region $REGION `
-      --set-env-vars "NODE_ENV=production,DATABASE_URL=$CLOUD_RUN_DATABASE_URL" `
+      --set-env-vars "NODE_ENV=production,DATABASE_URL=$CLOUD_RUN_MIGRATION_URL" `
       --set-cloudsql-instances $CLOUD_SQL_CONN `
       --command "npm" `
       --args "run,db:setup" `
@@ -93,7 +96,7 @@ gcloud run deploy $SERVICE_NAME `
   --set-env-vars "NEXTAUTH_URL=$SERVICE_URL" `
   --set-env-vars "AUTH_URL=$SERVICE_URL" `
   --set-env-vars "AUTH_TRUST_HOST=true" `
-  --set-env-vars "DATABASE_URL=$CLOUD_RUN_DATABASE_URL" `
+  --set-env-vars "DATABASE_URL=$CLOUD_RUN_APP_DATABASE_URL" `
   --set-env-vars "AUTH_GOOGLE_ID=$AUTH_GOOGLE_ID" `
   --set-env-vars "AUTH_GOOGLE_SECRET=$AUTH_GOOGLE_SECRET" `
   --set-env-vars "ADMIN_PASSWORD=$ADMIN_PASSWORD" `
@@ -102,7 +105,7 @@ gcloud run deploy $SERVICE_NAME `
   --set-env-vars "ALLOWED_WORKSPACE_DOMAINS=$ALLOWED_WORKSPACE_DOMAINS" `
   --memory 512Mi `
   --cpu 1 `
-  --min-instances 0 `
+  --min-instances 1 `
   --max-instances 20 `
   --quiet
 

@@ -134,7 +134,9 @@ export default function UserPortal() {
         status === 'authenticated' && session?.user?.id ? '/api/user/dashboard' : null,
         fetcher,
         {
-            revalidateOnFocus: true, // Refresh when user switches back to tab (instant feel)
+            revalidateOnFocus: false, // Do not reload on tab focus - use cache!
+            revalidateIfStale: false, // Do not fetch in background if data is fresh
+            dedupingInterval: 60000, // Serve instant cached data for 60 seconds
             refreshInterval: 0, // We rely on SSE for realtime updates
             keepPreviousData: true // Prevent flickering
         }
