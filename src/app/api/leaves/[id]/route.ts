@@ -275,6 +275,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         link: "/admin/leaves"
                     }
                 })
+                if (session.accessToken && updatedLeave.user.manager?.email) {
+                    await sendLeaveActionEmail({
+                        managerName: updatedLeave.user.manager.name || "Manager",
+                        managerEmail: updatedLeave.user.manager.email,
+                        userName: updatedLeave.user.name || "Employee",
+                        userEmail: updatedLeave.user.email,
+                        userAccessToken: session.accessToken,
+                        leaveType: updatedLeave.type,
+                        startDate: new Date(updatedLeave.startDate).toLocaleDateString(),
+                        endDate: new Date(updatedLeave.endDate).toLocaleDateString(),
+                        action: 'UPDATED',
+                        refreshToken: session.refreshToken
+                    })
+                }
             }
         }
 

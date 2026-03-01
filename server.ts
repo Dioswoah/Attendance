@@ -179,6 +179,19 @@ app.prepare().then(() => {
                                         where: { id: activeBreak.id },
                                         data: { breakExpectedReturnEmailSent: true }
                                     });
+                                    // 2. Broadcast for real-time bell
+                                    await prisma.notification.create({
+                                        data: {
+                                            userId: att.userId,
+                                            title: "Break Status Check",
+                                            message: "Your break was expected to end. Please update your status.",
+                                            type: "BREAK_LIMIT",
+                                            link: actionLink
+                                        }
+                                    });
+                                    const { broadcastUpdate } = await import("./src/lib/eventBus");
+                                    broadcastUpdate('notification', { userId: att.userId });
+
                                     console.log(`[Break Check] Sent Expected Return Reminder to ${att.user.email}`);
                                 }
                             }
@@ -265,9 +278,11 @@ app.prepare().then(() => {
                                     title: "Late Arrival Reminder",
                                     message: "You haven't clocked in yet today. Click here to clock in.",
                                     type: "LATE_REMINDER",
-                                    link: "/user"
+                                    link: magicLink
                                 }
                             });
+                            const { broadcastUpdate } = await import("./src/lib/eventBus");
+                            broadcastUpdate('notification', { userId: user.id });
                             console.log(`[Late Check] Sent email to ${user.email}`);
                         }
                     }
@@ -334,9 +349,11 @@ app.prepare().then(() => {
                                     title: "Overdue Departure Reminder",
                                     message: "Your shift has ended. Click here to clock out.",
                                     type: "OVERDUE_REMINDER",
-                                    link: "/user"
+                                    link: magicLink
                                 }
                             });
+                            const { broadcastUpdate } = await import("./src/lib/eventBus");
+                            broadcastUpdate('notification', { userId: user.id });
                             console.log(`[Overdue Check] Sent email to ${user.email}`);
                         }
                     }

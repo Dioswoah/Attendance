@@ -218,16 +218,29 @@ async function cleanupOldSessions() {
                 messageStr = `Hello! The system noticed that you did not clock out yesterday. We have automatically clocked you out at ${formattedClockOutTime} (${reason}). If this is incorrect, please request an amended record from your manager.`;
             }
 
-            await prisma.notification.create({
-                data: {
+            const existingNotification = await prisma.notification.findFirst({
+                where: {
                     userId,
-                    title: "System Auto-Clock Out",
-                    message: messageStr,
-                    type: "SYSTEM",
-                    link: "/user"
+                    type: 'SYSTEM',
+                    title: 'System Auto-Clock Out',
+                    createdAt: {
+                        gte: new Date(new Date().setHours(0, 0, 0, 0))
+                    }
                 }
             })
-            broadcastUpdate('notification', { userId })
+
+            if (!existingNotification) {
+                await prisma.notification.create({
+                    data: {
+                        userId,
+                        title: "System Auto-Clock Out",
+                        message: messageStr,
+                        type: "SYSTEM",
+                        link: "/user"
+                    }
+                })
+                broadcastUpdate('notification', { userId })
+            }
 
             // 2. Email Notification
             // IMPORTANT: Always use the AFFECTED USER's OWN OAuth tokens (not the session of
