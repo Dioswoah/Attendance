@@ -128,31 +128,60 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             })
 
             // Notifications
-            await prisma.notification.create({
-                data: {
-                    userId: updatedRequest.userId,
-                    title: `Leave Request ${updatedRequest.status}`,
-                    message: updatedRequest.status === 'APPROVED' ? "Your leave request has been approved." : `Your leave request has been declined/updated.`,
-                    type: "LEAVE_STATUS",
-                    link: "/leaves"
-                }
-            })
+            if (isUserEditing) {
+                if (updatedRequest.user.managerId) {
+                    await prisma.notification.create({
+                        data: {
+                            userId: updatedRequest.user.managerId,
+                            title: "Leave Request Updated",
+                            message: `${updatedRequest.user.name} has updated their leave request.`,
+                            type: "LEAVE_REQUEST",
+                            link: "/admin/leaves"
+                        }
+                    })
 
-            if (session.accessToken && session.user.email) {
-                await sendLeaveStatusUpdateEmail({
-                    userName: updatedRequest.user.name || "Employee",
-                    userEmail: updatedRequest.user.email,
-                    managerName: session.user.name || "Manager",
-                    managerEmail: session.user.email,
-                    managerAccessToken: session.accessToken,
-                    leaveType: updatedRequest.type,
-                    startDate: new Date(updatedRequest.startDate).toLocaleDateString(),
-                    endDate: new Date(updatedRequest.endDate).toLocaleDateString(),
-                    status: updatedRequest.status as 'APPROVED' | 'DECLINED',
-                    updatedAt: new Date().toLocaleDateString(),
-                    declineReason: updatedRequest.declineReason || undefined,
-                    managerRefreshToken: session.refreshToken
+                    if (session.accessToken && updatedRequest.user.manager?.email) {
+                        await sendLeaveActionEmail({
+                            managerName: updatedRequest.user.manager.name || "Manager",
+                            managerEmail: updatedRequest.user.manager.email,
+                            userName: updatedRequest.user.name || "Employee",
+                            userEmail: updatedRequest.user.email,
+                            userAccessToken: session.accessToken,
+                            leaveType: updatedRequest.type,
+                            startDate: new Date(updatedRequest.startDate).toLocaleDateString(),
+                            endDate: new Date(updatedRequest.endDate).toLocaleDateString(),
+                            action: 'UPDATED',
+                            refreshToken: session.refreshToken
+                        })
+                    }
+                }
+            } else {
+                await prisma.notification.create({
+                    data: {
+                        userId: updatedRequest.userId,
+                        title: `Leave Request ${updatedRequest.status}`,
+                        message: updatedRequest.status === 'APPROVED' ? "Your leave request has been approved." : `Your leave request has been declined/updated.`,
+                        type: "LEAVE_STATUS",
+                        link: "/leaves"
+                    }
                 })
+
+                if (session.accessToken && session.user.email) {
+                    await sendLeaveStatusUpdateEmail({
+                        userName: updatedRequest.user.name || "Employee",
+                        userEmail: updatedRequest.user.email,
+                        managerName: session.user.name || "Manager",
+                        managerEmail: session.user.email,
+                        managerAccessToken: session.accessToken,
+                        leaveType: updatedRequest.type,
+                        startDate: new Date(updatedRequest.startDate).toLocaleDateString(),
+                        endDate: new Date(updatedRequest.endDate).toLocaleDateString(),
+                        status: updatedRequest.status as 'APPROVED' | 'DECLINED',
+                        updatedAt: new Date().toLocaleDateString(),
+                        declineReason: updatedRequest.declineReason || undefined,
+                        managerRefreshToken: session.refreshToken
+                    })
+                }
             }
 
             broadcastUpdate('leaves', updatedRequest)
