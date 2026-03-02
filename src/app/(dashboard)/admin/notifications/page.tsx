@@ -106,8 +106,10 @@ export default function AdminNotificationsPage() {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
-                <Loader2 className="h-10 w-10 animate-spin text-red-600" />
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Notification Directory...</p>
+                <div className="h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-sm overflow-hidden animate-bounce p-2">
+                    <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading User Directory...</p>
             </div>
         )
     }
@@ -126,8 +128,8 @@ export default function AdminNotificationsPage() {
     return (
         <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
             <div className="space-y-1">
-                <h1 className="text-3xl font-bold text-foreground tracking-tight">Manual Notifications</h1>
-                <p className="text-muted-foreground text-sm">Send standard alerts or custom messages to specific staff members</p>
+                <h1 className="text-3xl font-bold text-foreground tracking-tight">Message Center</h1>
+                <p className="text-muted-foreground text-sm">Send standard alerts or custom messages directly to staff members</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -152,7 +154,7 @@ export default function AdminNotificationsPage() {
                         <div className="bg-primary/5 border-b border-primary/10 p-3 flex items-center justify-between animate-in slide-in-from-top-2">
                             <div className="flex items-center gap-3">
                                 <CheckCircle2 className="text-primary h-5 w-5" />
-                                <span className="text-sm font-bold text-primary">{selectedIds.size} staff member(s) selected</span>
+                                <span className="text-sm font-bold text-primary">{selectedIds.size} selected</span>
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="text-muted-foreground h-8 text-xs">
                                 Clear Selection
@@ -214,13 +216,13 @@ export default function AdminNotificationsPage() {
                 <Card className="border border-border shadow-sm rounded-xl bg-white h-fit sticky top-24">
                     <CardHeader className="border-b border-border p-6">
                         <CardTitle className="flex items-center gap-2 text-lg">
-                            <ShieldAlert className="h-5 w-5 text-amber-600" /> Dispatch Control
+                            <ShieldAlert className="h-5 w-5 text-amber-600" /> Send Message
                         </CardTitle>
-                        <CardDescription>Select the template and trigger an immediate In-App + Email push notification.</CardDescription>
+                        <CardDescription>Choose a predefined template or write your own message to send instantly.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-6 space-y-6">
                         <div className="space-y-3">
-                            <Label className="font-bold">Notification Template</Label>
+                            <Label className="font-bold">Message Template</Label>
                             <Select value={notificationType} onValueChange={setNotificationType}>
                                 <SelectTrigger className="w-full bg-slate-50">
                                     <SelectValue placeholder="Select type" />
@@ -258,7 +260,7 @@ export default function AdminNotificationsPage() {
                         )}
 
                         <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-2">
-                            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Preview Snippet</Label>
+                            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Message Preview</Label>
                             <p className="text-sm italic text-slate-600">"{getPreviewMessage()}"</p>
                         </div>
 
@@ -268,7 +270,7 @@ export default function AdminNotificationsPage() {
                             onClick={() => setConfirmOpen(true)}
                         >
                             <Send className="h-4 w-4" />
-                            Dispatch to {selectedIds.size} User(s)
+                            Send to {selectedIds.size} Staff Member(s)
                         </Button>
                     </CardContent>
                 </Card>
@@ -278,10 +280,10 @@ export default function AdminNotificationsPage() {
             <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
                 <DialogContent className="sm:max-w-[400px]">
                     <DialogHeader>
-                        <DialogTitle>Confirm Notification Push</DialogTitle>
+                        <DialogTitle>Confirm Action</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to push this {notificationType === 'CUSTOM' ? 'custom' : 'automated'} notification immediately to {selectedIds.size} staff members?
-                            This will trigger both an email broadcast and a direct in-app alert.
+                            Are you sure you want to send this message to {selectedIds.size} staff member{selectedIds.size > 1 ? 's' : ''}?
+                            They will receive it immediately via email and in the app.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="flex gap-3 justify-end mt-4">
@@ -293,7 +295,7 @@ export default function AdminNotificationsPage() {
                             disabled={isSending}
                         >
                             {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                            {isSending ? 'Sending...' : 'Confirm Payload'}
+                            {isSending ? 'Sending...' : 'Confirm & Send'}
                         </Button>
                     </div>
                 </DialogContent>

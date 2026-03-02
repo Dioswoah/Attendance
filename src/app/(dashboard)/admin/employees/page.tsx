@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle, Clock } from "lucide-react"
+import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle, Clock, LogOut } from "lucide-react"
 import { statusConfig } from "@/components/UserStatusDropdown"
 import { toast } from "sonner"
 
@@ -237,6 +237,34 @@ export default function EmployeesPage() {
                     }
                 } catch (error) {
                     toast.error("An error occurred while deleting staff member")
+                }
+            }
+        })
+        setConfirmOpen(true)
+    }
+
+    const handleForceLogout = (id: string, name: string) => {
+        setConfirmConfig({
+            title: "Force Sign Out",
+            description: `Are you sure you want to force sign out ${name || 'this user'}? This will immediately terminate all their active sessions.`,
+            variant: "destructive",
+            action: async () => {
+                setProcessingId(id)
+                try {
+                    const res = await fetch(`/api/employees/${id}/force-logout`, {
+                        method: 'POST'
+                    })
+                    if (res.ok) {
+                        toast.success(`Successfully signed out ${name || 'user'}`)
+                        setConfirmOpen(false)
+                    } else {
+                        const data = await res.json()
+                        toast.error(data.error || "Failed to force sign out user")
+                    }
+                } catch (error) {
+                    toast.error("An error occurred while attempting to sign out user")
+                } finally {
+                    setProcessingId(null)
                 }
             }
         })
@@ -735,6 +763,16 @@ export default function EmployeesPage() {
                                                         title="Archive"
                                                     >
                                                         {processingId === emp.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => handleForceLogout(emp.id, emp.name)}
+                                                        disabled={processingId === emp.id}
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                                                        title="Force Sign Out"
+                                                    >
+                                                        <LogOut className="h-4 w-4" />
                                                     </Button>
                                                     <Button
                                                         onClick={() => handleDeleteEmployee(emp.id)}

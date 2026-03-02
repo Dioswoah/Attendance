@@ -1004,8 +1004,7 @@ export async function sendGeneralEmail({
 
     const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
-    const emailContent = `From: "Attendance System" <me>
-To: ${toEmail}
+    const emailContent = `To: ${toEmail}
 Subject: [RSA] ${subject}
 Content-Type: text/html; charset=utf-8
 
