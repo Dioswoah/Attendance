@@ -26,6 +26,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Users not found" }, { status: 404 })
         }
 
+        const adminAccount = await prisma.account.findFirst({
+            where: {
+                userId: session.user.id,
+                provider: 'google'
+            }
+        });
+
+        if (!adminAccount?.access_token) {
+            return NextResponse.json({ error: "Admin Google account not linked properly. Please sign in again to refresh your connection." }, { status: 400 })
+        }
+
         let notificationsCreated = 0;
 
         for (const user of users) {
@@ -37,31 +48,31 @@ export async function POST(req: Request) {
             switch (type) {
                 case "LATE_ARRIVAL":
                     title = "Time to Clock In?"
-                    subject = "[RSA] Check In: Start Your Shift?"
+                    subject = "Check In: Start Your Shift?"
                     message = "Just checking in — we noticed you haven't clocked in yet. If you're already online and simply forgot, you can clock in immediately via your dashboard. If you're running late or on leave, feel free to ignore this safely!"
                     notifType = "LATE_REMINDER"
                     break;
                 case "OVERDUE_DEPARTURE":
                     title = "Shift Wrap-Up"
-                    subject = "[RSA] Check Out Reminder: Shift Ended?"
+                    subject = "Check Out Reminder: Shift Ended?"
                     message = "Just a friendly reminder to check if your shift has ended, but you're still clocked in. If you're all done for the day, please remember to clock out. If you're working a little late, no problem at all!"
                     notifType = "OVERDUE_REMINDER"
                     break;
                 case "FORGOTTEN_CLOCKOUT":
                     title = "System Auto-Clock Out"
-                    subject = "[RSA] Friendly Reminder: Missed Clock Out"
+                    subject = "Friendly Reminder: Missed Clock Out"
                     message = "Hello! We noticed that you may have forgotten to clock out recently. Please verify your attendance logs and request an amend record if needed."
                     notifType = "SYSTEM"
                     break;
                 case "BREAK_RETURN":
                     title = "Break Time Check-in"
-                    subject = "[RSA] Quick Check-in: Break Status"
+                    subject = "Quick Check-in: Break Status"
                     message = "Hope you're having a good break! Just sending a quick, friendly ping regarding your break time. If you're refreshed and ready to jump back in, you can easily end your break via your dashboard."
                     notifType = "BREAK_LIMIT"
                     break;
                 case "CUSTOM":
                     title = customTitle || "Important Notice"
-                    subject = customSubject || "[RSA] Important Notice from Administration"
+                    subject = customSubject ? customSubject.replace(/^\[RSA\]\s*/i, '') : "Important Notice from Administration"
                     message = customMessage || "You have a new message from administration."
                     notifType = "SYSTEM"
                     break;
@@ -84,7 +95,7 @@ export async function POST(req: Request) {
             broadcastUpdate('notification', { userId: user.id })
 
             // Email Notification
-            if (user.email && session.accessToken) {
+            if (user.email && adminAccount.access_token) {
                 const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app'
                 await sendGeneralEmail({
                     toEmail: user.email,
@@ -93,8 +104,8 @@ export async function POST(req: Request) {
                     message: `Hi <strong>${user.name}</strong>,<br/><br/>${message}`,
                     link: `${appUrl}/user`,
                     linkText: "View Dashboard",
-                    accessToken: session.accessToken,
-                    refreshToken: session.refreshToken
+                    accessToken: adminAccount.access_token,
+                    refreshToken: adminAccount.refresh_token || undefined
                 })
             }
             notificationsCreated++;
