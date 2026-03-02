@@ -248,7 +248,7 @@ function UserLayoutInner({
 
             {/* Sidebar - Desktop */}
             <aside className={cn(
-                "hidden lg:flex flex-col bg-sidebar backdrop-blur-xl border-sidebar-border sticky top-0 h-screen z-40 transition-all duration-300",
+                "hidden lg:flex flex-col bg-sidebar backdrop-blur-xl border-sidebar-border sticky top-0 bottom-0 min-h-screen z-40 transition-all duration-300",
                 sidebarCollapsed ? "w-20" : "w-72"
             )}>
                 {/* Logo */}
