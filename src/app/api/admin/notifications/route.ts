@@ -12,7 +12,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json()
-        const { userIds, type, customMessage, customSubject, customTitle } = body
+        const { userIds, type, customMessage, customSubject, customTitle, deliveryMethod = "BOTH" } = body
 
         if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
             return NextResponse.json({ error: "No users selected" }, { status: 400 })
@@ -81,21 +81,23 @@ export async function POST(req: Request) {
             }
 
             // In-App Notification
-            await prisma.notification.create({
-                data: {
-                    userId: user.id,
-                    title: title,
-                    message: message,
-                    type: notifType,
-                    link: "/user"
-                }
-            })
+            if (deliveryMethod === "BOTH" || deliveryMethod === "IN_APP") {
+                await prisma.notification.create({
+                    data: {
+                        userId: user.id,
+                        title: title,
+                        message: message,
+                        type: notifType,
+                        link: "/user"
+                    }
+                })
 
-            // Broadcast for real-time update
-            broadcastUpdate('notification', { userId: user.id })
+                // Broadcast for real-time update
+                broadcastUpdate('notification', { userId: user.id })
+            }
 
             // Email Notification
-            if (user.email && adminAccount.access_token) {
+            if ((deliveryMethod === "BOTH" || deliveryMethod === "EMAIL") && user.email && adminAccount.access_token) {
                 const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app'
                 await sendGeneralEmail({
                     toEmail: user.email,

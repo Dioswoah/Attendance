@@ -25,6 +25,7 @@ export default function AdminNotificationsPage() {
     const [customTitle, setCustomTitle] = useState("")
     const [customSubject, setCustomSubject] = useState("")
     const [customMessage, setCustomMessage] = useState("")
+    const [deliveryMethod, setDeliveryMethod] = useState<"BOTH" | "IN_APP" | "EMAIL">("BOTH")
 
     // Logs State
     const [logs, setLogs] = useState<any[]>([])
@@ -95,6 +96,7 @@ export default function AdminNotificationsPage() {
             const payload = {
                 userIds: Array.from(selectedIds),
                 type: notificationType,
+                deliveryMethod: deliveryMethod,
                 customTitle: notificationType === 'CUSTOM' ? customTitle : undefined,
                 customSubject: notificationType === 'CUSTOM' ? customSubject : undefined,
                 customMessage: notificationType === 'CUSTOM' ? customMessage : undefined,
@@ -270,6 +272,20 @@ export default function AdminNotificationsPage() {
                                     </Select>
                                 </div>
 
+                                <div className="space-y-3">
+                                    <Label className="font-bold">Delivery Method</Label>
+                                    <Select value={deliveryMethod} onValueChange={(val: any) => setDeliveryMethod(val)}>
+                                        <SelectTrigger className="w-full bg-slate-50">
+                                            <SelectValue placeholder="Select delivery method" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="BOTH">In-App & Email</SelectItem>
+                                            <SelectItem value="IN_APP">In-App Only</SelectItem>
+                                            <SelectItem value="EMAIL">Email Only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
                                 {notificationType === "CUSTOM" && (
                                     <div className="space-y-4 animate-in slide-in-from-top-2">
                                         <div className="space-y-2">
@@ -299,7 +315,7 @@ export default function AdminNotificationsPage() {
 
                                 <Button
                                     className="w-full font-bold h-12 gap-2 text-[15px]"
-                                    disabled={selectedIds.size === 0}
+                                    disabled={selectedIds.size === 0 || (notificationType === 'CUSTOM' && !customMessage.trim())}
                                     onClick={() => setConfirmOpen(true)}
                                 >
                                     <Send className="h-4 w-4" />
@@ -316,7 +332,9 @@ export default function AdminNotificationsPage() {
                                 <DialogTitle>Confirm Action</DialogTitle>
                                 <DialogDescription>
                                     Are you sure you want to send this message to {selectedIds.size} staff member{selectedIds.size > 1 ? 's' : ''}?
-                                    They will receive it immediately via email and in the app.
+                                    {deliveryMethod === 'BOTH' && " They will receive it immediately via email and in the app."}
+                                    {deliveryMethod === 'IN_APP' && " They will receive it immediately inside the application only."}
+                                    {deliveryMethod === 'EMAIL' && " They will receive it via their registered email address only."}
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="flex gap-3 justify-end mt-4">
