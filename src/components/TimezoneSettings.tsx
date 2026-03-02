@@ -81,7 +81,7 @@ export function TimezoneSettings({ compact = false, showLabel = true, showNote =
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     useCurrentTimezone,
-                    selectedTimezone
+                    selectedTimezone: useCurrentTimezone ? browserTimezone : selectedTimezone
                 })
             })
 

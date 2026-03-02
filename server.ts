@@ -237,11 +237,13 @@ app.prepare().then(() => {
                 if (todayAttendance) continue; // Already clocked in today
 
                 // Check: was a late reminder already sent today (in user's local time)?
+                // Use a 12-hour lookback to handle UTC boundary differences safely
+                const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
                 const alreadyNotified = await prisma.notification.findFirst({
                     where: {
                         userId: user.id,
                         type: 'LATE_REMINDER',
-                        createdAt: { gte: userStartOfDay }
+                        createdAt: { gte: twelveHoursAgo }
                     }
                 });
                 if (alreadyNotified) continue; // Already sent
@@ -312,9 +314,10 @@ app.prepare().then(() => {
                 // Only consider sessions that started on the user's local today
                 if (session.date < userStartOfDay) continue;
 
-                // Check if already notified (using user's local today start)
+                // Check if already notified (using a 12 hour lookback instead of synthetic boundary)
+                const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
                 const alreadyNotified = await prisma.notification.findFirst({
-                    where: { userId: session.userId, type: 'OVERDUE_REMINDER', createdAt: { gte: userStartOfDay } }
+                    where: { userId: session.userId, type: 'OVERDUE_REMINDER', createdAt: { gte: twelveHoursAgo } }
                 });
                 if (alreadyNotified) continue;
 
