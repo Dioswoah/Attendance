@@ -285,7 +285,7 @@ export default function AdminDashboard() {
     }
 
     return (
-        <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
+        <div className="w-full mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-500 pb-10">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Dashboard</h1>
@@ -298,7 +298,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Top Stats Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
                 {[
                     { label: "Total Staff", value: stats.totalStaff, icon: Users, sub: "Authorized Personnel", color: "blue", type: "total" },
                     { label: "Active Staff", value: stats.clockedIn, icon: Zap, sub: `${Math.round((stats.clockedIn / stats.totalStaff) * 100) || 0}% Clocked In`, color: "green", type: "active" },
@@ -311,13 +311,13 @@ export default function AdminDashboard() {
                         className="border border-border shadow-sm rounded-xl bg-white overflow-hidden relative group cursor-pointer hover:shadow-md hover:border-primary/50 transition-all duration-200"
                         onClick={() => handleStatClick(stat.type)}
                     >
-                        <CardHeader className="flex flex-row items-center justify-between pb-2 px-6 pt-6">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
-                            <stat.icon className={`h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors`} />
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 px-4 pt-4 sm:px-6 sm:pt-6">
+                            <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground leading-tight">{stat.label}</CardTitle>
+                            <stat.icon className={`h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground group-hover:text-primary transition-colors`} />
                         </CardHeader>
-                        <CardContent className="px-6 pb-6">
-                            <div className="text-2xl font-bold text-foreground">{stat.value}</div>
-                            <p className="text-xs text-muted-foreground mt-1">{stat.sub}</p>
+                        <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
+                            <div className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</div>
+                            <p className="text-[9px] sm:text-xs text-muted-foreground mt-1 leading-tight line-clamp-2">{stat.sub}</p>
                         </CardContent>
                     </Card>
                 ))}
@@ -481,8 +481,8 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent className="p-0">
-                    <Table>
+                <CardContent className="p-0 overflow-x-auto relative w-full">
+                    <Table className="min-w-[800px]">
                         <TableHeader>
                             <TableRow className="hover:bg-transparent">
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Personnel</TableHead>

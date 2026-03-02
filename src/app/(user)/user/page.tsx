@@ -25,7 +25,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSam
 import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
 import { getBrowserTimezone } from "@/lib/timezone"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger, SheetClose } from "@/components/ui/sheet"
 import { statusConfig } from "@/components/UserStatusDropdown"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -2013,9 +2013,11 @@ export default function UserPortal() {
                                             <SheetTitle className="text-sm font-bold text-slate-800 uppercase tracking-wide">Today's Activity</SheetTitle>
                                             <SheetDescription className="text-[10px] font-medium text-slate-400">Counters & Activity log</SheetDescription>
                                         </div>
-                                        <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-                                            <History className="w-4 h-4 text-slate-400" />
-                                        </div>
+                                        <SheetClose asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm hover:bg-slate-100/50">
+                                                <X className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+                                            </Button>
+                                        </SheetClose>
                                     </div>
 
                                     {/* Status Visualization Here */}
@@ -2382,15 +2384,15 @@ export default function UserPortal() {
                                             </div>
                                         </div>
 
-                                        <div className="overflow-x-auto scrollbar-hide -mx-4 sm:mx-0">
-                                            <Table>
+                                        <div className="relative overflow-x-auto w-full pb-4 px-0">
+                                            <Table className="min-w-[800px]">
                                                 <TableHeader className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-20">
                                                     <TableRow className="hover:bg-transparent border-b-slate-100">
                                                         <TableHead className="w-[280px] sm:w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
                                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 hidden md:table-cell">Location</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 hidden lg:table-cell">Department</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400 hidden xl:table-cell">Employment Location</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
+                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employment Location</TableHead>
                                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Last Active</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
@@ -2449,7 +2451,7 @@ export default function UserPortal() {
                                                                             )}
                                                                         </div>
                                                                     </TableCell>
-                                                                    <TableCell className="hidden md:table-cell">
+                                                                    <TableCell>
                                                                         <div className="flex flex-col gap-1">
                                                                             {isOnline && staff.lastAttendance?.mode ? (
                                                                                 <>
@@ -2650,7 +2652,7 @@ export default function UserPortal() {
                                         </div>
                                     ) : (
                                         <>
-                                            <div className="overflow-x-auto scrollbar-hide -mx-4 sm:mx-0">
+                                            <div className="relative overflow-x-auto w-full pb-4 px-0">
                                                 <div className="min-w-[700px]">
                                                     <div className="grid grid-cols-7 border-b border-border bg-slate-50/50">
                                                         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (

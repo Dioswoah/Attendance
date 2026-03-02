@@ -22,6 +22,8 @@ import { useRouter } from "next/navigation"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
 import { Breadcrumbs } from "@/components/Breadcrumbs"
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet"
+import { Menu, X } from "lucide-react"
 
 import { useSession } from "next-auth/react"
 
@@ -156,21 +158,82 @@ export default function AdminLayout({
 
             {/* Main Content Area */}
             <div className="flex flex-col flex-1 sm:pl-64 min-h-screen min-w-0">
-                <header className="sticky top-0 z-40 flex h-16 items-center justify-between px-8 bg-white/80 backdrop-blur-md border-b border-border">
+                <header className="sticky top-0 z-40 flex h-16 items-center justify-between px-4 sm:px-8 bg-white/80 backdrop-blur-md border-b border-border">
                     <div className="flex items-center gap-2">
+                        {/* Mobile Menu Trigger */}
+                        <Sheet>
+                            <SheetTrigger asChild>
+                                <Button variant="ghost" size="icon" className="sm:hidden -ml-2 shrink-0">
+                                    <Menu className="h-5 w-5" />
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="w-72 p-0 flex flex-col bg-white [&>button]:hidden">
+                                <div className="flex h-16 items-center px-6 border-b border-border justify-between sticky top-0 bg-white z-10 shrink-0">
+                                    <Link href="/admin" className="flex items-center gap-3 group">
+                                        <div className="h-10 w-10 bg-white border border-border rounded-xl flex items-center justify-center shadow-sm overflow-hidden p-1 shrink-0">
+                                            <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-base font-bold tracking-tight text-foreground leading-none truncate">Redadair</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-0.5 truncate">Admin Portal</span>
+                                        </div>
+                                    </Link>
+                                    <SheetClose asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100 shrink-0">
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    </SheetClose>
+                                </div>
+                                <nav className="flex-1 p-4 space-y-1 overflow-y-auto min-h-0">
+                                    {navItems.map((item) => {
+                                        const isActive = pathname === item.href
+                                        return (
+                                            <SheetClose asChild key={item.href}>
+                                                <Link href={item.href}>
+                                                    <Button
+                                                        variant="ghost"
+                                                        className={`w-full justify-start h-10 rounded-lg gap-3 px-3 transition-all duration-200 ${isActive
+                                                            ? "bg-[#8B2323] text-white shadow-md font-bold uppercase tracking-wider text-xs"
+                                                            : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-bold uppercase tracking-wider text-xs"
+                                                            }`}
+                                                    >
+                                                        <item.icon className="h-4 w-4 shrink-0" />
+                                                        <span className="flex-1 text-left truncate">
+                                                            {item.label}
+                                                        </span>
+                                                    </Button>
+                                                </Link>
+                                            </SheetClose>
+                                        )
+                                    })}
+                                </nav>
+                                <div className="mt-auto p-4 border-t border-border shrink-0 bg-white">
+                                    <SheetClose asChild>
+                                        <Button
+                                            variant="ghost"
+                                            className="w-full justify-start h-10 rounded-lg gap-3 px-3 text-red-600 hover:text-white hover:bg-red-600 transition-all font-bold text-xs uppercase tracking-wider"
+                                            onClick={handleExit}
+                                        >
+                                            <LogOut className="h-4 w-4 shrink-0" />
+                                            <span className="truncate">Exit Admin</span>
+                                        </Button>
+                                    </SheetClose>
+                                </div>
+                            </SheetContent>
+                        </Sheet>
                         <Breadcrumbs />
                     </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex flex-col text-right">
-                            <span className="text-sm font-semibold text-foreground leading-none">Administrator</span>
-                            <span className="text-xs text-muted-foreground mt-0.5">Authorized</span>
+                    <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                        <div className="hidden sm:flex flex-col text-right">
+                            <span className="text-sm font-semibold text-foreground leading-none truncate">Administrator</span>
+                            <span className="text-xs text-muted-foreground mt-0.5 truncate">Authorized</span>
                         </div>
                         <TimezoneSettings />
                         <NotificationBell role="ADMIN" />
                     </div>
                 </header>
 
-                <main className="flex-1 p-8 min-w-0">
+                <main className="flex-1 p-4 lg:p-8 min-w-0 w-full">
                     {children}
                 </main>
                 <ScrollIndicator variant="maroon" />

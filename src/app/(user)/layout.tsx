@@ -242,7 +242,7 @@ function UserLayoutInner({
         : 'Staff'
 
     return (
-        <div className="min-h-screen bg-background flex font-sans selection:bg-red-100 selection:text-red-900">
+        <div className="min-h-screen bg-background flex flex-col lg:flex-row font-sans selection:bg-red-100 selection:text-red-900 w-full relative overflow-x-hidden">
             {/* Soft background glow */}
             <div className="fixed top-0 left-0 h-[500px] w-[500px] bg-red-100/30 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
 
@@ -477,9 +477,9 @@ function UserLayoutInner({
                             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
                             onClick={() => setSidebarOpen(false)}
                         />
-                        <aside className="fixed left-0 top-0 bottom-0 w-72 bg-white border-sidebar-border z-50 lg:hidden animate-in slide-in-from-left duration-300">
+                        <aside className="fixed inset-y-0 left-0 w-72 bg-white border-r border-slate-200 z-50 lg:hidden animate-in slide-in-from-left duration-300 flex flex-col shadow-2xl">
                             {/* Mobile Logo */}
-                            <div className="p-6 border-sidebar-border flex items-center justify-between">
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-red-50 overflow-hidden">
                                         <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
@@ -500,7 +500,7 @@ function UserLayoutInner({
                             </div>
 
                             {/* Mobile Navigation */}
-                            <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+                            <nav className="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto">
                                 {navItems.map((item) => {
                                     const Icon = item.icon
                                     const isActive = pathname === item.href
@@ -525,8 +525,8 @@ function UserLayoutInner({
                                                 className={cn(
                                                     "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
                                                     isActive && !hasSubItems
-                                                        ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-lg shadow-sidebar-accent/20"
-                                                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground"
+                                                        ? "bg-[#8B2323] text-white shadow-lg shadow-[#8B2323]/20"
+                                                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                                                 )}
                                             >
                                                 <Icon className="h-6 w-6" />
@@ -538,7 +538,7 @@ function UserLayoutInner({
                                                 ) : null}
                                                 {hasSubItems && (
                                                     <ChevronRight className={cn(
-                                                        "h-4 w-4 shrink-0 transition-transform duration-200 text-sidebar-foreground/50",
+                                                        "h-4 w-4 shrink-0 transition-transform duration-200 text-slate-400",
                                                         isCurrentlyExpandedMobile ? "rotate-90" : ""
                                                     )} />
                                                 )}
@@ -601,14 +601,65 @@ function UserLayoutInner({
                                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mt-1.5">{userRole}</p>
                                     </div>
                                 </div>
-                                <Button
-                                    variant="ghost"
-                                    onClick={() => signOut({ callbackUrl: '/' })}
-                                    className="w-full h-12 gap-3 text-xs font-black uppercase tracking-widest text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl"
-                                >
-                                    <LogOut className="w-5 h-5" />
-                                    <span>Sign Out</span>
-                                </Button>
+                                <div className="grid grid-cols-2 gap-2 w-full">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                className="w-full h-12 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-slate-900 border-slate-200"
+                                            >
+                                                <Settings className="w-4 h-4" />
+                                                <span>Settings</span>
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                            align="center"
+                                            side="top"
+                                            sideOffset={12}
+                                            className="w-72 rounded-[1.5rem] p-2 bg-white/95 backdrop-blur-md shadow-2xl border-slate-100 animate-in fade-in zoom-in-95 duration-200"
+                                        >
+                                            <div className="px-3 py-3 border-b border-slate-50 mb-1">
+                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Settings & Preferences</p>
+                                            </div>
+
+                                            <WorkHoursSettings />
+
+                                            <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
+                                                <TimezoneSettings
+                                                    compact
+                                                    showLabel={false}
+                                                    trigger={
+                                                        <div className="flex items-center w-full px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group">
+                                                            <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-100 transition-colors">
+                                                                <Globe className="w-4 h-4" />
+                                                            </div>
+                                                            <div className="flex-1 ml-3 overflow-hidden">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-bold text-slate-700">Display Timezone</span>
+                                                                    <div className="h-6 w-fit px-2 rounded-md bg-slate-50 flex items-center justify-center border border-slate-100 italic text-[10px] text-slate-400 group-hover:bg-white transition-colors">
+                                                                        {((session?.user as any)?.useCurrentTimezone || (session?.user as any)?.selectedTimezone === Intl.DateTimeFormat().resolvedOptions().timeZone)
+                                                                            ? "Local"
+                                                                            : ((session?.user as any)?.selectedTimezone || "UTC").split('/').pop()?.replace('_', ' ')}
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-[10px] text-slate-400 font-medium truncate">Adjust time display preferences</p>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                />
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => signOut({ callbackUrl: '/' })}
+                                        className="w-full h-12 gap-2 text-[10px] font-black uppercase tracking-widest text-[#8B2323] hover:text-white hover:bg-[#8B2323] rounded-xl transition-colors border border-transparent hover:border-[#8B2323]"
+                                    >
+                                        <LogOut className="w-4 h-4" />
+                                        <span>Sign Out</span>
+                                    </Button>
+                                </div>
                             </div>
                         </aside>
                     </>
@@ -616,7 +667,7 @@ function UserLayoutInner({
             }
 
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col min-h-screen">
+            <div className="flex-1 flex flex-col min-h-screen min-w-0 w-full overflow-x-hidden">
                 {/* Top Header - Mobile */}
                 <header className="lg:hidden bg-white border-b border-border px-4 py-4 flex items-center justify-between sticky top-0 z-30">
                     <Button
@@ -634,17 +685,6 @@ function UserLayoutInner({
                         <span className="text-xs font-black italic uppercase tracking-tighter text-slate-900">Redadair</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        {userRoles.includes('ADMIN') && (
-                            <Link href="/admin">
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="border-2 border-red-600 text-red-600 hover:bg-red-600 hover:text-white rounded-xl h-10 w-10"
-                                >
-                                    <LayoutDashboard className="h-4 w-4" />
-                                </Button>
-                            </Link>
-                        )}
                         <div id="topbar-clock-container-mobile"></div>
                         <div id="topbar-activity-container-mobile"></div>
                         <UserOnboardingTour mode="trigger" />
@@ -668,7 +708,7 @@ function UserLayoutInner({
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 flex flex-col relative z-10 p-4 lg:p-8">
+                <main className="flex-1 flex flex-col relative z-10 p-4 lg:p-8 w-full min-w-0">
                     {children}
                 </main>
             </div>
