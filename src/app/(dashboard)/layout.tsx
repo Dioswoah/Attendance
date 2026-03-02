@@ -22,7 +22,7 @@ import { useRouter } from "next/navigation"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
 import { Breadcrumbs } from "@/components/Breadcrumbs"
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle } from "@/components/ui/sheet"
 import { Menu, X } from "lucide-react"
 
 import { useSession } from "next-auth/react"
@@ -168,6 +168,7 @@ export default function AdminLayout({
                                 </Button>
                             </SheetTrigger>
                             <SheetContent side="left" className="w-72 p-0 flex flex-col bg-white [&>button]:hidden">
+                                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                                 <div className="flex h-16 items-center px-6 border-b border-border justify-between sticky top-0 bg-white z-10 shrink-0">
                                     <Link href="/admin" className="flex items-center gap-3 group">
                                         <div className="h-10 w-10 bg-white border border-border rounded-xl flex items-center justify-center shadow-sm overflow-hidden p-1 shrink-0">
