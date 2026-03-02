@@ -289,12 +289,24 @@ export default function AdminNotificationsPage() {
                                 {notificationType === "CUSTOM" && (
                                     <div className="space-y-4 animate-in slide-in-from-top-2">
                                         <div className="space-y-2">
-                                            <Label>Custom Subject (Email)</Label>
-                                            <Input value={customSubject} onChange={e => setCustomSubject(e.target.value)} placeholder="[RSA] Important Update" />
+                                            <Label className={deliveryMethod === 'IN_APP' ? "text-muted-foreground" : ""}>Custom Subject (Email)</Label>
+                                            <Input
+                                                value={customSubject}
+                                                onChange={e => setCustomSubject(e.target.value)}
+                                                placeholder="[RSA] Important Update"
+                                                disabled={deliveryMethod === 'IN_APP'}
+                                                className={deliveryMethod === 'IN_APP' ? "bg-slate-50 cursor-not-allowed" : ""}
+                                            />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Custom Title (App)</Label>
-                                            <Input value={customTitle} onChange={e => setCustomTitle(e.target.value)} placeholder="Important Update" />
+                                            <Label className={deliveryMethod === 'EMAIL' ? "text-muted-foreground" : ""}>Custom Title (App)</Label>
+                                            <Input
+                                                value={customTitle}
+                                                onChange={e => setCustomTitle(e.target.value)}
+                                                placeholder="Important Update"
+                                                disabled={deliveryMethod === 'EMAIL'}
+                                                className={deliveryMethod === 'EMAIL' ? "bg-slate-50 cursor-not-allowed" : ""}
+                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Custom Message Body</Label>

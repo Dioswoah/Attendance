@@ -33,7 +33,11 @@ export async function POST(req: Request) {
             }
         });
 
-        if (!adminAccount?.access_token) {
+        // Prefer active session token as it's refreshed by NextAuth, fallback to DB
+        const activeAccessToken = session?.accessToken || adminAccount?.access_token;
+        const activeRefreshToken = session?.refreshToken || adminAccount?.refresh_token;
+
+        if (!activeAccessToken) {
             return NextResponse.json({ error: "Admin Google account not linked properly. Please sign in again to refresh your connection." }, { status: 400 })
         }
 
@@ -97,7 +101,7 @@ export async function POST(req: Request) {
             }
 
             // Email Notification
-            if ((deliveryMethod === "BOTH" || deliveryMethod === "EMAIL") && user.email && adminAccount.access_token) {
+            if ((deliveryMethod === "BOTH" || deliveryMethod === "EMAIL") && user.email && activeAccessToken) {
                 const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app'
                 await sendGeneralEmail({
                     toEmail: user.email,
@@ -106,8 +110,8 @@ export async function POST(req: Request) {
                     message: `Hi <strong>${user.name}</strong>,<br/><br/>${message}`,
                     link: `${appUrl}/user`,
                     linkText: "View Dashboard",
-                    accessToken: adminAccount.access_token,
-                    refreshToken: adminAccount.refresh_token || undefined
+                    accessToken: activeAccessToken,
+                    refreshToken: activeRefreshToken || undefined
                 })
             }
             notificationsCreated++;
