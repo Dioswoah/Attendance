@@ -60,7 +60,7 @@ $CLOUD_RUN_APP_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENC
 $jobExists = gcloud run jobs describe migrate-db --region $REGION --quiet 2>$null
 if (-not $jobExists) {
     Write-Host "Creating migrate-db job..." -ForegroundColor Cyan
-    gcloud run jobs create migrate-db `                                                                                                                                               
+    gcloud run jobs create migrate-db `
       --image $IMAGE_TAG `
       --region $REGION `
       --set-env-vars "NODE_ENV=production,DATABASE_URL=$CLOUD_RUN_MIGRATION_URL" `
