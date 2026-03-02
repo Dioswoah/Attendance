@@ -14,7 +14,8 @@ import {
     Clock,
     History,
     ShieldCheck,
-    Loader2
+    Loader2,
+    BellRing
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -98,6 +99,7 @@ export default function AdminLayout({
         { href: "/admin/history", label: "Record", icon: History },
         { href: "/admin/manager-activity", label: "Manager Activity", icon: ShieldCheck },
         { href: "/admin/reports", label: "Export", icon: FileText },
+        { href: "/admin/notifications", label: "Notifications", icon: BellRing },
         { href: "/admin/settings", label: "Settings", icon: Settings },
     ]
 
