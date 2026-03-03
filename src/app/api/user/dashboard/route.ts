@@ -30,7 +30,8 @@ export async function GET() {
             myLeaves,
             myAttendanceRequests,
             employees,
-            teamLeavesApproved
+            teamLeavesApproved,
+            latestAttendanceRaw
         ] = await Promise.all([
             // 1. Profile
             prisma.user.findUnique({
@@ -78,7 +79,7 @@ export async function GET() {
                 where: { userId, status: 'PENDING', deletedAt: null },
                 orderBy: { createdAt: 'desc' }
             }),
-            // 6. Employees List (Staff Table)
+            // 6. Employees List (Staff Table) - FLAT (No nested attendance)
             prisma.user.findMany({
                 where: { isArchived: false, deletedAt: null },
                 select: {
@@ -93,16 +94,6 @@ export async function GET() {
                     customStatusMessage: true,
                     employmentLocation: true,
                     selectedTimezone: true,
-                    attendance: {
-                        take: 1,
-                        orderBy: { clockIn: 'desc' },
-                        where: { deletedAt: null },
-                        select: {
-                            clockIn: true,
-                            mode: true,
-                            locationDetails: true
-                        }
-                    }
                 },
                 orderBy: { name: 'asc' }
             }),
@@ -113,7 +104,14 @@ export async function GET() {
                     endDate: { gte: safetyStart },
                     deletedAt: null
                 }
-            })
+            }),
+            // 8. RAW SQL for Latest Attendance (Near Instant vs Prisma Lateral Joins)
+            prisma.$queryRaw`
+                SELECT DISTINCT ON ("userId") "userId", "clockIn", "mode", "locationDetails" 
+                FROM "Attendance" 
+                WHERE "deletedAt" IS NULL 
+                ORDER BY "userId", "clockIn" DESC
+            `
         ])
 
         // Transform summary records to include UI-friendly status strings 
@@ -152,8 +150,11 @@ export async function GET() {
             return transformMine(summaryList)
         }
 
+        // Map raw SQL to User IDs for instantaneous merging
+        const latestAttMap = new Map((latestAttendanceRaw as any[]).map(r => [r.userId, r]))
+
         const detailedEmployees = employees.map((emp: any) => {
-            const raw = emp.attendance && emp.attendance.length > 0 ? emp.attendance[0] : null;
+            const raw = latestAttMap.get(emp.id);
             let lastAttendance = null;
             if (raw) {
                 lastAttendance = {
@@ -162,9 +163,8 @@ export async function GET() {
                     locationDetails: raw.locationDetails
                 }
             }
-            const { attendance, ...rest } = emp
             return {
-                ...rest,
+                ...emp,
                 lastAttendance
             }
         })
