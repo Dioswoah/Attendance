@@ -389,6 +389,7 @@ export default function AdminNotificationsPage() {
                                         <TableRow className="border-border hover:bg-transparent">
                                             <TableHead className="py-3 px-6 font-medium text-muted-foreground text-xs uppercase tracking-wider">Timestamp</TableHead>
                                             <TableHead className="py-3 px-6 font-medium text-muted-foreground text-xs uppercase tracking-wider">Recipient</TableHead>
+                                            <TableHead className="py-3 px-6 font-medium text-muted-foreground text-xs uppercase tracking-wider">Method</TableHead>
                                             <TableHead className="py-3 px-6 font-medium text-muted-foreground text-xs uppercase tracking-wider">Category</TableHead>
                                             <TableHead className="py-3 px-6 font-medium text-muted-foreground text-xs uppercase tracking-wider">Title / Subject</TableHead>
                                             <TableHead className="py-3 px-6 font-medium text-muted-foreground text-xs uppercase tracking-wider hidden md:table-cell">Snippet</TableHead>
@@ -408,23 +409,28 @@ export default function AdminNotificationsPage() {
                                                 <TableCell className="py-3 px-6">
                                                     <div className="flex flex-col">
                                                         <span className="font-semibold text-foreground text-sm flex items-center gap-2">
-                                                            {log.user?.name || "Unknown"}
+                                                            {log.details?.recipientName || "Unknown"}
                                                         </span>
                                                         <span className="text-xs text-muted-foreground mt-0.5">
-                                                            {log.user?.email || "No email"}
+                                                            {log.details?.recipientEmail || "No email"}
                                                         </span>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="py-3 px-6">
+                                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase ${log.details?.deliveryMethod === 'EMAIL' ? 'bg-blue-50 text-blue-600' : log.details?.deliveryMethod === 'IN_APP' ? 'bg-purple-50 text-purple-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                                        {log.details?.deliveryMethod ? log.details.deliveryMethod.replace('_', ' ') : 'BOTH'}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="py-3 px-6">
                                                     <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-slate-100 text-slate-700">
-                                                        {log.type}
+                                                        {log.details?.type || log.action}
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="py-3 px-6 text-sm font-medium">
-                                                    {(log.title || 'Notification').replace(/^\[RSA\]\s*/i, '')}
+                                                    {(log.details?.title || log.details?.subject || 'Notification').replace(/^\[RSA\]\s*/i, '')}
                                                 </TableCell>
-                                                <TableCell className="py-3 px-6 text-xs text-slate-500 max-w-[250px] truncate hidden md:table-cell" title={log.message}>
-                                                    {log.message}
+                                                <TableCell className="py-3 px-6 text-xs text-slate-500 max-w-[250px] truncate hidden md:table-cell" title={log.details?.message}>
+                                                    {log.details?.message}
                                                 </TableCell>
                                             </TableRow>
                                         ))}

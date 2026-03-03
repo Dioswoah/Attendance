@@ -11,9 +11,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
         const { id } = await params
 
-        // Delete all active sessions for this user to force them to log back in
-        await prisma.session.deleteMany({
-            where: { userId: id }
+        // Update the user's forceLogoutAt timestamp
+        // This will be checked in the auth callback to invalidate existing JWTs
+        await prisma.user.update({
+            where: { id },
+            data: { forceLogoutAt: new Date() }
         })
 
         return NextResponse.json({ message: "User signed out successfully" })

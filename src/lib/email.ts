@@ -1,1048 +1,313 @@
+import nodemailer from 'nodemailer';
+import { prisma } from './prisma';
 
-import { google } from 'googleapis';
-import { prisma } from './prisma'; // Changed from @/lib/prisma to avoid alias issues in server.ts
+const SENDER_EMAIL = '"Staff Availability" <staffavailability@redadair.com.au>';
 
-// Helper to check if emails are enabled
+const transporter = nodemailer.createTransport({
+    host: 'smtp.zeptomail.com',
+    port: 587,
+    auth: {
+        user: 'emailapikey',
+        pass: process.env.ZEPTOMAIL_PASSWORD,
+    },
+});
+
 async function isEmailEnabled(): Promise<boolean> {
-  try {
-    const setting = await prisma.systemSettings.findUnique({
-      where: { key: 'email_notifications_enabled' }
-    });
-    // Default to true if setting doesn't exist yet
-    return setting ? setting.value === 'true' : true;
-  } catch (error) {
-    console.warn("Failed to check email settings, defaulting to true:", error);
-    return true;
-  }
+    try {
+        const setting = await prisma.systemSettings.findUnique({
+            where: { key: 'email_notifications_enabled' }
+        });
+        return setting ? setting.value === 'true' : true;
+    } catch (error) {
+        console.warn("Failed to check email settings, defaulting to true:", error);
+        return true;
+    }
 }
 
-interface LeaveRequestEmailProps {
-  managerName: string;
-  managerEmail: string;
-  userName: string;
-  userEmail: string;
-  userAccessToken: string; // OAuth2 access token from the user's session
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  duration: string;
-  reason?: string;
-  leaveId: string;
-  refreshToken?: string;
+interface TemplateProps {
+    title: string;
+    subtitle?: string;
+    buttonText: string;
+    buttonLink: string;
+    greetingName?: string;
+    bodyHtml: string;
 }
 
+function buildEmailHtml(props: TemplateProps): string {
+    const { title, subtitle, buttonText, buttonLink, greetingName, bodyHtml } = props;
 
-export async function sendLeaveRequestEmail({
-  managerName,
-  managerEmail,
-  userName,
-  userEmail,
-  userAccessToken,
-  leaveType,
-  startDate,
-  endDate,
-  duration,
-  reason,
-  refreshToken
-}: LeaveRequestEmailProps) {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending email to ${managerEmail} (Global setting disabled)`);
-      return;
-    }
-
-    console.log(`[Email Service] Attempting to send email to ${managerEmail} from ${userEmail} using Gmail API`);
-
-    // Set up OAuth2 client with the user's access token
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET,
-      process.env.NEXTAUTH_URL
-    );
-
-    oauth2Client.setCredentials({
-      access_token: userAccessToken,
-      refresh_token: refreshToken
-    });
-
-    // Auto-refresh if possible (ensure fresh token)
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-    const emailContent = `From: "${userName}" <${userEmail}>
-To: ${managerEmail}
-Subject: [RSA] Leave Request: ${userName} - ${leaveType}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request Notification</h2>
+    return `
+<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+  
+  <div style="background-color: #8B2323; padding: 35px 20px; color: #ffffff; text-align: center;">
+    <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.025em;">${title}</h1>
+    ${subtitle ? `<p style="margin: 8px 0 0 0; font-size: 15px; opacity: 0.9;">${subtitle}</p>` : ''}
   </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${managerName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Hope you're having a great day! <strong>${userName}</strong> has just submitted a new leave request that requires your friendly review.</p>
+
+  <div style="background-color: #ffffff; padding: 35px 30px;">
     
-    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Leave Type:</strong> ${leaveType}</p>
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Duration:</strong> ${duration}</p>
-      ${reason ? `<p style="margin: 8px 0; color: #7f1d1d;"><strong>Reason:</strong> ${reason}</p>` : ''}
-    </div>
-
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">Whenever you have a moment, please log in to the User Portal to review and take action.</p>
-    <div style="text-align: center;">
-      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Request</a>
-    </div>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    // Encode email in base64url format
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    // Send the email
-    const result = await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: {
-        raw: encodedMessage,
-      },
-    });
-
-    console.log("[Email Service] Message sent successfully via Gmail API. ID:", result.data.id);
-    return result.data;
-  } catch (error) {
-    console.error("[Email Service] FAILED to send email via Gmail API:", error);
-    // Don't throw, just log. We don't want to block the leave creation if email fails.
-  }
-}
-
-interface LeaveStatusUpdateEmailProps {
-  userName: string;
-  userEmail: string;
-  managerName: string;
-  managerEmail: string;
-  managerAccessToken: string;
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  status: 'APPROVED' | 'DECLINED';
-  updatedAt: string;
-  declineReason?: string;
-  managerRefreshToken?: string;
-}
-
-export async function sendLeaveStatusUpdateEmail({
-  userName,
-  userEmail,
-  managerName,
-  managerEmail,
-  managerAccessToken,
-  leaveType,
-  startDate,
-  endDate,
-  status,
-  updatedAt,
-  declineReason,
-  managerRefreshToken
-}: LeaveStatusUpdateEmailProps) {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending STATUS UPDATE email (Global setting disabled)`);
-      return;
-    }
-
-    console.log(`[Email Service] Attempting to send STATUS UPDATE email from ${managerEmail} to ${userEmail}`);
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET
-    );
-
-    oauth2Client.setCredentials({
-      access_token: managerAccessToken,
-      refresh_token: managerRefreshToken
-    });
-
-    // Auto-refresh if possible
-    if (managerRefreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh manager token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const statusText = status === 'APPROVED' ? 'Approved' : 'Unable to Approve';
-    const displayStatus = status === 'APPROVED' ? 'Approved' : 'Not Approved';
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "${managerName}" <${managerEmail}>
-To: ${userEmail}
-Subject: [RSA] Update regarding your Leave Request
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request Update</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Your recent leave request has been reviewed by <strong>${managerName}</strong>.</p>
-    
-    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Status:</strong> <span style="font-weight: bold;">${displayStatus}</span></p>
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Leave Type:</strong> ${leaveType}</p>
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
-      ${status === 'DECLINED' && declineReason ? `<p style="margin: 8px 0; color: #991b1b;"><strong>Note from Manager:</strong> ${declineReason}</p>` : ''}
-    </div>
-
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">You can view the full details and history of your requests on the portal.</p>
-    <div style="text-align: center;">
-      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Dashboard</a>
-    </div>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-
-    console.log("[Email Service] Status update email sent successfully.");
-  } catch (error) {
-    console.error("[Email Service] FAILED to send status update email:", error);
-  }
-}
-
-interface LeaveActionEmailProps {
-  managerName: string;
-  managerEmail: string;
-  userName: string;
-  userEmail: string;
-  userAccessToken: string;
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  action: 'UPDATED' | 'CANCELLED';
-  originalSubject?: string; // To help with threading
-  refreshToken?: string;
-}
-
-export async function sendLeaveActionEmail({
-  managerName,
-  managerEmail,
-  userName,
-  userEmail,
-  userAccessToken,
-  leaveType,
-  startDate,
-  endDate,
-  action,
-  refreshToken
-}: LeaveActionEmailProps) {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending ${action} email (Global setting disabled)`);
-      return;
-    }
-
-    console.log(`[Email Service] Sending ${action} email to ${managerEmail} from ${userEmail}`);
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET,
-      process.env.NEXTAUTH_URL
-    );
-
-    oauth2Client.setCredentials({
-      access_token: userAccessToken,
-      refresh_token: refreshToken
-    });
-
-    // Auto-refresh if possible
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh user token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const subject = `[RSA] Leave Request ${action === 'UPDATED' ? 'Updated' : 'Cancelled'}: ${userName}`;
-    const actionText = action === 'UPDATED' ? 'updated' : 'cancelled';
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "${userName}" <${userEmail}>
-To: ${managerEmail}
-Subject: ${subject}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Leave Request ${actionText === 'updated' ? 'Updated' : 'Cancelled'}</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${managerName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Just a quick note that <strong>${userName}</strong> has ${actionText} their leave request.</p>
-    
-    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Leave Type:</strong> ${leaveType}</p>
-      <p style="margin: 8px 0; color: #7f1d1d;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
-      ${action === 'UPDATED' ? '<p style="margin: 8px 0; font-style: italic; color: #991b1b;">The details of the request have been modified by the user.</p>' : ''}
-    </div>
-
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">For full details and to keep our records aligned, please log in to the portal.</p>
-    <div style="text-align: center;">
-      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Go to Portal</a>
-    </div>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-
-    console.log(`[Email Service] ${action} email sent successfully.`);
-  } catch (error) {
-    console.error(`[Email Service] FAILED to send ${action} email:`, error);
-  }
-}
-
-interface AdminActionEmailProps {
-  userName: string;
-  userEmail: string;
-  adminName: string; // "Administrator" or specific admin name
-  adminEmail: string;
-  adminAccessToken: string;
-  actionType: 'ATTENDANCE' | 'LEAVE' | 'BREAK';
-  details: string; // "Clocked in at 09:00", "Annual Leave from ...", "Break: 12:00 - 13:00"
-  date: string;
-  adminRefreshToken?: string;
-}
-
-export async function sendAdminActionEmail({
-  userName,
-  userEmail,
-  adminName,
-  adminEmail,
-  adminAccessToken,
-  actionType,
-  details,
-  date,
-  adminRefreshToken
-}: AdminActionEmailProps) {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending Admin Action (${actionType}) email (Global setting disabled)`);
-      return;
-    }
-
-    console.log(`[Email Service] Sending Admin Action (${actionType}) email to ${userEmail}`);
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET,
-      process.env.NEXTAUTH_URL
-    );
-
-    oauth2Client.setCredentials({
-      access_token: adminAccessToken,
-      refresh_token: adminRefreshToken
-    });
-
-    // Auto-refresh if possible
-    if (adminRefreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh admin token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const subject = `[RSA] Administration Update: New ${actionType.toLowerCase()} entry added`;
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "${adminName}" <${adminEmail}>
-To: ${userEmail}
-Subject: ${subject}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Record Update</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">An administrator recently updated your profile with a new <strong>${actionType.toLowerCase()}</strong> record to ensure your information stays complete and accurate.</p>
-    
-    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca;">
-      <div style="margin-bottom: 12px; display: flex; align-items: flex-start;">
-        <span style="color: #991b1b; font-size: 13px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; width: 100px; display: block;">Date</span>
-        <span style="color: #7f1d1d; font-weight: 600; font-size: 16px;">${date}</span>
-      </div>
-      <div style="display: flex; align-items: flex-start;">
-        <span style="color: #991b1b; font-size: 13px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; width: 100px; display: block;">Details</span>
-        <span style="color: #7f1d1d; font-weight: 500; font-size: 15px; line-height: 1.5;">${details}</span>
+    <div style="text-align: left; color: #1e293b; margin-bottom: 30px;">
+      ${greetingName ? `<p style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: #0f172a;">Hi ${greetingName},</p>` : ''}
+      
+      <div style="font-size: 15px; line-height: 1.6; color: #475569;">
+        ${bodyHtml}
       </div>
     </div>
 
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">You can review this new entry and all your other records anytime on your dashboard.</p>
-    <div style="text-align: center;">
-      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">Review Records</a>
+    <div style="text-align: center; margin-top: 20px;">
+      <a href="${buttonLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-size: 15px; padding: 12px 28px; border-radius: 8px; font-weight: 600; transition: background-color 0.2s;">
+        ${buttonText}
+      </a>
     </div>
+
   </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly administrative notification.<br/>Sent by the Redadair Staff Availability System.</p>
+
+  <div style="background-color: #f1f5f9; padding: 20px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0;">
+    <p style="margin: 0; line-height: 1.6;">This is an automated message from the <strong>Redadair Staff Availability System</strong>.<br/>Please do not reply directly to this email.</p>
   </div>
-</div>`;
 
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-
-    console.log(`[Email Service] Admin action email sent successfully.`);
-  } catch (error) {
-    console.error(`[Email Service] FAILED to send admin action email:`, error);
-  }
+</div>
+  `;
 }
 
-interface BreakLimitEmailProps {
-  userName: string;
-  userEmail: string;
-  userAccessToken: string;
-  totalBreakTime: string;
-  limit: string;
-  actionLink: string; // The URL to end the break
-  refreshToken?: string;
-}
-
-export async function sendBreakLimitEmail({
-  userName,
-  userEmail,
-  userAccessToken,
-  totalBreakTime,
-  limit,
-  actionLink,
-  refreshToken
-}: BreakLimitEmailProps): Promise<boolean> {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending break limit email (Global setting disabled)`);
-      return true;
+interface LeaveRequestEmailProps { managerName: string; managerEmail: string; userName: string; userEmail: string; userAccessToken: string; leaveType: string; startDate: string; endDate: string; duration: string; reason?: string; leaveId: string; refreshToken?: string; }
+export async function sendLeaveRequestEmail({ managerName, managerEmail, userName, userEmail, leaveType, startDate, endDate, duration, reason }: LeaveRequestEmailProps) {
+    try {
+        if (!(await isEmailEnabled())) return;
+        const html = buildEmailHtml({
+            title: `Leave Request: ${userName.toUpperCase()}`,
+            subtitle: `${startDate} - ${endDate}`,
+            buttonText: 'Review in Portal',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            greetingName: managerName,
+            bodyHtml: `
+        <p><strong>${userName}</strong> has submitted a new leave request that requires your review.</p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0;"><strong>Type:</strong> ${leaveType}</p>
+            <p style="margin: 5px 0;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
+            <p style="margin: 5px 0;"><strong>Total Time:</strong> ${duration}</p>
+            ${reason ? `<p style="margin: 5px 0;"><strong>Reason:</strong> ${reason}</p>` : ''}
+        </div>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: managerEmail, replyTo: userEmail, subject: `[RSA] Leave Request: ${userName} - ${leaveType}`, html });
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send leave request email:", error);
     }
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET
-    );
-    oauth2Client.setCredentials({
-      access_token: userAccessToken,
-      refresh_token: refreshToken
-    });
-
-    // Auto-refresh if possible (ensure fresh token)
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const subject = "[RSA] Quick Check-in: Break Status";
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "Attendance System" <${userEmail}>
-To: ${userEmail}
-Subject: ${subject}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Time Check-in</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Hope you're having a good break! Just sending a quick, friendly ping since your break time has reached <strong>${totalBreakTime}</strong> today (daily guideline: ${limit}).</p>
-    
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">If you're refreshed and ready to jump back in, you can easily end your break and get back to work by clicking below.</p>
-
-    <div style="text-align: center; margin-bottom: 16px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break & Clock In</a>
-    </div>
-
-    <p style="font-size: 14px; color: #6b7280; text-align: center; margin-top: 16px;">(No worries if you still need a bit more time! This is just to help you keep track.)</p>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-    console.log(`[Email Service] Sent break limit email to ${userEmail}`);
-    return true;
-  } catch (error) {
-    console.error("[Email Service] FAILED to send break limit email:", error);
-    return false;
-  }
 }
 
-interface BreakExpectedReturnEmailProps {
-  userName: string;
-  userEmail: string;
-  userAccessToken: string;
-  expectedReturnTime: string;
-  actionLink: string;
-  refreshToken?: string;
+interface LeaveStatusUpdateEmailProps { userName: string; userEmail: string; managerName: string; managerEmail: string; managerAccessToken: string; leaveType: string; startDate: string; endDate: string; status: 'APPROVED' | 'DECLINED'; updatedAt: string; declineReason?: string; managerRefreshToken?: string; }
+export async function sendLeaveStatusUpdateEmail({ userName, userEmail, managerName, managerEmail, leaveType, startDate, endDate, status, declineReason }: LeaveStatusUpdateEmailProps) {
+    try {
+        if (!(await isEmailEnabled())) return;
+        const displayStatus = status === 'APPROVED' ? 'Approved' : 'Not Approved';
+        const html = buildEmailHtml({
+            title: `Leave Request ${displayStatus}`,
+            subtitle: `${startDate} - ${endDate}`,
+            buttonText: 'View Details',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            greetingName: userName,
+            bodyHtml: `
+        <p>Your recent leave request has been reviewed by <strong>${managerName}</strong>.</p>
+        <div style="background-color: ${status === 'APPROVED' ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${status === 'APPROVED' ? '#dcfce7' : '#fecaca'}; border-radius: 8px; padding: 15px; margin: 20px 0; color: ${status === 'APPROVED' ? '#166534' : '#991b1b'};">
+            <p style="margin: 0;"><strong>Status:</strong> ${displayStatus}</p>
+            <p style="margin: 5px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
+            <p style="margin: 5px 0;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
+            ${status === 'DECLINED' && declineReason ? `<p style="margin: 10px 0 0 0; padding-top: 10px; border-top: 1px solid #fecaca;"><strong>Note:</strong> ${declineReason}</p>` : ''}
+        </div>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, replyTo: managerEmail, subject: `[RSA] Leave Request ${displayStatus}`, html });
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send leave status update email:", error);
+    }
 }
 
-export async function sendBreakExpectedReturnEmail({
-  userName,
-  userEmail,
-  userAccessToken,
-  expectedReturnTime,
-  actionLink,
-  refreshToken
-}: BreakExpectedReturnEmailProps): Promise<boolean> {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending break return reminder email (Global setting disabled)`);
-      return true;
+interface LeaveActionEmailProps { managerName: string; managerEmail: string; userName: string; userEmail: string; userAccessToken: string; leaveType: string; startDate: string; endDate: string; action: 'UPDATED' | 'CANCELLED'; originalSubject?: string; refreshToken?: string; }
+export async function sendLeaveActionEmail({ managerName, managerEmail, userName, userEmail, leaveType, startDate, endDate, action }: LeaveActionEmailProps) {
+    try {
+        if (!(await isEmailEnabled())) return;
+        const actionText = action === 'UPDATED' ? 'Updated' : 'Cancelled';
+        const html = buildEmailHtml({
+            title: `Leave Request ${actionText}`,
+            subtitle: `${userName}`,
+            buttonText: 'Go to Portal',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            greetingName: managerName,
+            bodyHtml: `
+        <p><strong>${userName}</strong> has <strong>${actionText.toLowerCase()}</strong> their leave request.</p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0;"><strong>Leave Type:</strong> ${leaveType}</p>
+            <p style="margin: 5px 0;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
+        </div>
+        ${action === 'UPDATED' ? '<p style="font-style: italic; color: #64748b;">The details of the request have been modified by the staff member.</p>' : ''}
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: managerEmail, replyTo: userEmail, subject: `[RSA] Leave Request ${actionText}: ${userName}`, html });
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send leave action email:", error);
     }
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET
-    );
-    oauth2Client.setCredentials({
-      access_token: userAccessToken,
-      refresh_token: refreshToken
-    });
-
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const subject = "[RSA] Friendly Reminder: Are you still on break?";
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "Attendance System" <${userEmail}>
-To: ${userEmail}
-Subject: ${subject}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Break Status Check</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">Just another quick, friendly check-in! Your break was expected to end at around <strong>${expectedReturnTime}</strong>.</p>
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">If you're already back at your desk and working hard, you can easily end your break using the button below to update your status.</p>
-
-    <div style="text-align: center; margin-bottom: 16px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">End Break Now</a>
-    </div>
-
-    <p style="font-size: 14px; color: #6b7280; text-align: center; margin-top: 16px;">If you need a little more time, zero problems! We just want to help you stay on track.</p>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-    console.log(`[Email Service] Sent break return reminder email to ${userEmail}`);
-    return true;
-  } catch (error) {
-    console.error("[Email Service] FAILED to send break return reminder email:", error);
-    return false;
-  }
 }
 
-interface ForgottenClockOutEmailProps {
-  userName: string;
-  userEmail: string;
-  userAccessToken: string;
-  date: string;
-  clockOutTime: string;
-  reason: string;
-  refreshToken?: string;
+interface AdminActionEmailProps { userName: string; userEmail: string; adminName: string; adminEmail: string; adminAccessToken: string; actionType: 'ATTENDANCE' | 'LEAVE' | 'BREAK'; details: string; date: string; adminRefreshToken?: string; }
+export async function sendAdminActionEmail({ userName, userEmail, adminName, adminEmail, actionType, details, date }: AdminActionEmailProps) {
+    try {
+        if (!(await isEmailEnabled())) return;
+        const html = buildEmailHtml({
+            title: `Record Updated`,
+            subtitle: `Administrative Action`,
+            buttonText: 'Review My Records',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            greetingName: userName,
+            bodyHtml: `
+        <p>An administrator (<strong>${adminName}</strong>) has updated your <strong>${actionType.toLowerCase()}</strong> record to ensure your information is accurate.</p>
+        <div style="background-color: #f1f5f9; border-left: 4px solid #8B2323; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0;"><strong>Date:</strong> ${date}</p>
+            <p style="margin: 5px 0;"><strong>Details:</strong> ${details}</p>
+        </div>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, replyTo: adminEmail, subject: `[RSA] Administration Update: New ${actionType.toLowerCase()} record added`, html });
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send admin action email:", error);
+    }
 }
 
-export async function sendForgottenClockOutEmail({
-  userName,
-  userEmail,
-  userAccessToken,
-  date,
-  clockOutTime,
-  reason,
-  refreshToken
-}: ForgottenClockOutEmailProps) {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending forgotten clock-out email (Global setting disabled)`);
-      return;
+interface BreakLimitEmailProps { userName: string; userEmail: string; userAccessToken: string; totalBreakTime: string; limit: string; actionLink: string; refreshToken?: string; }
+export async function sendBreakLimitEmail({ userName, userEmail, totalBreakTime, limit, actionLink }: BreakLimitEmailProps): Promise<boolean> {
+    try {
+        if (!(await isEmailEnabled())) return true;
+        const html = buildEmailHtml({
+            title: `Break Time Check-in`,
+            buttonText: 'End Break Now',
+            buttonLink: actionLink,
+            greetingName: userName,
+            bodyHtml: `
+        <p>Hope you're having a good break! We noticed your total break time today has reached <strong>${totalBreakTime}</strong> (current daily guideline: ${limit}).</p>
+        <p>If you're refreshed and ready to jump back in, you can easily end your break by clicking the button below.</p>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, subject: "[RSA] Quick Check-in: Break Status", html });
+        return true;
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send break limit email:", error);
+        return false;
     }
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET
-    );
-    oauth2Client.setCredentials({
-      access_token: userAccessToken,
-      refresh_token: refreshToken
-    });
-
-    // Auto-refresh if possible
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh user token for auto-logout", e);
-      }
-    }
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "Attendance System" <${userEmail}>
-To: ${userEmail}
-Subject: [RSA] Friendly Reminder: Your Attendance Session was Auto-Closed
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">Attendance Status Update</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 24px; color: #1e293b;">Hi <strong>${userName}</strong>,</p>
-    
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      Hello! The system noticed that you did not clock out yesterday. We have automatically clocked you out <strong>${reason === 'shift ended' ? 'using the end time of your nominal hours' : 'at'} (${clockOutTime})</strong>.
-    </p>
-
-    <div style="background-color: #fef2f2; padding: 24px; border-radius: 12px; margin: 32px 0; border: 1px solid #fecaca; text-align: center;">
-      <p style="margin: 0; color: #991b1b; font-size: 14px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em;">Updated Record</p>
-      <p style="margin: 8px 0; color: #7f1d1d; font-weight: 700; font-size: 18px;">${date}</p>
-      <p style="margin: 0; color: #b91c1c; font-size: 13px; font-weight: 600;">Clock Out: ${clockOutTime} (${reason})</p>
-    </div>
-    
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-      If you forgot to clock out earlier or worked overtime, please request an amended record from your manager.
-    </p>
-
-    <p style="font-size: 16px; line-height: 1.7; margin-bottom: 32px;">
-      Please try to remember to click <strong>"Clock Out"</strong> via the portal before heading off next time. Have a wonderful day!
-    </p>
-
-    <div style="text-align: center;">
-      <a href="${appUrl}/user" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 16px 32px; border-radius: 12px; font-size: 16px;">View Dashboard</a>
-    </div>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated reminder.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-    console.log("[Email Service] Forgotten clock-out email sent.");
-  } catch (error) {
-    console.error("[Email Service] FAILED to send forgotten clock-out email:", error);
-  }
 }
 
-interface EmailResult {
-  accepted: string[];
-  rejected: string[];
-  response: string;
+interface BreakExpectedReturnEmailProps { userName: string; userEmail: string; userAccessToken: string; expectedReturnTime: string; actionLink: string; refreshToken?: string; }
+export async function sendBreakExpectedReturnEmail({ userName, userEmail, expectedReturnTime, actionLink }: BreakExpectedReturnEmailProps): Promise<boolean> {
+    try {
+        if (!(await isEmailEnabled())) return true;
+        const html = buildEmailHtml({
+            title: `Still on Break?`,
+            buttonText: 'End Break Now',
+            buttonLink: actionLink,
+            greetingName: userName,
+            bodyHtml: `
+        <p>Just a friendly check-in! Your break was expected to end around <strong>${expectedReturnTime}</strong>.</p>
+        <p>If you're already back at your desk, please click the button below to update your status.</p>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, subject: "[RSA] Friendly Reminder: Are you still on break?", html });
+        return true;
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send break return email:", error);
+        return false;
+    }
+}
+
+interface ForgottenClockOutEmailProps { userName: string; userEmail: string; userAccessToken: string; date: string; clockOutTime: string; reason: string; refreshToken?: string; }
+export async function sendForgottenClockOutEmail({ userName, userEmail, date, clockOutTime, reason }: ForgottenClockOutEmailProps) {
+    try {
+        if (!(await isEmailEnabled())) return;
+        const html = buildEmailHtml({
+            title: `Attendance Session Closed`,
+            subtitle: `${date}`,
+            buttonText: 'View My Dashboard',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            greetingName: userName,
+            bodyHtml: `
+        <p>The system noticed you didn't clock out yesterday. To keep our records complete, we have automatically clocked you out at <strong>${clockOutTime}</strong> (${reason}).</p>
+        <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px; margin: 20px 0; color: #991b1b; text-align: center;">
+            <p style="margin: 0; font-size: 14px; text-transform: uppercase; font-weight: 700;">Final Record</p>
+            <p style="margin: 5px 0; font-size: 18px; font-weight: 700;">${date}</p>
+            <p style="margin: 0;">Clock Out: ${clockOutTime}</p>
+        </div>
+        <p style="font-size: 14px; color: #64748b;">If you actually worked later, please request an amendment from your manager.</p>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, subject: "[RSA] Friendly Reminder: Your Attendance Session was Auto-Closed", html });
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send forgotten clock-out email:", error);
+    }
 }
 
 export type SendEmailResult = Promise<boolean>;
-interface GeneralEmailProps {
-  toEmail: string;
-  subject: string;
-  title: string;
-  message: string;
-  link?: string;
-  linkText?: string;
-  accessToken: string; // Sender's access token
-  refreshToken?: string;
-}
+interface GeneralEmailProps { toEmail: string; subject: string; title: string; message: string; link?: string; linkText?: string; accessToken: string; refreshToken?: string; }
+export async function sendGeneralEmail({ toEmail, subject, title, message, link, linkText = "View Details" }: GeneralEmailProps) {
+    try {
+        // Fix redundancy: detect if message already has a greeting
+        const trimmedMessage = message.trim();
+        const hasGreeting = trimmedMessage.toLowerCase().startsWith('hi ') ||
+            trimmedMessage.toLowerCase().startsWith('hello ') ||
+            trimmedMessage.toLowerCase().startsWith('dear ');
 
-// ... existing imports
-
-interface LateArrivalEmailProps {
-  userName: string;
-  userEmail: string;
-  userAccessToken: string;
-  scheduledStart: string;
-  actionLink: string;
-  refreshToken?: string;
-}
-
-export async function sendLateArrivalEmail({
-  userName,
-  userEmail,
-  userAccessToken,
-  scheduledStart,
-  actionLink,
-  refreshToken
-}: LateArrivalEmailProps): Promise<boolean> {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending late arrival email (Global setting disabled)`);
-      return true;
+        const html = buildEmailHtml({
+            title: title,
+            buttonText: linkText || 'View Details',
+            buttonLink: link || (process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user'),
+            greetingName: hasGreeting ? undefined : 'Team Member',
+            bodyHtml: `<p>${trimmedMessage.replace(/\n/g, '<br/>')}</p>`
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: toEmail, subject: `[RSA] ${subject}`, html });
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send general email:", error);
+        throw new Error('Email failed to send. Check ZeptoMail setup.');
     }
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET
-    );
-    oauth2Client.setCredentials({
-      access_token: userAccessToken,
-      refresh_token: refreshToken
-    });
-
-    // Auto-refresh if possible (ensure fresh token)
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const subject = "[RSA] Check In: Start Your Shift?";
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "Attendance System" <${userEmail}>
-To: ${userEmail}
-Subject: ${subject}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Time to Clock In?</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Just checking in — we noticed you haven't clocked in yet for your shift scheduled at <strong>${scheduledStart}</strong>.</p>
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">If you're already online and simply forgot, you can clock in immediately using the button below. If you're running late or on leave, feel free to ignore this safely!</p>
-
-    <div style="text-align: center; margin-bottom: 16px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock In Now</a>
-    </div>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-    console.log("[Email Service] Late arrival email sent.");
-    return true;
-  } catch (error) {
-    console.error(`[Email Service] FAILED to send late arrival email:`, error);
-    return false;
-  }
 }
 
-interface OverdueDepartureEmailProps {
-  userName: string;
-  userEmail: string;
-  userAccessToken: string;
-  scheduledEnd: string;
-  actionLink: string;
-  refreshToken?: string;
+interface LateArrivalEmailProps { userName: string; userEmail: string; userAccessToken: string; scheduledStart: string; actionLink: string; refreshToken?: string; }
+export async function sendLateArrivalEmail({ userName, userEmail, scheduledStart, actionLink }: LateArrivalEmailProps): Promise<boolean> {
+    try {
+        if (!(await isEmailEnabled())) return true;
+        const html = buildEmailHtml({
+            title: `Ready to Start?`,
+            buttonText: 'Clock In Now',
+            buttonLink: actionLink,
+            greetingName: userName,
+            bodyHtml: `
+        <p>Just checking in! We noticed you haven't clocked in yet for your shift scheduled at <strong>${scheduledStart}</strong>.</p>
+        <p>If you're already online and simply forgot, you can clock in immediately using the button below.</p>
+        <p style="font-size: 14px; color: #64748b; margin-top: 20px;">(If you're running late or on leave, feel free to ignore this safely!)</p>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, subject: "[RSA] Check In: Start Your Shift?", html });
+        return true;
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send late arrival email:", error);
+        return false;
+    }
 }
 
-export async function sendOverdueDepartureEmail({
-  userName,
-  userEmail,
-  userAccessToken,
-  scheduledEnd,
-  actionLink,
-  refreshToken
-}: OverdueDepartureEmailProps): Promise<boolean> {
-  try {
-    const enabled = await isEmailEnabled();
-    if (!enabled) {
-      console.log(`[Email Service] SKIPPED sending overdue departure email (Global setting disabled)`);
-      return true;
+interface OverdueDepartureEmailProps { userName: string; userEmail: string; userAccessToken: string; scheduledEnd: string; actionLink: string; refreshToken?: string; }
+export async function sendOverdueDepartureEmail({ userName, userEmail, scheduledEnd, actionLink }: OverdueDepartureEmailProps): Promise<boolean> {
+    try {
+        if (!(await isEmailEnabled())) return true;
+        const html = buildEmailHtml({
+            title: `Shift Overdue`,
+            buttonText: 'Clock Out Now',
+            buttonLink: actionLink,
+            greetingName: userName,
+            bodyHtml: `
+        <p>Just a friendly reminder that your scheduled shift ended around <strong>${scheduledEnd}</strong>, and you're still clocked in.</p>
+        <p>If you're all done for the day, please click the button below to clock out. If you're still working, no problem — feel free to ignore this message!</p>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, subject: "[RSA] Check Out Reminder: Shift Ended?", html });
+        return true;
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send overdue departure email:", error);
+        return false;
     }
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET
-    );
-    oauth2Client.setCredentials({
-      access_token: userAccessToken,
-      refresh_token: refreshToken
-    });
-
-    // Auto-refresh if possible (ensure fresh token)
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh token, attempting with provided access token", e);
-      }
-    }
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const subject = "[RSA] Check Out Reminder: Shift Ended?";
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `From: "Attendance System" <${userEmail}>
-To: ${userEmail}
-Subject: ${subject}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #374151; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">Shift Wrap-Up</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hi <strong>${userName}</strong>,</p>
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Just a friendly reminder that your scheduled shift ended around <strong>${scheduledEnd}</strong>, and you're still clocked in.</p>
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 32px;">If you're all done for the day, please click below to clock out. If you're working a little late, no problem at all — feel free to ignore this message!</p>
-
-    <div style="text-align: center; margin-bottom: 16px;">
-      <a href="${actionLink}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">Clock Out Now</a>
-    </div>
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-    console.log("[Email Service] Overdue departure email sent.");
-    return true;
-  } catch (error) {
-    console.error("[Email Service] FAILED to send overdue departure email:", error);
-    return false;
-  }
 }
-
-export async function sendGeneralEmail({
-  toEmail,
-  subject,
-  title,
-  message,
-  link,
-  linkText = "View Details",
-  accessToken,
-  refreshToken
-}: GeneralEmailProps) {
-  try {
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.AUTH_GOOGLE_ID,
-      process.env.AUTH_GOOGLE_SECRET
-    );
-    oauth2Client.setCredentials({
-      access_token: accessToken,
-      refresh_token: refreshToken
-    });
-
-    // Auto-refresh if possible
-    if (refreshToken) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-      } catch (e) {
-        console.warn("[Email Service] Failed to refresh general token", e);
-      }
-    }
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-
-    const emailContent = `To: ${toEmail}
-Subject: [RSA] ${subject}
-Content-Type: text/html; charset=utf-8
-
-<div style="font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-  <div style="background-color: #8B2323; padding: 32px 24px; text-align: center;">
-    <div style="margin-bottom: 16px;">
-       <img src="${appUrl}/logo.png" alt="Redadair" style="width: 64px; height: 64px; object-fit: contain; background: white; padding: 8px; border-radius: 16px;" />
-    </div>
-    <h2 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 24px; letter-spacing: -0.025em;">${title}</h2>
-  </div>
-  <div style="padding: 40px 32px;">
-    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px;">${message}</p>
-    
-    ${link ? `
-    <div style="text-align: center; margin-top: 32px; margin-bottom: 16px;">
-      <a href="${link}" style="display: inline-block; background-color: #8B2323; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 12px; font-size: 16px;">${linkText}</a>
-    </div>
-    ` : ''}
-  </div>
-  <div style="background-color: #f1f5f9; padding: 24px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">
-    <p style="margin: 0; line-height: 1.5;">This is a friendly automated message.<br/>Sent by the Redadair Staff Availability System.</p>
-  </div>
-</div>`;
-
-    const encodedMessage = Buffer.from(emailContent)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: { raw: encodedMessage },
-    });
-    console.log(`[Email Service] General email sent to ${toEmail}`);
-  } catch (error) {
-    console.error("[Email Service] FAILED to send general email:", error);
-    throw new Error('Email failed to send. Your Google connection might have expired. Please sign out and sign back in.');
-  }
-}
-

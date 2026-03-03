@@ -116,6 +116,24 @@ export async function POST(req: Request) {
                     refreshToken: activeRefreshToken || undefined
                 })
             }
+            // Log this specific action to ActivityLog
+            await prisma.activityLog.create({
+                data: {
+                    userId: session.user.id, // The admin sending the notification
+                    action: "SEND_ADMIN_NOTIFICATION",
+                    details: {
+                        recipientId: user.id,
+                        recipientName: user.name,
+                        recipientEmail: user.email,
+                        deliveryMethod: deliveryMethod,
+                        type: notifType,
+                        title: title,
+                        message: message,
+                        subject: subject
+                    }
+                }
+            })
+
             notificationsCreated++;
         }
 

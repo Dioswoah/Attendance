@@ -278,6 +278,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     refreshToken: refreshToken,
                     expiresAt: Date.now() + ((account.expires_in as number) * 1000), // expires_in is in seconds
                     id: dbUser?.id || user.id,
+                    issuedAt: Date.now(), // Fallback for some flows, though token.iat is standard
                 };
             }
 
@@ -316,7 +317,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
                     if (dbUser && (dbUser.isArchived || dbUser.deletedAt)) {
                         (session as any).error = "ArchivedUserError";
-                    } else if (dbUser && session.user) {
+                    } else if (dbUser?.forceLogoutAt) {
+                        const forceLogoutTime = new Date(dbUser.forceLogoutAt).getTime();
+                        // iat is seconds, issuedAt is ms. Check both just in case.
+                        const tokenIssuedTime = (token.issuedAt as number) || ((token.iat as number) * 1000);
+
+                        if (forceLogoutTime > tokenIssuedTime) {
+                            console.log(`[Auth] Force Logout detected for ${dbUser.email}. ForceLogoutAt: ${forceLogoutTime}, TokenIssuedAt: ${tokenIssuedTime}`);
+                            (session as any).error = "ForceSignOutError";
+                        }
+                    }
+
+                    if (!(session as any).error && dbUser && session.user) {
                         (session.user as any).department = dbUser.department?.name || "Unassigned";
                         (session.user as any).roles = dbUser.roles || [dbUser.role] || ["USER"];
                         (session.user as any).managerId = dbUser.managerId;
