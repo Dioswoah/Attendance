@@ -84,19 +84,21 @@ export async function POST(req: Request) {
                     message = customMessage || "You have a new administrative notice."
             }
 
-            // In-App Notification
-            if (deliveryMethod === "BOTH" || deliveryMethod === "IN_APP") {
-                await prisma.notification.create({
-                    data: {
-                        userId: user.id,
-                        title: title,
-                        message: message,
-                        type: notifType,
-                        link: "/user"
-                    }
-                })
+            // Log the notification in the database (always)
+            // If it's EMAIL only, we mark it as "read" immediately so it doesn't trigger an unread badge for the user in-app.
+            const dbNotification = await prisma.notification.create({
+                data: {
+                    userId: user.id,
+                    title: title,
+                    message: message,
+                    type: notifType,
+                    link: "/user",
+                    read: deliveryMethod === "EMAIL" // Mark as read if it's strictly an email to prevent in-app badge
+                }
+            })
 
-                // Broadcast for real-time update
+            // In-App Real-time Broadcast
+            if (deliveryMethod === "BOTH" || deliveryMethod === "IN_APP") {
                 broadcastUpdate('notification', { userId: user.id })
             }
 
@@ -118,8 +120,11 @@ export async function POST(req: Request) {
         }
 
         return NextResponse.json({ message: "Notifications sent successfully", count: notificationsCreated })
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error triggering notifications:", error)
-        return NextResponse.json({ error: "An unexpected error occurred." }, { status: 500 })
+        return NextResponse.json({
+            error: error.message || "Failed to send notifications. Try signing out and back in if sending emails."
+        }, { status: 500 })
     }
 }
+

@@ -1042,5 +1042,7 @@ Content-Type: text/html; charset=utf-8
     console.log(`[Email Service] General email sent to ${toEmail}`);
   } catch (error) {
     console.error("[Email Service] FAILED to send general email:", error);
+    throw new Error('Email failed to send. Your Google connection might have expired. Please sign out and sign back in.');
   }
 }
+
