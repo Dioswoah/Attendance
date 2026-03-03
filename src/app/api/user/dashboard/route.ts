@@ -22,16 +22,12 @@ export async function GET() {
     safetyStart.setUTCDate(safetyStart.getUTCDate() - 1)
 
     try {
-        // Fetch everything in one big parallel jump
+        // Fetch only core/personal data for immediate dashboard load
         const [
             user,
             myAttendance,
-            allAttendanceToday,
             myLeaves,
-            myAttendanceRequests,
-            employees,
-            teamLeavesApproved,
-            latestAttendanceRaw
+            myAttendanceRequests
         ] = await Promise.all([
             // 1. Profile
             prisma.user.findUnique({
@@ -55,67 +51,19 @@ export async function GET() {
                 orderBy: { date: 'desc' },
                 take: 20
             }),
-            // 3. All Attendance for today (Staff Table)
-            prisma.attendanceSummary.findMany({
-                where: {
-                    date: { gte: safetyStart }
-                },
-                include: {
-                    rawRecords: {
-                        where: { deletedAt: null },
-                        include: { breaks: true },
-                        orderBy: { clockIn: 'asc' }
-                    }
-                },
-                orderBy: { date: 'desc' }
-            }),
-            // 4. My Leave Requests 
+            // 3. My Leave Requests 
             prisma.leave.findMany({
                 where: { userId, isArchived: false, deletedAt: null },
                 orderBy: { createdAt: 'desc' }
             }),
-            // 5. My Attendance Requests
+            // 4. My Attendance Requests
             prisma.attendanceRequest.findMany({
                 where: { userId, status: 'PENDING', deletedAt: null },
                 orderBy: { createdAt: 'desc' }
-            }),
-            // 6. Employees List (Staff Table) - FLAT (No nested attendance)
-            prisma.user.findMany({
-                where: { isArchived: false, deletedAt: null },
-                select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    managerId: true,
-                    image: true,
-                    departmentId: true,
-                    department: { select: { id: true, name: true } },
-                    availabilityStatus: true,
-                    customStatusMessage: true,
-                    employmentLocation: true,
-                    selectedTimezone: true,
-                },
-                orderBy: { name: 'asc' }
-            }),
-            // 7. Today's Team Leaves (for status indicator)
-            prisma.leave.findMany({
-                where: {
-                    status: 'APPROVED',
-                    endDate: { gte: safetyStart },
-                    deletedAt: null
-                }
-            }),
-            // 8. RAW SQL for Latest Attendance (Near Instant vs Prisma Lateral Joins)
-            prisma.$queryRaw`
-                SELECT DISTINCT ON ("userId") "userId", "clockIn", "mode", "locationDetails" 
-                FROM "Attendance" 
-                WHERE "deletedAt" IS NULL 
-                ORDER BY "userId", "clockIn" DESC
-            `
+            })
         ])
 
         // Transform summary records to include UI-friendly status strings 
-        // Safely transform from Summary back to granular records so frontend feeds/timers don't break
         const transformMine = (summaryList: any[]) => {
             return summaryList.flatMap((s: any) => {
                 if (!s.rawRecords || s.rawRecords.length === 0) return []
@@ -135,7 +83,6 @@ export async function GET() {
                             endTime: b.endTime?.toISOString(),
                             expectedReturnTime: b.expectedReturnTime?.toISOString(),
                         })) || [],
-                        // Inject Summary bounds & overrides so the UI can use them if needed
                         summaryWorkMs: s.totalWorkDuration * 1000,
                         summaryBreakMs: s.totalBreakDuration * 1000,
                         isManualOverride: s.isManualOverride,
@@ -145,40 +92,16 @@ export async function GET() {
             }).sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime())
         }
 
-        // For the Staff List and All Today, we also ensure we flatten it to maintain UI logic
-        const transformStaff = (summaryList: any[]) => {
-            return transformMine(summaryList)
-        }
-
-        // Map raw SQL to User IDs for instantaneous merging
-        const latestAttMap = new Map((latestAttendanceRaw as any[]).map(r => [r.userId, r]))
-
-        const detailedEmployees = employees.map((emp: any) => {
-            const raw = latestAttMap.get(emp.id);
-            let lastAttendance = null;
-            if (raw) {
-                lastAttendance = {
-                    clockIn: raw.clockIn ? raw.clockIn.toISOString() : null,
-                    mode: raw.mode,
-                    locationDetails: raw.locationDetails
-                }
-            }
-            return {
-                ...emp,
-                lastAttendance
-            }
-        })
-
         return NextResponse.json({
             user,
             attendance: {
                 mine: transformMine(myAttendance),
-                allToday: transformStaff(allAttendanceToday)
+                allToday: [] // Staff endpoint handles this now
             },
             leaves: myLeaves,
             attendanceRequests: myAttendanceRequests,
-            staff: detailedEmployees,
-            teamLeaves: teamLeavesApproved
+            staff: [], // Staff endpoint handles this now
+            teamLeaves: [] // Staff endpoint handles this now
         })
 
     } catch (error) {

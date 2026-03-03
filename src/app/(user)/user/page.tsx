@@ -142,7 +142,20 @@ export default function UserPortal() {
         }
     )
 
-    // Sync SWR Data to Local State
+    // Second SWR for Heavy Staff/Team data - this will load in the background
+    const { data: staffData, mutate: mutateStaff } = useSWR(
+        status === 'authenticated' && session?.user?.id ? '/api/user/dashboard/staff' : null,
+        fetcher,
+        {
+            revalidateOnFocus: false,
+            revalidateIfStale: false,
+            dedupingInterval: 60000,
+            refreshInterval: 0,
+            keepPreviousData: true
+        }
+    )
+
+    // Sync Main Dashboard SWR Data to Local State
     useEffect(() => {
         if (dashboardData && !dashboardError) {
             const data = dashboardData
@@ -156,6 +169,33 @@ export default function UserPortal() {
                     setUserTimeZone(getBrowserTimezone())
                 } else if (data.user.selectedTimezone) {
                     setUserTimeZone(data.user.selectedTimezone)
+                }
+
+                // Initial timezone sync hit once
+                const syncTimezone = async () => {
+                    const currentTz = getBrowserTimezone();
+                    if (data.user.useCurrentTimezone && data.user.selectedTimezone !== currentTz) {
+                        try {
+                            const tzRes = await fetch('/api/user/timezone', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    timezone: currentTz,
+                                    useCurrentTimezone: true
+                                })
+                            })
+                            if (tzRes.ok) {
+                                mutateDashboard()
+                            }
+                        } catch (err) {
+                            console.error("Failed to sync timezone on load", err)
+                        }
+                    }
+                    isFirstTimezoneSync.current = false
+                }
+
+                if (isFirstTimezoneSync.current && data.user.useCurrentTimezone) {
+                    syncTimezone()
                 }
 
                 // Set metadata states
@@ -183,46 +223,52 @@ export default function UserPortal() {
                     }
                     loadManagerData()
                 }
-            }
 
-            // Handle Onboarding Logic
-            if (data.user && data.user.employmentLocation !== 'Philippines' && data.user.employmentLocation !== 'Australia') {
-                const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
-                if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
-                    setIsOnboardingOpen(true)
-                    const loadOnboarding = async () => {
-                        const [mRes, dRes] = await Promise.all([
-                            fetch('/api/managers'),
-                            fetch('/api/departments')
-                        ]).catch(() => [null, null])
+                // Check Onboarding
+                if (data.user.employmentLocation !== 'Philippines' && data.user.employmentLocation !== 'Australia') {
+                    const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
+                    if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
+                        setIsOnboardingOpen(true)
+                        const loadOnboarding = async () => {
+                            const [mRes, dRes] = await Promise.all([
+                                fetch('/api/managers'),
+                                fetch('/api/departments')
+                            ]).catch(() => [null, null])
 
-                        if (mRes && mRes.ok) setManagerList(await mRes.json())
-                        if (dRes && dRes.ok) setDepartmentList(await dRes.json())
+                            if (mRes && mRes.ok) setManagerList(await mRes.json())
+                            if (dRes && dRes.ok) setDepartmentList(await dRes.json())
+                        }
+                        loadOnboarding()
                     }
-                    loadOnboarding()
                 }
             }
 
-            // 2. Set Attendance
-            setUserAttendanceList(data.attendance.mine)
-            setAllAttendance(data.attendance.allToday)
+            // 2. Set Attendance Core Logic
+            setUserAttendanceList(data.attendance.mine || [])
 
             // Determine active session
-            const active = data.attendance.mine.find((r: any) => !r.clockOut)
-            setCurrentAttendance(active || data.attendance.mine[0] || null)
+            const active = data.attendance.mine && data.attendance.mine.find((r: any) => !r.clockOut)
+            setCurrentAttendance(active || (data.attendance.mine && data.attendance.mine[0]) || null)
 
-            setMyLeaveRequests(data.leaves)
-            setMyAttendanceRequests(data.attendanceRequests)
-            setEmployees(data.staff)
-            if (data.teamLeaves) setTodayTeamLeaves(data.teamLeaves)
+            setMyLeaveRequests(data.leaves || [])
+            setMyAttendanceRequests(data.attendanceRequests || [])
 
+            // Mark initial load complete immediately upon core data returning
             setIsLoading(false)
         } else if (dashboardError) {
             console.error("Dashboard Quick Load Error:", dashboardError)
             setIsLoading(false)
         }
-
     }, [dashboardData, dashboardError])
+
+    // Sync Secondary Staff Data to Local State
+    useEffect(() => {
+        if (staffData) {
+            setAllAttendance(staffData.allToday || [])
+            setEmployees(staffData.staff || [])
+            setTodayTeamLeaves(staffData.teamLeaves || [])
+        }
+    }, [staffData])
 
     // Alias for legacy interaction handlers
     const fetchDashboardData = async () => {
