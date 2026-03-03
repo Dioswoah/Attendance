@@ -93,15 +93,14 @@ export async function GET() {
                     customStatusMessage: true,
                     employmentLocation: true,
                     selectedTimezone: true,
-                    attendanceSummaries: {
+                    attendance: {
                         take: 1,
-                        orderBy: { date: 'desc' },
-                        include: {
-                            rawRecords: {
-                                where: { deletedAt: null },
-                                include: { breaks: true },
-                                orderBy: { clockIn: 'asc' }
-                            }
+                        orderBy: { clockIn: 'desc' },
+                        where: { deletedAt: null },
+                        select: {
+                            clockIn: true,
+                            mode: true,
+                            locationDetails: true
                         }
                     }
                 },
@@ -154,11 +153,19 @@ export async function GET() {
         }
 
         const detailedEmployees = employees.map((emp: any) => {
-            const lastRecords = emp.attendanceSummaries && emp.attendanceSummaries.length > 0 ? transformStaff(emp.attendanceSummaries) : []
-            const { attendanceSummaries, ...rest } = emp
+            const raw = emp.attendance && emp.attendance.length > 0 ? emp.attendance[0] : null;
+            let lastAttendance = null;
+            if (raw) {
+                lastAttendance = {
+                    clockIn: raw.clockIn ? raw.clockIn.toISOString() : null,
+                    mode: raw.mode,
+                    locationDetails: raw.locationDetails
+                }
+            }
+            const { attendance, ...rest } = emp
             return {
                 ...rest,
-                lastAttendance: lastRecords.length > 0 ? lastRecords[0] : null
+                lastAttendance
             }
         })
 
