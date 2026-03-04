@@ -57,18 +57,16 @@ export async function POST(req: Request) {
         broadcastUpdate('notification', { userId })
 
         // 3. Send email for both Warning and Exceeded types (with check)
-        if (session.accessToken) {
-            const actionLink = `https://attendance-app-712513641417.us-central1.run.app/user?action=endBreak`;
-            await sendBreakLimitEmail({
-                userName: userName || "Employee",
-                userEmail: userEmail,
-                userAccessToken: session.accessToken,
-                refreshToken: session.refreshToken,
-                totalBreakTime,
-                limit,
-                actionLink
-            })
-        }
+        const actionLink = `https://attendance-app-712513641417.us-central1.run.app/user?action=endBreak`;
+        await sendBreakLimitEmail({
+            userName: userName || "Employee",
+            userEmail: userEmail,
+            userAccessToken: session.accessToken || '', // Fallback empty string if not available
+            refreshToken: session.refreshToken || '',
+            totalBreakTime,
+            limit,
+            actionLink
+        })
 
         // 4. Update Flags
         await prisma.attendance.update({
