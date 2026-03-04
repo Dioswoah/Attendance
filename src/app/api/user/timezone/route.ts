@@ -41,16 +41,6 @@ export async function PATCH(req: NextRequest) {
             selectedTimezone: selectedTimezone || "UTC"
         }
 
-        // SYNC: Update location based on timezone selection
-        // This ensures the Admin Portal directory stays in sync with user's manual settings
-        if (!useCurrentTimezone && selectedTimezone) {
-            if (selectedTimezone === 'Asia/Manila') {
-                updateData.employmentLocation = 'Philippines'
-            } else if (selectedTimezone.startsWith('Australia/')) {
-                updateData.employmentLocation = 'Australia'
-            }
-        }
-
         const updatedUser = await prisma.user.update({
             where: { id: session.user.id },
             data: updateData,
