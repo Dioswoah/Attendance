@@ -72,6 +72,7 @@ export default function ManualEntryPage() {
     const [attIn, setAttIn] = useState("09:00")
     const [attOut, setAttOut] = useState("18:00")
     const [attMode, setAttMode] = useState("OFFICE")
+    const [attLocationDetails, setAttLocationDetails] = useState("")
 
     // Form States - Leave
     const [lvEmpId, setLvEmpId] = useState("")
@@ -185,12 +186,22 @@ export default function ManualEntryPage() {
                     date: dateObj.toISOString(),
                     clockIn: clockIn.toISOString(),
                     clockOut: clockOut?.toISOString(),
-                    mode: attMode
+                    mode: attMode,
+                    locationDetails: attLocationDetails || undefined
                 })
             })
-            if (res.ok) showStatus('success')
-            else showStatus('error')
-        } catch { showStatus('error') }
+            if (res.ok) {
+                showStatus('success')
+                toast.success("Attendance record created successfully")
+            } else {
+                showStatus('error')
+                const data = await res.json()
+                toast.error(data.error || "Failed to create attendance record")
+            }
+        } catch (error) {
+            showStatus('error')
+            toast.error("An error occurred")
+        }
         finally { setProcessing(false) }
     }
 
@@ -229,9 +240,18 @@ export default function ManualEntryPage() {
                     endTime: lvDuration !== 'Full Day' ? new Date(`${lvStart}T${lvEndTime}:00`).toISOString() : null
                 })
             })
-            if (res.ok) showStatus('success')
-            else showStatus('error')
-        } catch { showStatus('error') }
+            if (res.ok) {
+                showStatus('success')
+                toast.success("Leave record created successfully")
+            } else {
+                showStatus('error')
+                const data = await res.json()
+                toast.error(data.error || "Failed to create leave record")
+            }
+        } catch (error) {
+            showStatus('error')
+            toast.error("An error occurred")
+        }
         finally { setProcessing(false) }
     }
 
@@ -259,9 +279,18 @@ export default function ManualEntryPage() {
                     endTime: endTime?.toISOString()
                 })
             })
-            if (res.ok) showStatus('success')
-            else showStatus('error')
-        } catch { showStatus('error') }
+            if (res.ok) {
+                showStatus('success')
+                toast.success("Break session created successfully")
+            } else {
+                showStatus('error')
+                const data = await res.json()
+                toast.error(data.error || "Failed to create break session")
+            }
+        } catch (error) {
+            showStatus('error')
+            toast.error("An error occurred")
+        }
         finally { setProcessing(false) }
     }
 
@@ -709,7 +738,7 @@ export default function ManualEntryPage() {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="space-y-2 flex flex-col justify-start">
                                         <Label>Work Location</Label>
                                         <Select value={attMode} onValueChange={setAttMode}>
                                             <SelectTrigger>
@@ -718,8 +747,20 @@ export default function ManualEntryPage() {
                                             <SelectContent>
                                                 <SelectItem value="OFFICE">In-Office</SelectItem>
                                                 <SelectItem value="WFH">WFH</SelectItem>
+                                                <SelectItem value="ONSITE">Offsite</SelectItem>
+                                                <SelectItem value="OTHER">Other</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                        {(attMode === 'ONSITE' || attMode === 'OTHER') && (
+                                            <div className="pt-2 animate-in slide-in-from-top-2 duration-300">
+                                                <Input
+                                                    placeholder="Location Details / Remarks"
+                                                    value={attLocationDetails}
+                                                    onChange={e => setAttLocationDetails(e.target.value)}
+                                                    required
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Date</Label>

@@ -706,7 +706,7 @@ export async function POST(req: Request) {
                 broadcastUpdate('notification', { userId })
 
                 // 3. Send Email
-                if (user.email && session.accessToken) {
+                if (user.email) {
                     const emailTz = user.selectedTimezone || 'Asia/Manila'
                     const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
                         (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
@@ -717,7 +717,7 @@ export async function POST(req: Request) {
                         userEmail: user.email,
                         adminName: session.user.name || "Administrator",
                         adminEmail: session.user.email,
-                        adminAccessToken: session.accessToken,
+                        adminAccessToken: session.accessToken || '',
                         actionType: 'ATTENDANCE',
                         details: details,
                         date: new Date(attendance.date).toLocaleDateString(),

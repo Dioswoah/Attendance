@@ -115,7 +115,7 @@ export async function POST(req: Request) {
 
     try {
         const body = await req.json()
-        const { userId, startDate, endDate, type, reason, duration, startTime, endTime } = body
+        const { userId, startDate, endDate, type, reason, duration, startTime, endTime, status } = body
 
 
         const currentYear = new Date().getFullYear();
@@ -175,24 +175,42 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Leave request already exists for this date range" }, { status: 400 })
         }
 
-        // Create Leave REQUEST (not Leave)
-        if (!(prisma as any).leaveRequest) {
-            return NextResponse.json({ error: "Leave system is temporarily unavailable" }, { status: 503 })
-        }
+        let record: any;
 
-        const leaveRequest = await (prisma as any).leaveRequest.create({
-            data: {
-                userId,
-                startDate: new Date(startDate),
-                endDate: new Date(endDate),
-                startTime: startTime ? new Date(startTime) : null,
-                endTime: endTime ? new Date(endTime) : null,
-                type,
-                reason,
-                duration,
-                status: "PENDING"
+        if (status === 'APPROVED') {
+            record = await (prisma as any).leave.create({
+                data: {
+                    userId,
+                    startDate: new Date(startDate),
+                    endDate: new Date(endDate),
+                    startTime: startTime ? new Date(startTime) : null,
+                    endTime: endTime ? new Date(endTime) : null,
+                    type,
+                    reason,
+                    duration,
+                    status: "APPROVED"
+                }
+            })
+        } else {
+            // Create Leave REQUEST (not Leave)
+            if (!(prisma as any).leaveRequest) {
+                return NextResponse.json({ error: "Leave system is temporarily unavailable" }, { status: 503 })
             }
-        })
+
+            record = await (prisma as any).leaveRequest.create({
+                data: {
+                    userId,
+                    startDate: new Date(startDate),
+                    endDate: new Date(endDate),
+                    startTime: startTime ? new Date(startTime) : null,
+                    endTime: endTime ? new Date(endTime) : null,
+                    type,
+                    reason,
+                    duration,
+                    status: "PENDING"
+                }
+            })
+        }
 
 
         // Notify Manager
@@ -220,13 +238,13 @@ export async function POST(req: Request) {
                 broadcastUpdate('notification', { userId })
 
                 // 3. Send Email
-                if (session.accessToken) {
+                if (user.email) {
                     await sendAdminActionEmail({
                         userName: user.name || "Employee",
                         userEmail: user.email,
                         adminName: session.user.name || "Administrator",
                         adminEmail: session.user.email,
-                        adminAccessToken: session.accessToken,
+                        adminAccessToken: session.accessToken || '',
                         actionType: 'LEAVE',
                         details: `${type} - ${duration} (${reason || 'No reason specified'})`,
                         date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
@@ -277,7 +295,7 @@ export async function POST(req: Request) {
                         endDate: new Date(endDate).toLocaleDateString(),
                         duration: durationDisplay,
                         reason: reason,
-                        leaveId: leaveRequest.id,
+                        leaveId: record.id,
                         refreshToken: accessToken === session.accessToken ? session.refreshToken : undefined
                     });
                 }
@@ -296,14 +314,14 @@ export async function POST(req: Request) {
         // Log Activity
         await logActivity({
             userId,
-            action: 'LEAVE_SUBMIT',
+            action: status === 'APPROVED' ? 'LEAVE_GRANTED_ADMIN' : 'LEAVE_SUBMIT',
             entityType: 'LEAVE',
-            entityId: leaveRequest.id,
-            details: { type, startDate, endDate, duration, reason }
+            entityId: record.id,
+            details: { type, startDate, endDate, duration, reason, status }
         })
 
-        broadcastUpdate('leaves', leaveRequest)
-        return NextResponse.json(leaveRequest)
+        broadcastUpdate('leaves', record)
+        return NextResponse.json(record)
     } catch (error) {
         return NextResponse.json({ error: "Failed to create leave request" }, { status: 500 })
     }
