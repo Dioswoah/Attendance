@@ -44,6 +44,9 @@ export default function LeaveRequestsPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showArchived, setShowArchived] = useState(false)
+    const userTimeZone = (session?.user as any)?.useCurrentTimezone
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : (session?.user as any)?.selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone
 
     // Form state
     const [leaveType, setLeaveType] = useState<string>("SICK")
@@ -156,8 +159,20 @@ export default function LeaveRequestsPage() {
                 type: leaveType,
                 reason,
                 duration: calculatedDuration,
-                startTime: duration !== 'Full Day' ? new Date(`${startDate}T${startTime}:00`).toISOString() : null,
-                endTime: duration !== 'Full Day' ? new Date(`${startDate}T${endTime}:00`).toISOString() : null
+                startTime: duration !== 'Full Day' ? (() => {
+                    const tempDate = new Date(`${startDate}T12:00:00`);
+                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts(tempDate).find(p => p.type === 'timeZoneName')
+                    let offset = part?.value.replace('GMT', '') || '+00:00'
+                    if (offset === '') offset = 'Z'
+                    return new Date(`${startDate}T${startTime}:00${offset}`).toISOString()
+                })() : null,
+                endTime: duration !== 'Full Day' ? (() => {
+                    const tempDate = new Date(`${startDate}T12:00:00`);
+                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts(tempDate).find(p => p.type === 'timeZoneName')
+                    let offset = part?.value.replace('GMT', '') || '+00:00'
+                    if (offset === '') offset = 'Z'
+                    return new Date(`${startDate}T${endTime}:00${offset}`).toISOString()
+                })() : null
             }
 
             const url = editingId ? `/api/leaves/${editingId}` : '/api/leaves'
@@ -202,8 +217,20 @@ export default function LeaveRequestsPage() {
         setStartDate(request.startDate.split('T')[0])
         setEndDate(request.endDate.split('T')[0])
 
-        if (request.startTime) setStartTime(new Date(request.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
-        if (request.endTime) setEndTime(new Date(request.endTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
+        if (request.startTime) {
+            try {
+                setStartTime(new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(request.startTime)))
+            } catch {
+                setStartTime(new Date(request.startTime).toISOString().substring(11, 16))
+            }
+        }
+        if (request.endTime) {
+            try {
+                setEndTime(new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(request.endTime)))
+            } catch {
+                setEndTime(new Date(request.endTime).toISOString().substring(11, 16))
+            }
+        }
 
         setReason(request.reason)
         setDialogOpen(true)

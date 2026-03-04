@@ -230,11 +230,14 @@ export default function AmendRecordsPage() {
             // Use selected date string directly (YYYY-MM-DD)
             const dateStr = selectedDateOption
 
-            // Calculate offset for the user's timezone
+            // Calculate offset for the user's timezone based on the selected date
             const offset = (() => {
                 try {
-                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
-                    return part?.value.replace('GMT', '') || '+00:00'
+                    const tempDate = new Date(`${dateStr}T12:00:00`);
+                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts(tempDate).find(p => p.type === 'timeZoneName')
+                    let tzOff = part?.value.replace('GMT', '') || '+00:00'
+                    if (tzOff === '') tzOff = 'Z'
+                    return tzOff
                 } catch { return '+00:00' }
             })()
 
@@ -329,12 +332,16 @@ export default function AmendRecordsPage() {
             setSelectedEntryId(req.targetId || 'new')
         }
 
-        setSelectedDateOption(format(new Date(req.date), 'yyyy-MM-dd'))
+        // Extract the canonical YYYY-MM-DD string safely from the ISO format
+        setSelectedDateOption(req.date.includes('T') ? req.date.split('T')[0] : String(req.date).substring(0, 10))
         setRecordType(req.type)
         try {
-            setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(req.time)))
+            // Using Intl.DateTimeFormat natively correctly accounts for timezone conversions
+            // ensuring that localTime precisely maps back to userTimeZone in hour:minute format
+            setTime(new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(req.time)))
         } catch {
-            setTime(format(new Date(req.time), 'HH:mm'))
+            // Fallback that shouldn't error
+            setTime(new Date(req.time).toISOString().substring(11, 16))
         }
         setReason(req.reason)
         setDialogOpen(true)

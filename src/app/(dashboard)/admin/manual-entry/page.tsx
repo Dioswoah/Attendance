@@ -162,6 +162,19 @@ export default function ManualEntryPage() {
         } catch (e) { return '---' }
     }
 
+    const parseTimeInTimezone = (dateStr: string, timeStr: string, tz: string) => {
+        try {
+            const part = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' })
+                .formatToParts(new Date(`${dateStr}T12:00:00`))
+                .find(p => p.type === 'timeZoneName');
+            let offset = part?.value.replace('GMT', '') || '+00:00';
+            if (offset === '') offset = 'Z';
+            return new Date(`${dateStr}T${timeStr}:00${offset}`);
+        } catch {
+            return new Date(`${dateStr}T${timeStr}:00`);
+        }
+    }
+
     const handleAttendanceSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
@@ -172,10 +185,9 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            // Use standard Date construction which uses system/browser timezone
-            // This assumes the admin inputs time in their local system time
-            const clockIn = new Date(`${attDate}T${attIn}:00`)
-            const clockOut = attOut ? new Date(`${attDate}T${attOut}:00`) : null
+            // Parse time using the exact timezone the user is viewing
+            const clockIn = parseTimeInTimezone(attDate, attIn, userTimeZone)
+            const clockOut = attOut ? parseTimeInTimezone(attDate, attOut, userTimeZone) : null
             const dateObj = new Date(attDate)
 
             const res = await fetch('/api/attendance', {
@@ -265,9 +277,9 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            // Use standard Date construction
-            const startTime = new Date(`${brDate}T${brIn}:00`)
-            const endTime = brOut ? new Date(`${brDate}T${brOut}:00`) : null
+            // Parse time using the exact timezone the user is viewing
+            const startTime = parseTimeInTimezone(brDate, brIn, userTimeZone)
+            const endTime = brOut ? parseTimeInTimezone(brDate, brOut, userTimeZone) : null
 
             const res = await fetch('/api/breaks', {
                 method: 'POST',
@@ -1134,16 +1146,16 @@ export default function ManualEntryPage() {
                                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Clock In</Label>
                                         <Input type="time" value={editForm.clockIn ? formatTime(editForm.clockIn) : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${format(parseISO(editForm.date), 'yyyy-MM-dd')}T${e.target.value}:00`);
-                                                setEditForm({ ...editForm, clockIn: localDate.toISOString() });
+                                                const dateStr = format(parseISO(editForm.date), 'yyyy-MM-dd');
+                                                setEditForm({ ...editForm, clockIn: parseTimeInTimezone(dateStr, e.target.value, userTimeZone).toISOString() });
                                             }} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Clock Out</Label>
                                         <Input type="time" value={editForm.clockOut ? formatTime(editForm.clockOut) : ""}
                                             onChange={e => {
-                                                const localDate = new Date(`${format(parseISO(editForm.date), 'yyyy-MM-dd')}T${e.target.value}:00`);
-                                                setEditForm({ ...editForm, clockOut: localDate.toISOString() });
+                                                const dateStr = format(parseISO(editForm.date), 'yyyy-MM-dd');
+                                                setEditForm({ ...editForm, clockOut: parseTimeInTimezone(dateStr, e.target.value, userTimeZone).toISOString() });
                                             }} />
                                     </div>
                                 </div>
@@ -1247,11 +1259,10 @@ export default function ManualEntryPage() {
                                                                         <Input
                                                                             type="time"
                                                                             className="h-8 text-xs"
-                                                                            value={breakEditForm.startTime ? format(parseISO(breakEditForm.startTime), "HH:mm") : ""}
+                                                                            value={breakEditForm.startTime ? formatTime(breakEditForm.startTime) : ""}
                                                                             onChange={e => {
                                                                                 const datePart = breakEditForm.date?.includes('T') ? breakEditForm.date.split('T')[0] : breakEditForm.date;
-                                                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
-                                                                                setBreakEditForm({ ...breakEditForm, startTime: localDate.toISOString() });
+                                                                                setBreakEditForm({ ...breakEditForm, startTime: parseTimeInTimezone(datePart, e.target.value, userTimeZone).toISOString() });
                                                                             }}
                                                                         />
                                                                     </div>
@@ -1260,11 +1271,10 @@ export default function ManualEntryPage() {
                                                                         <Input
                                                                             type="time"
                                                                             className="h-8 text-xs"
-                                                                            value={breakEditForm.endTime ? format(parseISO(breakEditForm.endTime), "HH:mm") : ""}
+                                                                            value={breakEditForm.endTime ? formatTime(breakEditForm.endTime) : ""}
                                                                             onChange={e => {
                                                                                 const datePart = breakEditForm.date?.includes('T') ? breakEditForm.date.split('T')[0] : breakEditForm.date;
-                                                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
-                                                                                setBreakEditForm({ ...breakEditForm, endTime: localDate.toISOString() });
+                                                                                setBreakEditForm({ ...breakEditForm, endTime: parseTimeInTimezone(datePart, e.target.value, userTimeZone).toISOString() });
                                                                             }}
                                                                         />
                                                                     </div>
@@ -1394,20 +1404,18 @@ export default function ManualEntryPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Start Time</Label>
-                                        <Input type="time" value={editForm.startTime ? format(parseISO(editForm.startTime), "HH:mm") : ""}
+                                        <Input type="time" value={editForm.startTime ? formatTime(editForm.startTime) : ""}
                                             onChange={e => {
                                                 const datePart = editForm.date.includes('T') ? editForm.date.split('T')[0] : editForm.date;
-                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
-                                                setEditForm({ ...editForm, startTime: localDate.toISOString() });
+                                                setEditForm({ ...editForm, startTime: parseTimeInTimezone(datePart, e.target.value, userTimeZone).toISOString() });
                                             }} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">End Time</Label>
-                                        <Input type="time" value={editForm.endTime ? format(parseISO(editForm.endTime), "HH:mm") : ""}
+                                        <Input type="time" value={editForm.endTime ? formatTime(editForm.endTime) : ""}
                                             onChange={e => {
                                                 const datePart = editForm.date.includes('T') ? editForm.date.split('T')[0] : editForm.date;
-                                                const localDate = new Date(`${datePart}T${e.target.value}:00`);
-                                                setEditForm({ ...editForm, endTime: localDate.toISOString() });
+                                                setEditForm({ ...editForm, endTime: parseTimeInTimezone(datePart, e.target.value, userTimeZone).toISOString() });
                                             }} />
                                     </div>
                                 </div>

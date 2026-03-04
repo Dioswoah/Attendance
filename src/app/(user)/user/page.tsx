@@ -935,8 +935,11 @@ export default function UserPortal() {
                 const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
                 const offset = (() => {
                     try {
-                        const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
-                        return part?.value.replace('GMT', '') || '+00:00'
+                        const tempDate = new Date(`${todayStr}T12:00:00`);
+                        const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts(tempDate).find(p => p.type === 'timeZoneName')
+                        let tzOff = part?.value.replace('GMT', '') || '+00:00'
+                        if (tzOff === '') tzOff = 'Z'
+                        return tzOff
                     } catch { return '+00:00' }
                 })()
                 const customDateStr = `${todayStr}T${customClockInTime}:00${offset}`
@@ -2502,20 +2505,20 @@ export default function UserPortal() {
                                                                         <div className="flex flex-col gap-1">
                                                                             {isOnline && staff.lastAttendance?.mode ? (
                                                                                 <>
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        {staff.lastAttendance.mode === 'WFH' ? <MapPin className="h-3 w-3 text-slate-500" /> :
-                                                                                            staff.lastAttendance.mode === 'ONSITE' ? <Briefcase className="h-3 w-3 text-slate-500" /> :
-                                                                                                staff.lastAttendance.mode === 'OTHER' ? <MoreHorizontal className="h-3 w-3 text-slate-500" /> :
-                                                                                                    <Building2 className="h-3 w-3 text-slate-500" />
-                                                                                        }
-                                                                                        <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-600 uppercase px-1.5 h-5 bg-white">
-                                                                                            {staff.lastAttendance.mode === 'ONSITE' ? 'OFFSITE' : staff.lastAttendance.mode.replace('_', ' ')}
-                                                                                        </Badge>
-                                                                                    </div>
-                                                                                    {staff.lastAttendance.locationDetails && (
-                                                                                        <span className="text-[10px] font-medium text-slate-400 truncate max-w-[150px] pl-5" title={staff.lastAttendance.locationDetails}>
-                                                                                            {staff.lastAttendance.locationDetails}
-                                                                                        </span>
+                                                                                    {staff.lastAttendance.mode === 'ONSITE' || staff.lastAttendance.mode === 'OTHER' ? (
+                                                                                        <div className="flex items-start gap-2 max-w-[200px]">
+                                                                                            {staff.lastAttendance.mode === 'ONSITE' ? <Briefcase className="h-3 w-3 text-slate-500 mt-0.5 shrink-0" /> : <MoreHorizontal className="h-3 w-3 text-slate-500 mt-0.5 shrink-0" />}
+                                                                                            <span className="text-[10px] font-bold text-slate-700 leading-tight line-clamp-2" title={staff.lastAttendance.locationDetails || (staff.lastAttendance.mode === 'ONSITE' ? 'OFFSITE' : 'OTHER')}>
+                                                                                                {staff.lastAttendance.locationDetails || (staff.lastAttendance.mode === 'ONSITE' ? 'OFFSITE' : 'OTHER')}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            {staff.lastAttendance.mode === 'WFH' ? <MapPin className="h-3 w-3 text-slate-500" /> : <Building2 className="h-3 w-3 text-slate-500" />}
+                                                                                            <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-600 uppercase px-1.5 h-5 bg-white">
+                                                                                                {staff.lastAttendance.mode.replace('_', ' ')}
+                                                                                            </Badge>
+                                                                                        </div>
                                                                                     )}
                                                                                 </>
                                                                             ) : (

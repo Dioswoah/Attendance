@@ -399,11 +399,14 @@ export default function ManagerActivityPage() {
                 reason: editForm.reason,
             }
 
-            // Calculate offset for the user's timezone
+            // Calculate offset for the user's timezone based on the exact day
             const offset = (() => {
                 try {
-                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts().find(p => p.type === 'timeZoneName')
-                    return part?.value.replace('GMT', '') || '+00:00'
+                    const tempDate = new Date(`${editForm.startDate}T12:00:00`);
+                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts(tempDate).find(p => p.type === 'timeZoneName')
+                    let tzOff = part?.value.replace('GMT', '') || '+00:00'
+                    if (tzOff === '') tzOff = 'Z'
+                    return tzOff
                 } catch { return '+00:00' }
             })()
 
