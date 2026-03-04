@@ -3321,17 +3321,6 @@ export default function UserPortal() {
                             >
                                 Complete Setup
                             </Button>
-
-                            <Button
-                                variant="ghost"
-                                onClick={() => {
-                                    sessionStorage.setItem('onboardingSkipped', 'true')
-                                    setIsOnboardingOpen(false)
-                                }}
-                                className="w-full text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-slate-900"
-                            >
-                                Skip for Now
-                            </Button>
                         </div>
                     </div>
                 </DialogContent>
