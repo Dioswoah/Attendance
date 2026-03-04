@@ -148,7 +148,7 @@ export default function EmployeesPage() {
         // Handle migration from single role to roles array if needed
         setEditRoles(emp.roles || (emp.role ? [emp.role] : ["USER"]))
         setEditManagerId(emp.managerId || "")
-        setEditLocation(emp.location || "")
+        setEditLocation(emp.employmentLocation || "")
         setEditShiftStart(emp.shiftStartTime || "09:00")
         setEditShiftEnd(emp.shiftEndTime || "17:00")
         setIsEditOpen(true)
@@ -627,7 +627,7 @@ export default function EmployeesPage() {
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Staff Identity</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Work Hours</TableHead>
-                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Location</TableHead>
+                                <TableHead className="py-4 px-6 font-medium text-muted-foreground">Employment Location</TableHead>
 
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Roles</TableHead>
                                 <TableHead className="py-4 px-6 font-medium text-muted-foreground">Assigned Manager</TableHead>
@@ -691,7 +691,7 @@ export default function EmployeesPage() {
                                     <TableCell className="py-4 px-6">
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                             <MapPin className="h-3.5 w-3.5" />
-                                            {emp.location || 'N/A'}
+                                            {emp.employmentLocation || 'N/A'}
                                         </div>
                                     </TableCell>
 

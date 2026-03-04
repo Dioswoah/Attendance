@@ -83,8 +83,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         dbUser = existingAccount.user;
                         console.log(`[Auth] User identified by Google ID: ${dbUser.id}`);
 
-                        // Check if details need updating (Sync Google -> DB)
-                        if (dbUser.email !== user.email || dbUser.name !== user.name || dbUser.image !== user.image) {
+                        // Check if user was archived/deleted and restore them "as new"
+                        if (dbUser.isArchived || dbUser.deletedAt) {
+                            console.log(`[Auth] Archived user signing back in. Restoring as new...`);
+                            dbUser = await prisma.user.update({
+                                where: { id: dbUser.id },
+                                data: {
+                                    email: user.email,
+                                    name: user.name,
+                                    image: user.image,
+                                    isArchived: false,
+                                    deletedAt: null,
+                                    employmentLocation: null,
+                                    departmentId: null,
+                                    managerId: null,
+                                    roles: ["USER"],
+                                    createdAt: new Date(),
+                                    shiftStartTime: "09:00",
+                                    shiftEndTime: "17:00",
+                                }
+                            });
+                        } else if (dbUser.email !== user.email || dbUser.name !== user.name || dbUser.image !== user.image) {
                             console.log(`[Auth] User details changed in Google. Updating DB record...`);
                             // Note: We don't change the Role or Availability, just identity info.
                             dbUser = await prisma.user.update({
@@ -113,15 +132,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     if (dbUser) {
                         console.log(`[Auth] User identified by Email: ${dbUser.email}. Syncing with existing record...`);
 
+                        let updateData: any = {
+                            name: user.name || dbUser.name,
+                            image: user.image || dbUser.image,
+                            emailVerified: new Date(),
+                        };
+
+                        if (dbUser.isArchived || dbUser.deletedAt) {
+                            console.log(`[Auth] Archived user signing in by Email. Restoring as new...`);
+                            updateData = {
+                                ...updateData,
+                                isArchived: false,
+                                deletedAt: null,
+                                employmentLocation: null,
+                                departmentId: null,
+                                managerId: null,
+                                roles: ["USER"],
+                                createdAt: new Date(),
+                                shiftStartTime: "09:00",
+                                shiftEndTime: "17:00",
+                            };
+                        }
+
                         // SYNC POINT: Update the existing DB user with Google's info
                         // We update name and image if they are missing or different.
                         dbUser = await prisma.user.update({
                             where: { id: dbUser.id },
-                            data: {
-                                name: user.name || dbUser.name,
-                                image: user.image || dbUser.image,
-                                emailVerified: new Date(),
-                            }
+                            data: updateData
                         });
                     }
                 }

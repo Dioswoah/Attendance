@@ -378,6 +378,7 @@ export default function UserPortal() {
                     else if (updated.employmentLocation === 'Australia') setUserTimeZone('Australia/Sydney')
                 }
                 setIsOnboardingOpen(false)
+                window.location.reload()
             }
         } catch (error) {
             console.error("Onboarding failed", error)
