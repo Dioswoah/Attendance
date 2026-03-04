@@ -596,7 +596,7 @@ export default function AdminDashboard() {
                                                         ) : (
                                                             <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
                                                                 <MoreHorizontal className="h-3 w-3" />
-                                                                {record.mode.replace('_', ' ')}
+                                                                {record.mode === 'ONSITE' ? 'OFFSITE' : record.mode.replace('_', ' ')}
                                                             </Badge>
                                                         )}
                                                     </div>

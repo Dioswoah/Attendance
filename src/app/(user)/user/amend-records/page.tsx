@@ -407,7 +407,7 @@ export default function AmendRecordsPage() {
                     setDialogOpen(open)
                     if (!open) resetForm()
                 }}>
-                    <DialogContent>
+                    <DialogContent className="max-h-[85vh] overflow-y-auto w-11/12 max-w-md sm:w-full">
                         <DialogHeader>
                             <DialogTitle>{editingId ? "Edit Correction Request" : "Request Correction"}</DialogTitle>
                             <DialogDescription>

@@ -111,6 +111,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 clockIn: body.clockIn ? new Date(body.clockIn) : undefined,
                 clockOut: body.clockOut ? new Date(body.clockOut) : undefined,
                 mode: body.mode,
+                locationDetails: body.locationDetails,
                 status: body.status,
                 date: body.date ? new Date(body.date) : undefined
             },

@@ -2223,7 +2223,7 @@ export default function UserPortal() {
                                                                 {event.mode && (
                                                                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                                                                         <MapPin className="w-3 h-3" />
-                                                                        {event.mode.replace('_', ' ')}
+                                                                        {event.mode === 'ONSITE' ? 'OFFSITE' : event.mode.replace('_', ' ')}
                                                                         {event.locationDetails && <span className="normal-case text-slate-500">• {event.locationDetails}</span>}
                                                                     </div>
                                                                 )}
@@ -2509,7 +2509,7 @@ export default function UserPortal() {
                                                                                                     <Building2 className="h-3 w-3 text-slate-500" />
                                                                                         }
                                                                                         <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-600 uppercase px-1.5 h-5 bg-white">
-                                                                                            {staff.lastAttendance.mode.replace('_', ' ')}
+                                                                                            {staff.lastAttendance.mode === 'ONSITE' ? 'OFFSITE' : staff.lastAttendance.mode.replace('_', ' ')}
                                                                                         </Badge>
                                                                                     </div>
                                                                                     {staff.lastAttendance.locationDetails && (

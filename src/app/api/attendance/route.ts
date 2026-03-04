@@ -524,6 +524,7 @@ export async function GET(req: Request) {
                 scheduledStart: a.scheduledStart?.toISOString(),
                 scheduledEnd: a.scheduledEnd?.toISOString(),
                 mode: a.mode,
+                locationDetails: a.locationDetails,
                 status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
                 breakStart: a.breakStart?.toISOString(),
                 breakEnd: a.breakEnd?.toISOString(),
@@ -624,7 +625,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { userId, mode, date, clockIn, clockOut } = body
+        const { userId, mode, date, clockIn, clockOut, locationDetails } = body
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
@@ -666,6 +667,7 @@ export async function POST(req: Request) {
                 scheduledStart: scheduledStart ? new Date(scheduledStart) : null,
                 scheduledEnd: scheduledEnd ? new Date(scheduledEnd) : null,
                 mode: mode || 'OFFICE',
+                locationDetails: locationDetails || null,
                 status: 'PRESENT'
             }
         })

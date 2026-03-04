@@ -86,8 +86,22 @@ export async function GET(req: Request) {
         const transformedLeaves = leaves.map(l => transform(l, false))
         const transformedRequests = leaveRequests.map(l => transform(l, true))
 
+        const uniqueItems = new Map()
+
+        for (const req of transformedRequests) {
+            const key = `${req.userId}-${req.startDate.split('T')[0]}-${req.endDate.split('T')[0]}-${req.type}`
+            uniqueItems.set(key, req)
+        }
+
+        for (const lv of transformedLeaves) {
+            const key = `${lv.userId}-${lv.startDate.split('T')[0]}-${lv.endDate.split('T')[0]}-${lv.type}`
+            if (!uniqueItems.has(key)) {
+                uniqueItems.set(key, lv)
+            }
+        }
+
         // combine and sort
-        const combined = [...transformedLeaves, ...transformedRequests].sort((a, b) =>
+        const combined = Array.from(uniqueItems.values()).sort((a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
 
