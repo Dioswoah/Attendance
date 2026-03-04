@@ -331,7 +331,11 @@ export default function AmendRecordsPage() {
 
         setSelectedDateOption(format(new Date(req.date), 'yyyy-MM-dd'))
         setRecordType(req.type)
-        setTime(format(new Date(req.time), 'HH:mm'))
+        try {
+            setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(req.time)))
+        } catch {
+            setTime(format(new Date(req.time), 'HH:mm'))
+        }
         setReason(req.reason)
         setDialogOpen(true)
     }
@@ -477,7 +481,15 @@ export default function AmendRecordsPage() {
                                                         key={e.id}
                                                         onClick={() => {
                                                             setSelectedEntryId(e.id)
-                                                            setTime(e.time ? format(new Date(e.time), 'HH:mm') : "")
+                                                            if (e.time) {
+                                                                try {
+                                                                    setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(e.time)))
+                                                                } catch {
+                                                                    setTime(format(new Date(e.time), 'HH:mm'))
+                                                                }
+                                                            } else {
+                                                                setTime("")
+                                                            }
                                                         }}
                                                         className={cn(
                                                             "flex items-center justify-between p-3 rounded-xl border-2 transition-all cursor-pointer group",
@@ -699,7 +711,11 @@ export default function AmendRecordsPage() {
                                                                         setSelectedDateOption(dateStr);
                                                                         setRecordType("CLOCK_IN");
                                                                         setSelectedEntryId(record.id);
-                                                                        setTime(format(parseISO(record.clockIn), 'HH:mm'));
+                                                                        try {
+                                                                            setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.clockIn)));
+                                                                        } catch {
+                                                                            setTime(format(parseISO(record.clockIn), 'HH:mm'));
+                                                                        }
                                                                         setDialogOpen(true);
                                                                     }}
                                                                     className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/in:opacity-100"
@@ -723,7 +739,11 @@ export default function AmendRecordsPage() {
                                                                         setSelectedDateOption(dateStr);
                                                                         setRecordType("CLOCK_OUT");
                                                                         setSelectedEntryId(record.id);
-                                                                        setTime(format(parseISO(record.clockOut), 'HH:mm'));
+                                                                        try {
+                                                                            setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.clockOut)));
+                                                                        } catch {
+                                                                            setTime(format(parseISO(record.clockOut), 'HH:mm'));
+                                                                        }
                                                                         setDialogOpen(true);
                                                                     }}
                                                                     className="text-muted-foreground hover:text-red-600 transition-colors opacity-0 group-hover/out:opacity-100"
@@ -753,7 +773,11 @@ export default function AmendRecordsPage() {
                                                                                     setSelectedDateOption(dateStr);
                                                                                     setRecordType("BREAK_START");
                                                                                     setSelectedEntryId(b.id);
-                                                                                    setTime(format(parseISO(b.startTime), 'HH:mm'));
+                                                                                    try {
+                                                                                        setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(b.startTime)));
+                                                                                    } catch {
+                                                                                        setTime(format(parseISO(b.startTime), 'HH:mm'));
+                                                                                    }
                                                                                     setDialogOpen(true);
                                                                                 }}
                                                                                 className="opacity-0 group-hover/bstart:opacity-100 hover:text-red-600 ml-1"
@@ -772,7 +796,11 @@ export default function AmendRecordsPage() {
                                                                                         setSelectedDateOption(dateStr);
                                                                                         setRecordType("BREAK_END");
                                                                                         setSelectedEntryId(b.id);
-                                                                                        setTime(format(parseISO(b.endTime), 'HH:mm'));
+                                                                                        try {
+                                                                                            setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(b.endTime)));
+                                                                                        } catch {
+                                                                                            setTime(format(parseISO(b.endTime), 'HH:mm'));
+                                                                                        }
                                                                                         setDialogOpen(true);
                                                                                     }}
                                                                                     className="opacity-0 group-hover/bend:opacity-100 hover:text-red-600 ml-1"
@@ -947,42 +975,45 @@ export default function AmendRecordsPage() {
                                         </TableCell>
                                         <TableCell className="align-top text-right py-4">
                                             <div className="flex flex-col items-end gap-2">
-                                                {(!req.isArchived) && (
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(req)} title="Edit Request">
-                                                            <Pencil className="h-4 w-4" />
-                                                            <span className="sr-only">Edit</span>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    {(!req.isArchived) && (
+                                                        <>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => handleEdit(req)} title={req.status === 'PENDING' ? "Edit Request" : "Submit New Request"}>
+                                                                <Pencil className="h-4 w-4" />
+                                                                <span className="sr-only">Edit</span>
+                                                            </Button>
+                                                            {req.status === 'PENDING' ? (
+                                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(req.id)} title="Cancel Request">
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                    <span className="sr-only">Cancel</span>
+                                                                </Button>
+                                                            ) : (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => handleArchive(req.id)}
+                                                                    className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                                                    title="Archive Request"
+                                                                >
+                                                                    <Archive className="h-4 w-4" />
+                                                                    <span className="sr-only">Archive</span>
+                                                                </Button>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    {req.isArchived && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleUnarchive(req.id)}
+                                                            className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
+                                                            title="Unarchive Request"
+                                                        >
+                                                            <ArchiveRestore className="h-4 w-4" />
+                                                            <span className="sr-only">Unarchive</span>
                                                         </Button>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(req.id)} title="Cancel Request">
-                                                            <Trash2 className="h-4 w-4" />
-                                                            <span className="sr-only">Cancel</span>
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                                {['APPROVED', 'DECLINED'].includes(req.status) && !req.isArchived && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleArchive(req.id)}
-                                                        className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
-                                                        title="Archive Request"
-                                                    >
-                                                        <Archive className="h-4 w-4" />
-                                                        <span className="sr-only">Archive</span>
-                                                    </Button>
-                                                )}
-                                                {req.isArchived && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleUnarchive(req.id)}
-                                                        className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
-                                                        title="Unarchive Request"
-                                                    >
-                                                        <ArchiveRestore className="h-4 w-4" />
-                                                        <span className="sr-only">Unarchive</span>
-                                                    </Button>
-                                                )}
+                                                    )}
+                                                </div>
                                             </div>
                                         </TableCell>
                                     </TableRow>

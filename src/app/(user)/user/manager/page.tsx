@@ -663,7 +663,13 @@ export default function ManagerControlPage() {
             return attDate === dateStr
         }).map(a => ({ type: 'present', data: a }))
 
-        const events: any[] = [...leaves, ...attendance]
+        const uniqueEventsMap = new Map();
+        [...attendance, ...leaves].forEach(event => {
+            if (event.data && event.data.userId) {
+                uniqueEventsMap.set(event.data.userId, event);
+            }
+        });
+        const events: any[] = Array.from(uniqueEventsMap.values());
 
         // Holidays
         if (NSW_HOLIDAYS_2026[dateStr]) {
