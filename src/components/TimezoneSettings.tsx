@@ -105,6 +105,9 @@ export function TimezoneSettings({ compact = false, showLabel = true, showNote =
             toast.success(`Times will now be displayed in ${useCurrentTimezone ? 'your current timezone' : selectedTimezone}`)
 
             setOpen(false)
+
+            // Force reload to apply timezone globally across all pages and cached states
+            window.location.reload()
         } catch (error) {
             console.error('Failed to update timezone:', error)
             toast.error("Failed to update timezone settings. Please try again.")
