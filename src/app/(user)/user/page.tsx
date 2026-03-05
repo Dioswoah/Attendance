@@ -115,6 +115,7 @@ export default function UserPortal() {
     const [breakReturnTime, setBreakReturnTime] = useState("")
     const [breakInputMode, setBreakInputMode] = useState<"minutes" | "time">("minutes")
     const [breakMinutes, setBreakMinutes] = useState("15")
+    const [selectedPredefinedBreak, setSelectedPredefinedBreak] = useState<string | null>(null)
     const [selectedLocationMode, setSelectedLocationMode] = useState<string | null>(null)
     const [locationDetails, setLocationDetails] = useState("")
     const [activeTab, setActiveTab] = useState("overview")
@@ -2022,7 +2023,7 @@ export default function UserPortal() {
                         )}
                         {optimisticStatus === 'clocked-in' && (
                             <>
-                                <Button onClick={breakStart} disabled={isProcessing || isLoading} variant="outline" className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 border border-[#D4A056]/20 text-[#9A7033] bg-[#FEF9F0] hover:bg-[#D4A056] hover:text-white font-black rounded-2xl uppercase tracking-widest text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                <Button onClick={breakStart} disabled={isProcessing || isLoading} variant="outline" className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 border border-primary/20 text-primary bg-primary/5 hover:bg-primary hover:text-primary-foreground font-black rounded-2xl uppercase tracking-widest text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
                                     {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Coffee className="w-4 h-4 sm:h-5 sm:w-5" />} Start Break
                                 </Button>
                                 <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 font-black rounded-2xl bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-widest text-xs sm:text-sm shadow-md transition-all hover:scale-[1.02] active:scale-95 duration-200">
@@ -2031,7 +2032,7 @@ export default function UserPortal() {
                             </>
                         )}
                         {optimisticStatus === 'on-break' && (
-                            <Button onClick={breakEnd} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 bg-[#D4A056] hover:bg-[#b88640] text-white font-black rounded-2xl shadow-md uppercase tracking-widest text-xs sm:text-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                            <Button onClick={breakEnd} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 bg-primary hover:bg-primary/90 text-primary-foreground font-black rounded-2xl shadow-md uppercase tracking-widest text-xs sm:text-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
                                 {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Timer className="w-4 h-4 sm:h-5 sm:w-5" />} End Break
                             </Button>
                         )}
@@ -2091,9 +2092,9 @@ export default function UserPortal() {
                                     )}
                                     {optimisticStatus === 'on-break' && (
                                         <div className="text-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                                            <div className="absolute top-0 left-0 w-full h-1 bg-[#D4A056]" />
-                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600 mb-1 animate-pulse">Break in Progress</p>
-                                            <div className="text-4xl font-black tabular-nums tracking-tighter text-[#D4A056]">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-1 animate-pulse">Break in Progress</p>
+                                            <div className="text-4xl font-black tabular-nums tracking-tighter text-primary">
                                                 {breakTime}
                                             </div>
                                             <p className="text-[10px] font-medium text-slate-400 mt-1">Recharging...</p>
@@ -3077,7 +3078,7 @@ export default function UserPortal() {
             {/* Break Time Warning/Limit Dialog */}
             < Dialog open={showBreakStartDialog} onOpenChange={setShowBreakStartDialog} >
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
-                    <div className="bg-[#D4A056] p-8 text-center relative overflow-hidden">
+                    <div className="bg-primary p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/20 to-transparent" />
                         <Coffee className="h-12 w-12 text-white/30 mx-auto mb-4" />
                         <DialogTitle className="text-2xl font-black text-white uppercase tracking-tight relative z-10">
@@ -3088,7 +3089,7 @@ export default function UserPortal() {
                         </DialogDescription>
                     </div>
                     <div className="p-8 space-y-6 bg-white">
-                        <div className="space-y-4">
+                        <div className={cn("space-y-4 transition-opacity duration-300", selectedPredefinedBreak ? "opacity-30 pointer-events-none" : "opacity-100")}>
                             <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Expected Return (Mandatory)</Label>
 
                             <div className="flex bg-slate-50 border border-slate-100 rounded-xl p-1 relative">
@@ -3146,6 +3147,72 @@ export default function UserPortal() {
                                 {breakInputMode === "minutes" ? `You are expected to return in ${breakMinutes} minutes.` : "Providing this helps your team know when to expect you back."}
                             </p>
                         </div>
+
+                        {userProfile?.employmentLocation === 'Philippines' && (
+                            <div className="space-y-2 mt-2">
+                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Standard Breaks</Label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <Button
+                                        type="button"
+                                        variant={selectedPredefinedBreak === 'First Break' ? 'default' : 'outline'}
+                                        onClick={() => {
+                                            if (selectedPredefinedBreak === 'First Break') {
+                                                setSelectedPredefinedBreak(null)
+                                                setBreakMinutes('15')
+                                            } else {
+                                                setSelectedPredefinedBreak('First Break')
+                                                setBreakInputMode('minutes')
+                                                setBreakMinutes('10')
+                                                setBreakReturnTime("")
+                                            }
+                                        }}
+                                        className={cn("h-auto py-3 px-2 flex flex-col items-center justify-center rounded-xl transition-all min-h-[70px]", selectedPredefinedBreak === 'First Break' && "bg-primary text-primary-foreground border-primary")}
+                                    >
+                                        <span className="text-[10px] font-black uppercase whitespace-normal text-center leading-tight">First Break</span>
+                                        <span className="text-xs font-bold mt-1">10 Mins</span>
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant={selectedPredefinedBreak === 'Lunch Break' ? 'default' : 'outline'}
+                                        onClick={() => {
+                                            if (selectedPredefinedBreak === 'Lunch Break') {
+                                                setSelectedPredefinedBreak(null)
+                                                setBreakMinutes('15')
+                                            } else {
+                                                setSelectedPredefinedBreak('Lunch Break')
+                                                setBreakInputMode('minutes')
+                                                setBreakMinutes('40')
+                                                setBreakReturnTime("")
+                                            }
+                                        }}
+                                        className={cn("h-auto py-3 px-2 flex flex-col items-center justify-center rounded-xl transition-all min-h-[70px]", selectedPredefinedBreak === 'Lunch Break' && "bg-primary text-primary-foreground border-primary")}
+                                    >
+                                        <span className="text-[10px] font-black uppercase whitespace-normal text-center leading-tight">Lunch Break</span>
+                                        <span className="text-xs font-bold mt-1">40 Mins</span>
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant={selectedPredefinedBreak === 'Second Break' ? 'default' : 'outline'}
+                                        onClick={() => {
+                                            if (selectedPredefinedBreak === 'Second Break') {
+                                                setSelectedPredefinedBreak(null)
+                                                setBreakMinutes('15')
+                                            } else {
+                                                setSelectedPredefinedBreak('Second Break')
+                                                setBreakInputMode('minutes')
+                                                setBreakMinutes('10')
+                                                setBreakReturnTime("")
+                                            }
+                                        }}
+                                        className={cn("h-auto py-3 px-2 flex flex-col items-center justify-center rounded-xl transition-all min-h-[70px]", selectedPredefinedBreak === 'Second Break' && "bg-primary text-primary-foreground border-primary")}
+                                    >
+                                        <span className="text-[10px] font-black uppercase whitespace-normal text-center leading-tight">Second Break</span>
+                                        <span className="text-xs font-bold mt-1">10 Mins</span>
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-4">
                             <Button
                                 variant="outline"
@@ -3165,7 +3232,7 @@ export default function UserPortal() {
                                     setShowBreakStartDialog(false);
                                 }}
                                 disabled={isProcessing}
-                                className="h-14 bg-[#D4A056] hover:bg-[#b88640] text-white font-black rounded-xl shadow-lg transition-all active:scale-95 uppercase tracking-widest"
+                                className="h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-black rounded-xl shadow-lg transition-all active:scale-95 uppercase tracking-widest"
                             >
                                 {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : "Start Break"}
                             </Button>
@@ -3178,17 +3245,21 @@ export default function UserPortal() {
                 <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
                     <div className={cn(
                         "p-8 text-center relative overflow-hidden transition-colors duration-500",
-                        "bg-[#D4A056]"
+                        breakDialogType === "EXCEEDED" && userProfile?.employmentLocation === 'Philippines' ? "bg-destructive" : "bg-primary"
                     )}>
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/20 to-transparent" />
-                        <Coffee className="h-12 w-12 text-white/30 mx-auto mb-4" />
+                        {breakDialogType === "EXCEEDED" && userProfile?.employmentLocation === 'Philippines' ? (
+                            <AlertTriangle className="h-12 w-12 text-white/50 mx-auto mb-4" />
+                        ) : (
+                            <Coffee className="h-12 w-12 text-white/30 mx-auto mb-4" />
+                        )}
                         <DialogTitle className="text-2xl font-black text-white uppercase tracking-tight relative z-10">
-                            {breakDialogType === "WARNING" ? "Break Schedule Update" : "Break Time Check-in"}
+                            {breakDialogType === "WARNING" ? "Break Schedule Update" : (userProfile?.employmentLocation === 'Philippines' ? "Break Limit Exceeded Warning" : "Break Time Check-in")}
                         </DialogTitle>
                         <DialogDescription className="text-white/80 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
                             {breakDialogType === "WARNING"
                                 ? "Just a gentle reminder regarding your break time"
-                                : "It seems your break has extended a bit"}
+                                : (userProfile?.employmentLocation === 'Philippines' ? "CRITICAL: MAXIMUM BREAK DURATION SURPASSED" : "It seems your break has extended a bit")}
                         </DialogDescription>
                     </div>
                     <div className="p-8 space-y-6 bg-white text-center">
@@ -3196,24 +3267,24 @@ export default function UserPortal() {
                             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Current Break Usage</span>
                             <span className={cn(
                                 "text-5xl font-black tracking-tighter",
-                                "text-[#D4A056]"
+                                breakDialogType === "EXCEEDED" && userProfile?.employmentLocation === 'Philippines' ? "text-destructive" : "text-primary"
                             )}>{breakTime}</span>
                         </div>
 
-                        <p className="text-sm text-slate-500 font-medium">
+                        <p className="text-sm text-slate-500 font-medium tracking-tight">
                             {breakDialogType === "WARNING"
                                 ? "You have about 15 minutes remaining. We just wanted to let you know so you can enjoy the rest of your break!"
-                                : "We just wanted to check if you forgot to clock back in? If you need a bit more time, that is perfectly fine, just let your manager know."}
+                                : (userProfile?.employmentLocation === 'Philippines' ? "Your break duration has strictly exceeded the 1-hour allocated limit. Please be advised that continued overextensions are recorded and will be subject to review by management. Please clock back in immediately." : "We just wanted to check if you forgot to clock back in? If you need a bit more time, that is perfectly fine, just let your manager know.")}
                         </p>
 
                         <Button
                             onClick={handleBreakAcknowledge}
                             className={cn(
                                 "w-full h-14 text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-lg transition-all active:scale-95",
-                                "bg-[#D4A056] hover:bg-[#c4934d] text-white"
+                                breakDialogType === "EXCEEDED" && userProfile?.employmentLocation === 'Philippines' ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "bg-primary hover:bg-primary/90 text-primary-foreground"
                             )}
                         >
-                            Thank you for the reminder
+                            {breakDialogType === "EXCEEDED" && userProfile?.employmentLocation === 'Philippines' ? "I Understand, Clocking In" : "Thank you for the reminder"}
                         </Button>
                     </div>
                 </DialogContent>
