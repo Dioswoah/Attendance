@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from "@/auth"
-import { sendAdminActionEmail, sendForgottenClockOutEmail } from "@/lib/email"
+import { sendAdminActionEmail, sendForgottenClockOutEmail, sendOverdueDepartureEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { syncStatusToCalendar } from "@/lib/calendar"
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
@@ -170,12 +170,14 @@ async function cleanupOldSessions() {
         const endDay = new Date(isoString);
 
         let shouldAutoClockOut = false;
+        let shouldSendReminder = false;
+
         if (sessionDateStr < userTodayStr) {
-            shouldAutoClockOut = true;
-        } else if (sessionDateStr === userTodayStr && now >= autoClockOutTriggerTime) {
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && is14HoursPast) {
             shouldAutoClockOut = true;
+        } else if (sessionDateStr === userTodayStr && now >= autoClockOutTriggerTime) {
+            shouldSendReminder = true;
         }
 
         if (shouldAutoClockOut) {
@@ -296,6 +298,55 @@ async function cleanupOldSessions() {
                         }
                     } else {
                         console.warn(`[Auto Clock-Out Email] Skipped for ${session.user.email}: no Google OAuth token found in their Account record.`);
+                    }
+                }
+            }
+        } else if (shouldSendReminder) {
+            // Send overdue reminder if not already sent
+            const existingNotification = await prisma.notification.findFirst({
+                where: {
+                    userId: session.user.id,
+                    type: 'OVERDUE_REMINDER',
+                    createdAt: {
+                        gte: new Date(new Date().setHours(0, 0, 0, 0))
+                    }
+                }
+            });
+
+            if (!existingNotification) {
+                const message = "Just a friendly reminder to check if your shift has ended, but you're still clocked in. If you're all done for the day, please remember to clock out. If you're working a little late, no problem at all!";
+                await prisma.notification.create({
+                    data: {
+                        userId: session.user.id,
+                        title: "Shift Wrap-Up",
+                        message: message,
+                        type: "OVERDUE_REMINDER",
+                        link: "/user"
+                    }
+                });
+                broadcastUpdate('notification', { userId: session.user.id });
+
+                if (session.user.email) {
+                    const googleAccount = session.user.accounts?.find(
+                        (acc: any) => acc.provider === 'google' && acc.access_token
+                    );
+                    if (googleAccount?.access_token) {
+                        const formattedEndTime = targetTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: timeZone });
+                        try {
+                            const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
+                            await sendOverdueDepartureEmail({
+                                userName: session.user.name || "Employee",
+                                userEmail: session.user.email,
+                                userAccessToken: googleAccount.access_token,
+                                scheduledEnd: formattedEndTime,
+                                actionLink: `${appUrl}/user`,
+                                refreshToken: googleAccount.refresh_token || undefined
+                            });
+                        } catch (e) {
+                            console.error(`Failed to send overdue email for ${session.user.email}:`, e);
+                        }
+                    } else {
+                        console.warn(`[Overdue Email] Skipped for ${session.user.email}: no Google OAuth token found.`);
                     }
                 }
             }
@@ -656,6 +707,16 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+    // Run cleanup immediately to ensure any pending auto clock-outs are handled 
+    // before we mistakenly tell the user "You are already clocked in."
+    try {
+        await cleanupOldSessions()
+        await cleanupDuplicateBreaks()
+        await syncAvailabilityWithAttendance()
+    } catch (e) {
+        console.error("Cleanup failed in POST:", e)
+    }
+
     try {
         const body = await req.json()
         const { userId, mode, date, clockIn, clockOut, locationDetails } = body
