@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 
+export const dynamic = 'force-dynamic'
+
 /**
  * PATCH /api/user/timezone
  * Update user's timezone preferences
@@ -92,7 +94,11 @@ export async function GET(req: NextRequest) {
             )
         }
 
-        return NextResponse.json(user)
+        return NextResponse.json(user, {
+            headers: {
+                'Cache-Control': 'no-store, max-age=0'
+            }
+        })
     } catch (error) {
         console.error("Failed to get timezone preferences:", error)
         return NextResponse.json(

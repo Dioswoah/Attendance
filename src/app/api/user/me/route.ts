@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
     const session = await auth()
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -10,7 +12,11 @@ export async function GET() {
         where: { id: session.user.id },
         include: { manager: true }
     })
-    return NextResponse.json(user)
+    return NextResponse.json(user, {
+        headers: {
+            'Cache-Control': 'no-store, max-age=0'
+        }
+    })
 }
 
 export async function PATCH(req: Request) {

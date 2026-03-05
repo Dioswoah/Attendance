@@ -180,8 +180,8 @@ export default function UserPortal() {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    timezone: currentTz,
-                                    useCurrentTimezone: true
+                                    useCurrentTimezone: true,
+                                    selectedTimezone: currentTz
                                 })
                             })
                             if (tzRes.ok) {
@@ -724,7 +724,7 @@ export default function UserPortal() {
         const timeInterval = setInterval(calculateTimes, 1000)
 
         return () => clearInterval(timeInterval)
-    }, [userAttendanceList, myAttendanceRequests, optimisticStatus])
+    }, [userAttendanceList, myAttendanceRequests, optimisticStatus, userTimeZone])
 
     // 3. Auto-Sync Google Calendar Status (Background Poll)
     useEffect(() => {

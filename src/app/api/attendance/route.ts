@@ -78,6 +78,7 @@ async function cleanupOldSessions() {
                     name: true,
                     email: true,
                     selectedTimezone: true,
+                    employmentLocation: true,
                     shiftStartTime: true,
                     shiftEndTime: true,
                     accounts: {
@@ -95,7 +96,15 @@ async function cleanupOldSessions() {
     if (unclosed.length === 0) return
 
     for (const session of unclosed) {
-        const timeZone = session.user?.selectedTimezone || 'Asia/Manila'
+        let timeZone = 'Asia/Manila';
+        if (session.user?.employmentLocation === 'Philippines') {
+            timeZone = 'Asia/Manila';
+        } else if (session.user?.employmentLocation === 'Australia') {
+            timeZone = 'Australia/Sydney';
+        } else if (session.user?.selectedTimezone) {
+            timeZone = session.user.selectedTimezone;
+        }
+
         const now = new Date()
         const userTodayStr = now.toLocaleDateString('en-CA', { timeZone }) // YYYY-MM-DD
         const sessionDateStr = session.date.toISOString().split('T')[0]
@@ -163,7 +172,12 @@ async function cleanupOldSessions() {
                 reason = "reached the standard 9-hour limit";
             }
 
-            // 3. Apply Cap: No later than 23:59 Local Time NEXT DAY, normally just targetTime.
+            // If targetTime is somehow earlier than clockIn, default to end-of-day
+            if (targetTime < session.clockIn) {
+                targetTime = endDay;
+            }
+
+            // Apply Cap: No later than 23:59 Local Time NEXT DAY, normally just targetTime.
             let finalClockOut = targetTime;
 
             // Safety cap if targetTime is somehow wildly far in the future
