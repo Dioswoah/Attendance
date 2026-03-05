@@ -228,7 +228,7 @@ export async function sendForgottenClockOutEmail({ userName, userEmail, date, cl
             buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
             greetingName: userName,
             bodyHtml: `
-        <p>The system noticed you didn't clock out yesterday. To keep our records complete, we have automatically clocked you out at <strong>${clockOutTime}</strong> (${reason}).</p>
+        <p>The system noticed you haven't clocked out. To keep our records complete, we have automatically clocked you out at <strong>${clockOutTime}</strong> (${reason}).</p>
         <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px; margin: 20px 0; color: #991b1b; text-align: center;">
             <p style="margin: 0; font-size: 14px; text-transform: uppercase; font-weight: 700;">Final Record</p>
             <p style="margin: 5px 0; font-size: 18px; font-weight: 700;">${date}</p>

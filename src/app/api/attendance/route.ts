@@ -102,7 +102,13 @@ async function cleanupOldSessions() {
 
         if (!session.clockIn) continue
 
-        if (sessionDateStr < userTodayStr) {
+        // Get user's current local time in HH:mm format
+        const localTimeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone })
+
+        const isPast1130PM = localTimeStr >= '23:30';
+        const is14HoursPast = (now.getTime() - session.clockIn.getTime()) >= (14 * 60 * 60 * 1000);
+
+        if (sessionDateStr < userTodayStr || (sessionDateStr === userTodayStr && (isPast1130PM || is14HoursPast))) {
             const getOffset = (d: Date, tz: string) => {
                 try {
                     const format = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
@@ -173,6 +179,12 @@ async function cleanupOldSessions() {
                 reason = "forced end of day";
             }
 
+            // Safety cap: Cannot auto-clock out in the future
+            if (finalClockOut > now) {
+                finalClockOut = now;
+                reason = "system end-of-day process";
+            }
+
             await prisma.attendance.update({
                 where: { id: session.id },
                 data: {
@@ -213,9 +225,9 @@ async function cleanupOldSessions() {
 
             let messageStr = "";
             if (reason === "shift ended") {
-                messageStr = `Hello! The system noticed that you did not clock out yesterday. We have automatically clocked you out using the end time of your nominal hours (${formattedClockOutTime}). If you forgot to clock out earlier or worked overtime, please request an amended record from your manager.`;
+                messageStr = `Hello! The system noticed that you haven't clocked out. We have automatically clocked you out using the end time of your nominal hours (${formattedClockOutTime}). If you forgot to clock out earlier or worked overtime, please request an amended record from your manager.`;
             } else {
-                messageStr = `Hello! The system noticed that you did not clock out yesterday. We have automatically clocked you out at ${formattedClockOutTime} (${reason}). If this is incorrect, please request an amended record from your manager.`;
+                messageStr = `Hello! The system noticed that you haven't clocked out. We have automatically clocked you out at ${formattedClockOutTime} (${reason}). If this is incorrect, please request an amended record from your manager.`;
             }
 
             const existingNotification = await prisma.notification.findFirst({
