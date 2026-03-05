@@ -114,68 +114,71 @@ async function cleanupOldSessions() {
         // Get user's current local time in HH:mm format
         const localTimeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone })
 
-        const isPast1130PM = localTimeStr >= '23:30';
         const is14HoursPast = (now.getTime() - session.clockIn.getTime()) >= (14 * 60 * 60 * 1000);
 
-        if (sessionDateStr < userTodayStr || (sessionDateStr === userTodayStr && (isPast1130PM || is14HoursPast))) {
-            const getOffset = (d: Date, tz: string) => {
-                try {
-                    const format = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
-                    const parts = format.formatToParts(d);
-                    const offset = parts.find(p => p.type === 'timeZoneName')?.value;
-                    if (!offset) return 'Z';
-                    const cleaned = offset.replace('GMT', '');
-                    return cleaned || 'Z';
-                } catch (e) {
-                    return 'Z';
+        const getOffset = (d: Date, tz: string) => {
+            try {
+                const format = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
+                const parts = format.formatToParts(d);
+                const offset = parts.find(p => p.type === 'timeZoneName')?.value;
+                if (!offset) return 'Z';
+                const cleaned = offset.replace('GMT', '');
+                return cleaned || 'Z';
+            } catch (e) {
+                return 'Z';
+            }
+        };
+
+        const probe = new Date(session.date);
+        probe.setUTCHours(12);
+        const offsetStr = getOffset(probe, timeZone);
+
+        // Calculate Target Auto-Clock Out Time (shift end time)
+        let targetTime: Date;
+        let reason = "remained active past midnight";
+
+        if (session.user.shiftEndTime) {
+            try {
+                let shiftEndDay = sessionDateStr;
+                if (session.user.shiftStartTime && session.user.shiftEndTime < session.user.shiftStartTime) {
+                    const nextDate = new Date(session.date);
+                    nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+                    shiftEndDay = nextDate.toISOString().split('T')[0];
                 }
-            };
 
-            const probe = new Date(session.date);
-            probe.setUTCHours(12);
-            const offsetStr = getOffset(probe, timeZone);
+                const shiftEndIso = `${shiftEndDay}T${session.user.shiftEndTime}:00${offsetStr}`;
+                targetTime = new Date(shiftEndIso);
 
-            // 1. Calculate End of Day Barrier (Local 23:59 -> UTC)
-            const isoString = `${sessionDateStr}T23:59:59.999${offsetStr}`;
-            const endDay = new Date(isoString);
-
-            // 2. Determine Target Auto-Clock Out Time
-            let targetTime: Date;
-            let reason = "remained active past midnight";
-
-            if (session.user.shiftEndTime) {
-                // Use User's Shift End Time
-                try {
-                    let shiftEndDay = sessionDateStr;
-                    // Support cross-midnight shifts or late clock-ins where shiftEnd appears before shiftStart
-                    if (session.user.shiftStartTime && session.user.shiftEndTime < session.user.shiftStartTime) {
-                        const nextDate = new Date(session.date);
-                        nextDate.setUTCDate(nextDate.getUTCDate() + 1);
-                        shiftEndDay = nextDate.toISOString().split('T')[0];
-                    }
-
-                    const shiftEndIso = `${shiftEndDay}T${session.user.shiftEndTime}:00${offsetStr}`;
-                    targetTime = new Date(shiftEndIso);
-
-                    // If they somehow clocked in after their shift supposedly ended, 
-                    // advance the target to the next day's shift end if it was a late extra shift
-                    if (targetTime <= session.clockIn) {
-                        targetTime.setUTCDate(targetTime.getUTCDate() + 1);
-                    }
-                    reason = "shift ended";
-                } catch (e) {
-                    targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
-                    reason = "reached the standard 9-hour limit";
+                if (targetTime <= session.clockIn) {
+                    targetTime.setUTCDate(targetTime.getUTCDate() + 1);
                 }
-            } else {
+                reason = "shift ended";
+            } catch (e) {
                 targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
                 reason = "reached the standard 9-hour limit";
             }
+        } else {
+            targetTime = new Date(session.clockIn.getTime() + 9 * 60 * 60 * 1000);
+            reason = "reached the standard 9-hour limit";
+        }
 
-            // If targetTime is somehow earlier than clockIn, default to end-of-day
-            if (targetTime < session.clockIn) {
-                targetTime = endDay;
-            }
+        // Trigger condition: 5 mins after their shift end time, or next day
+        const autoClockOutTriggerTime = new Date(targetTime.getTime() + 5 * 60 * 1000);
+
+        // 1. Calculate End of Day Barrier (Local 23:59 -> UTC)
+        const isoString = `${sessionDateStr}T23:59:59.999${offsetStr}`;
+        const endDay = new Date(isoString);
+
+        let shouldAutoClockOut = false;
+        if (sessionDateStr < userTodayStr) {
+            shouldAutoClockOut = true;
+        } else if (sessionDateStr === userTodayStr && now >= autoClockOutTriggerTime) {
+            shouldAutoClockOut = true;
+        } else if (sessionDateStr === userTodayStr && is14HoursPast) {
+            shouldAutoClockOut = true;
+        }
+
+        if (shouldAutoClockOut) {
 
             // Apply Cap: No later than 23:59 Local Time NEXT DAY, normally just targetTime.
             let finalClockOut = targetTime;
@@ -187,7 +190,7 @@ async function cleanupOldSessions() {
                 reason = "reached the maximum 14-hour system limit";
             }
 
-            // Fallback if targetTime is somehow earlier than clockIn (shouldn't happen with the fix above)
+            // Fallback if targetTime is somehow earlier than clockIn
             if (finalClockOut < session.clockIn) {
                 finalClockOut = endDay;
                 reason = "forced end of day";
@@ -266,30 +269,34 @@ async function cleanupOldSessions() {
                     }
                 })
                 broadcastUpdate('notification', { userId })
-            }
 
-            // 2. Email Notification
-            // IMPORTANT: Always use the AFFECTED USER's OWN OAuth tokens (not the session of
-            // whoever triggered the cleanup). This ensures the email is sent self-to-self,
-            // i.e. the employee receives an email that appears to come from their own account.
-            if (session.user.email) {
-                // Find the user's own Google OAuth tokens stored in the Account table
-                const googleAccount = session.user.accounts?.find(
-                    (acc: any) => acc.provider === 'google' && acc.access_token
-                );
+                // 2. Email Notification
+                // IMPORTANT: Always use the AFFECTED USER's OWN OAuth tokens (not the session of
+                // whoever triggered the cleanup). This ensures the email is sent self-to-self,
+                // i.e. the employee receives an email that appears to come from their own account.
+                if (session.user.email) {
+                    // Find the user's own Google OAuth tokens stored in the Account table
+                    const googleAccount = session.user.accounts?.find(
+                        (acc: any) => acc.provider === 'google' && acc.access_token
+                    );
 
-                if (googleAccount?.access_token) {
-                    await sendForgottenClockOutEmail({
-                        userName: session.user.name || "Employee",
-                        userEmail: session.user.email,
-                        userAccessToken: googleAccount.access_token,
-                        date: dateStr,
-                        clockOutTime: formattedClockOutTime,
-                        reason: reason,
-                        refreshToken: googleAccount.refresh_token || undefined
-                    })
-                } else {
-                    console.warn(`[Auto Clock-Out Email] Skipped for ${session.user.email}: no Google OAuth token found in their Account record.`);
+                    if (googleAccount?.access_token) {
+                        try {
+                            await sendForgottenClockOutEmail({
+                                userName: session.user.name || "Employee",
+                                userEmail: session.user.email,
+                                userAccessToken: googleAccount.access_token,
+                                date: dateStr,
+                                clockOutTime: formattedClockOutTime,
+                                reason: reason,
+                                refreshToken: googleAccount.refresh_token || undefined
+                            });
+                        } catch (emailErr) {
+                            console.error(`Failed to send forgotten clock out email for ${session.user.email}:`, emailErr);
+                        }
+                    } else {
+                        console.warn(`[Auto Clock-Out Email] Skipped for ${session.user.email}: no Google OAuth token found in their Account record.`);
+                    }
                 }
             }
         }
