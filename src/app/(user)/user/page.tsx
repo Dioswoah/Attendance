@@ -2023,7 +2023,7 @@ export default function UserPortal() {
                         )}
                         {optimisticStatus === 'clocked-in' && (
                             <>
-                                <Button onClick={breakStart} disabled={isProcessing || isLoading} variant="outline" className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 border border-primary/20 text-primary bg-primary/5 hover:bg-primary hover:text-primary-foreground font-black rounded-2xl uppercase tracking-widest text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                <Button onClick={breakStart} disabled={isProcessing || isLoading} variant="outline" className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 border border-[#8B2323]/20 text-[#8B2323] bg-[#8B2323]/5 hover:bg-[#8B2323]/10 hover:text-[#8B2323] font-black rounded-2xl uppercase tracking-widest text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
                                     {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Coffee className="w-4 h-4 sm:h-5 sm:w-5" />} Start Break
                                 </Button>
                                 <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 font-black rounded-2xl bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-widest text-xs sm:text-sm shadow-md transition-all hover:scale-[1.02] active:scale-95 duration-200">
