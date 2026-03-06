@@ -50,7 +50,7 @@ export async function POST(req: Request) {
                     } else {
                         // Busy means DND/In Meeting
                         googleStatus = 'DO_NOT_DISTURB';
-                        customMessage = activeEvent.summary || 'Busy';
+                        customMessage = 'On going';
                     }
                 } else {
                     googleStatus = 'AVAILABLE';

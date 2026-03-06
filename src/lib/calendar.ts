@@ -438,23 +438,23 @@ export async function getCurrentWorkingLocation(
         }
 
         // C. Google Meet / Video Call -> In a Meeting
-        const meetEvent = activeEvents.find(e => e.hangoutLink || e.conferenceData);
+        const meetEvent = activeEvents.find((e: any) => e.hangoutLink || e.conferenceData);
         if (meetEvent) {
             return {
                 type: 'customLocation',
                 label: 'In a Meeting',
-                summary: meetEvent.summary || 'Google Meet'
+                summary: 'On going'
             };
         }
 
         // D. Busy Event (opaque) -> Do Not Disturb
         // Use the first "Busy" event that is NOT transparent
-        const busyEvent = activeEvents.find(e => e.transparency !== 'transparent');
+        const busyEvent = activeEvents.find((e: any) => e.transparency !== 'transparent');
         if (busyEvent) {
             return {
                 type: 'customLocation',
                 label: 'In a Meeting',
-                summary: busyEvent.summary || 'Busy'
+                summary: 'On going'
             };
         }
 
