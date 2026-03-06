@@ -204,13 +204,24 @@ async function cleanupOldSessions() {
                 reason = "system end-of-day process";
             }
 
-            await prisma.attendance.update({
-                where: { id: session.id },
+            // -------------------------------------------------------------
+            // Concurrency Fix 1: Atomic Lock for Auto Clock-Out
+            // -------------------------------------------------------------
+            const sessionClosed = await prisma.attendance.updateMany({
+                where: {
+                    id: session.id,
+                    clockOut: null // Critical: Only update if it hasn't been closed by another concurrent thread
+                },
                 data: {
                     clockOut: finalClockOut,
                     status: 'PRESENT'
                 }
             })
+
+            // If another parallel request already processed this session, sessionClosed.count will be 0
+            if (sessionClosed.count === 0) {
+                continue;
+            }
 
             // Update Summary
             await updateAttendanceSummary(session.user.id, session.date)
@@ -249,6 +260,9 @@ async function cleanupOldSessions() {
                 messageStr = `Hello! The system noticed that you haven't clocked out. We have automatically clocked you out at ${formattedClockOutTime} (${reason}). If this is incorrect, please request an amended record from your manager.`;
             }
 
+            // Because of the atomic lock above, we are guaranteed that only ONE thread reaches this point.
+            // We no longer need to strictly rely on checking for existingNotification to prevent duplicates,
+            // but we leave it as a secondary check.
             const existingNotification = await prisma.notification.findFirst({
                 where: {
                     userId,
