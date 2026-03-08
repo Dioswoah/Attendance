@@ -25,6 +25,19 @@ function LoginContent() {
     const [showUnauthorizedDialog, setShowUnauthorizedDialog] = useState(false)
     const [isLoggingIn, setIsLoggingIn] = useState(false)
 
+    const [lastUser, setLastUser] = useState<any>(null)
+
+    useEffect(() => {
+        const storedUser = localStorage.getItem("last_logged_in_user")
+        if (storedUser) {
+            try {
+                setLastUser(JSON.parse(storedUser))
+            } catch (e) {
+                console.error("Failed to parse stored user", e)
+            }
+        }
+    }, [])
+
     useEffect(() => {
         const error = searchParams.get("error")
         // Only show dialog if there's an explicit unauthorized error
@@ -32,6 +45,18 @@ function LoginContent() {
             setShowUnauthorizedDialog(true)
         }
     }, [searchParams])
+
+    useEffect(() => {
+        if (status === "authenticated" && session?.user) {
+            // Save user to localStorage for "Jump back in" feature
+            localStorage.setItem("last_logged_in_user", JSON.stringify({
+                name: session.user.name,
+                email: session.user.email,
+                image: session.user.image
+            }))
+            router.push("/user")
+        }
+    }, [status, session, router])
 
     // Google One Tap Implementation
     useEffect(() => {
@@ -62,7 +87,7 @@ function LoginContent() {
     const handleGoogleLogin = async () => {
         setIsLoggingIn(true)
         try {
-            await signIn("google", { callbackUrl: "/user" })
+            await signIn("google", { callbackUrl: "/user", prompt: "select_account" })
         } catch (error) {
             // Login failed
         } finally {
@@ -70,7 +95,7 @@ function LoginContent() {
         }
     }
 
-    if (status === "loading" || status === "authenticated") {
+    if (status === "loading") {
         return (
             <div className="min-h-screen flex items-center justify-center bg-muted/30 relative overflow-hidden">
                 {/* Background elements */}
@@ -117,27 +142,60 @@ function LoginContent() {
                     </div>
                 </div>
 
-                <Card className="border-border shadow-xl rounded-xl bg-white/80 backdrop-blur-sm overflow-hidden">
+                <Card className="border-border shadow-xl rounded-xl bg-white/80 backdrop-blur-sm overflow-hidden text-center">
                     <CardHeader className="space-y-1 text-center pb-6 border-b border-border/50">
-                        <CardDescription className="text-base text-center">
-                            Authorized personnel only. Please sign in with your corporate Google account.
+                        <CardDescription className="text-base">
+                            {lastUser ? "Jump back in!" : "Authorized personnel only. Please sign in with your corporate Google account."}
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="p-6 pt-8">
-                        <Button
-                            onClick={handleGoogleLogin}
-                            disabled={isLoggingIn}
-                            className="w-full h-12 text-base bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-all"
-                        >
-                            {isLoggingIn ? (
-                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            ) : (
-                                <svg className="mr-3 h-5 w-5" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
-                                    <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path>
-                                </svg>
-                            )}
-                            Secure Sign In
-                        </Button>
+                    <CardContent className="p-6 pt-8 space-y-6">
+                        {lastUser ? (
+                            <div className="flex flex-col items-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full">
+                                <div className="space-y-4 w-full flex flex-col items-center">
+                                    <div className="h-24 w-24 rounded-full overflow-hidden border-4 border-white shadow-md">
+                                        <img
+                                            src={lastUser.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(lastUser.name || "User")}&background=8B2323&color=fff`}
+                                            alt={lastUser.name || "User"}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="font-bold text-xl text-foreground">{lastUser.name}</p>
+                                        <p className="text-sm text-muted-foreground">{lastUser.email}</p>
+                                    </div>
+                                    <Button
+                                        onClick={handleGoogleLogin}
+                                        disabled={isLoggingIn}
+                                        className="w-full h-12 bg-red-700 hover:bg-red-800 text-white font-semibold rounded-xl text-lg transition-all shadow-lg hover:shadow-red-900/20"
+                                    >
+                                        {isLoggingIn ? <Loader2 className="h-5 w-5 animate-spin" /> : "Continue"}
+                                    </Button>
+                                </div>
+
+                                <button
+                                    onClick={handleGoogleLogin}
+                                    className="text-sm font-medium text-muted-foreground hover:text-[#8B2323] transition-colors flex items-center gap-2"
+                                >
+                                    <LogIn className="h-4 w-4" />
+                                    Continue with another account
+                                </button>
+                            </div>
+                        ) : (
+                            <Button
+                                onClick={handleGoogleLogin}
+                                disabled={isLoggingIn}
+                                className="w-full h-12 text-base bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-all"
+                            >
+                                {isLoggingIn ? (
+                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                ) : (
+                                    <svg className="mr-3 h-5 w-5" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+                                        <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path>
+                                    </svg>
+                                )}
+                                Secure Sign In
+                            </Button>
+                        )}
                     </CardContent>
                 </Card>
             </div>
