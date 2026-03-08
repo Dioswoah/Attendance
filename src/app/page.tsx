@@ -68,9 +68,11 @@ function LoginContent() {
                     callback: async (response: any) => {
                         setIsLoggingIn(true);
                         try {
+                            // Decode email from JWT to use as login_hint for seamless sign-in
+                            const payload = JSON.parse(window.atob(response.credential.split('.')[1]));
                             await signIn("google", {
-                                credential: response.credential,
                                 callbackUrl: "/user",
+                                login_hint: payload.email,
                             });
                         } catch (error) {
                             console.error("One Tap error:", error);
@@ -84,10 +86,21 @@ function LoginContent() {
         }
     }, [status]);
 
-    const handleGoogleLogin = async () => {
+    const handleManualGoogleLogin = async () => {
         setIsLoggingIn(true)
         try {
             await signIn("google", { callbackUrl: "/user", prompt: "select_account" })
+        } catch (error) {
+            // Login failed
+        } finally {
+            setIsLoggingIn(false)
+        }
+    }
+
+    const handleLoginWithHint = async (email: string) => {
+        setIsLoggingIn(true)
+        try {
+            await signIn("google", { callbackUrl: "/user", login_hint: email })
         } catch (error) {
             // Login failed
         } finally {
@@ -164,7 +177,7 @@ function LoginContent() {
                                         <p className="text-sm text-muted-foreground">{lastUser.email}</p>
                                     </div>
                                     <Button
-                                        onClick={handleGoogleLogin}
+                                        onClick={() => handleLoginWithHint(lastUser.email)}
                                         disabled={isLoggingIn}
                                         className="w-full h-12 bg-red-700 hover:bg-red-800 text-white font-semibold rounded-xl text-lg transition-all shadow-lg hover:shadow-red-900/20"
                                     >
@@ -173,7 +186,7 @@ function LoginContent() {
                                 </div>
 
                                 <button
-                                    onClick={handleGoogleLogin}
+                                    onClick={handleManualGoogleLogin}
                                     className="text-sm font-medium text-muted-foreground hover:text-[#8B2323] transition-colors flex items-center gap-2"
                                 >
                                     <LogIn className="h-4 w-4" />
@@ -182,7 +195,7 @@ function LoginContent() {
                             </div>
                         ) : (
                             <Button
-                                onClick={handleGoogleLogin}
+                                onClick={handleManualGoogleLogin}
                                 disabled={isLoggingIn}
                                 className="w-full h-12 text-base bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-all"
                             >
