@@ -78,7 +78,7 @@ export async function sendLeaveRequestEmail({ managerName, managerEmail, userNam
             title: `Leave Request: ${userName.toUpperCase()}`,
             subtitle: `${startDate} - ${endDate}`,
             buttonText: 'Review in Portal',
-            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: managerName,
             bodyHtml: `
         <p><strong>${userName}</strong> has submitted a new leave request that requires your review.</p>
@@ -105,7 +105,7 @@ export async function sendLeaveStatusUpdateEmail({ userName, userEmail, managerN
             title: `Leave Request ${displayStatus}`,
             subtitle: `${startDate} - ${endDate}`,
             buttonText: 'View Details',
-            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
         <p>Your recent leave request has been reviewed by <strong>${managerName}</strong>.</p>
@@ -132,7 +132,7 @@ export async function sendLeaveActionEmail({ managerName, managerEmail, userName
             title: `Leave Request ${actionText}`,
             subtitle: `${userName}`,
             buttonText: 'Go to Portal',
-            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: managerName,
             bodyHtml: `
         <p><strong>${userName}</strong> has <strong>${actionText.toLowerCase()}</strong> their leave request.</p>
@@ -157,7 +157,7 @@ export async function sendAdminActionEmail({ userName, userEmail, adminName, adm
             title: `Record Updated`,
             subtitle: `Administrative Action`,
             buttonText: 'Review My Records',
-            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
         <p>An administrator (<strong>${adminName}</strong>) has updated your <strong>${actionType.toLowerCase()}</strong> record to ensure your information is accurate.</p>
@@ -180,7 +180,7 @@ export async function sendBreakLimitEmail({ userName, userEmail, totalBreakTime,
         const html = buildEmailHtml({
             title: `Break Time Check-in`,
             buttonText: 'End Break Now',
-            buttonLink: actionLink,
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
         <p>Hope you're having a good break! We noticed your total break time today has reached <strong>${totalBreakTime}</strong> (current daily guideline: ${limit}).</p>
@@ -202,7 +202,7 @@ export async function sendBreakExpectedReturnEmail({ userName, userEmail, expect
         const html = buildEmailHtml({
             title: `Still on Break?`,
             buttonText: 'End Break Now',
-            buttonLink: actionLink,
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
         <p>Just a friendly check-in! Your break was expected to end around <strong>${expectedReturnTime}</strong>.</p>
@@ -225,7 +225,7 @@ export async function sendForgottenClockOutEmail({ userName, userEmail, date, cl
             title: `Attendance Session Closed`,
             subtitle: `${date}`,
             buttonText: 'View My Dashboard',
-            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
         <p>The system noticed you haven't clocked out. To keep our records complete, we have automatically clocked you out at <strong>${clockOutTime}</strong> (${reason}).</p>
@@ -256,7 +256,7 @@ export async function sendGeneralEmail({ toEmail, subject, title, message, link,
         const html = buildEmailHtml({
             title: title,
             buttonText: linkText || 'View Details',
-            buttonLink: link || (process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app/user'),
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: hasGreeting ? undefined : 'Team Member',
             bodyHtml: `<p>${trimmedMessage.replace(/\n/g, '<br/>')}</p>`
         });
@@ -274,7 +274,7 @@ export async function sendLateArrivalEmail({ userName, userEmail, scheduledStart
         const html = buildEmailHtml({
             title: `Ready to Start?`,
             buttonText: 'Clock In Now',
-            buttonLink: actionLink,
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
         <p>Just checking in! We noticed you haven't clocked in yet for your shift scheduled at <strong>${scheduledStart}</strong>.</p>
@@ -297,7 +297,7 @@ export async function sendOverdueDepartureEmail({ userName, userEmail, scheduled
         const html = buildEmailHtml({
             title: `Shift Overdue`,
             buttonText: 'Clock Out Now',
-            buttonLink: actionLink,
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
         <p>Just a friendly reminder that your scheduled shift ended around <strong>${scheduledEnd}</strong>, and you're still clocked in.</p>
