@@ -24,7 +24,6 @@ function LoginContent() {
     const router = useRouter()
     const [showUnauthorizedDialog, setShowUnauthorizedDialog] = useState(false)
     const [isLoggingIn, setIsLoggingIn] = useState(false)
-    const [rememberMe, setRememberMe] = useState(true)
 
     useEffect(() => {
         const error = searchParams.get("error")
@@ -34,13 +33,36 @@ function LoginContent() {
         }
     }, [searchParams])
 
+    // Google One Tap Implementation
+    useEffect(() => {
+        if (status === "unauthenticated") {
+            const google = (window as any).google;
+            if (google) {
+                google.accounts.id.initialize({
+                    client_id: "712513641417-u41tcunopiksskm9ba7u27ncuv0kp54a.apps.googleusercontent.com",
+                    callback: async (response: any) => {
+                        setIsLoggingIn(true);
+                        try {
+                            await signIn("google", {
+                                credential: response.credential,
+                                callbackUrl: "/user",
+                            });
+                        } catch (error) {
+                            console.error("One Tap error:", error);
+                        } finally {
+                            setIsLoggingIn(false);
+                        }
+                    },
+                });
+                google.accounts.id.prompt();
+            }
+        }
+    }, [status]);
+
     const handleGoogleLogin = async () => {
         setIsLoggingIn(true)
         try {
-            await signIn("google", {
-                callbackUrl: "/user",
-                ...(!rememberMe && { prompt: 'select_account' })
-            })
+            await signIn("google", { callbackUrl: "/user" })
         } catch (error) {
             // Login failed
         } finally {
@@ -101,76 +123,21 @@ function LoginContent() {
                             Authorized personnel only. Please sign in with your corporate Google account.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="p-6 pt-8 space-y-6">
-                        {status === "authenticated" && session?.user ? (
-                            <div className="flex flex-col items-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div className="space-y-2 text-center">
-                                    <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
-                                    <p className="text-sm text-muted-foreground">Jump into your account to keep designing</p>
-                                </div>
-
-                                <Card className="w-full border-none shadow-none bg-accent/50 p-6 rounded-2xl flex flex-col items-center space-y-4">
-                                    <div className="h-20 w-20 rounded-full overflow-hidden border-4 border-white shadow-md">
-                                        <img
-                                            src={session.user.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.user.name || "User")}&background=8B2323&color=fff`}
-                                            alt={session.user.name || "User"}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="font-bold text-lg">{session.user.name}</p>
-                                        <p className="text-sm text-muted-foreground">{session.user.email}</p>
-                                    </div>
-                                    <Button
-                                        onClick={() => router.push("/user")}
-                                        className="w-full h-12 bg-red-700 hover:bg-red-800 text-white font-semibold rounded-xl text-lg transition-all shadow-lg hover:shadow-red-900/20"
-                                    >
-                                        Continue
-                                    </Button>
-                                </Card>
-
-                                <button
-                                    onClick={() => signIn("google", { callbackUrl: "/user", prompt: "select_account" })}
-                                    className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2 transition-colors"
-                                >
-                                    <LogIn className="h-4 w-4" />
-                                    Continue with another account
-                                </button>
-                            </div>
-                        ) : (
-                            <>
-                                <Button
-                                    onClick={handleGoogleLogin}
-                                    disabled={isLoggingIn}
-                                    className="w-full h-12 text-base bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-all"
-                                >
-                                    {isLoggingIn ? (
-                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    ) : (
-                                        <svg className="mr-3 h-5 w-5" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
-                                            <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path>
-                                        </svg>
-                                    )}
-                                    Secure Sign In
-                                </Button>
-
-                                <div className="flex items-center space-x-2 pt-2">
-                                    <input
-                                        type="checkbox"
-                                        id="remember"
-                                        checked={rememberMe}
-                                        onChange={(e) => setRememberMe(e.target.checked)}
-                                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-600"
-                                    />
-                                    <label
-                                        htmlFor="remember"
-                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-muted-foreground"
-                                    >
-                                        Remember me for 30 days
-                                    </label>
-                                </div>
-                            </>
-                        )}
+                    <CardContent className="p-6 pt-8">
+                        <Button
+                            onClick={handleGoogleLogin}
+                            disabled={isLoggingIn}
+                            className="w-full h-12 text-base bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-all"
+                        >
+                            {isLoggingIn ? (
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            ) : (
+                                <svg className="mr-3 h-5 w-5" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+                                    <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path>
+                                </svg>
+                            )}
+                            Secure Sign In
+                        </Button>
                     </CardContent>
                 </Card>
             </div>
@@ -221,4 +188,3 @@ export default function LoginPage() {
         </Suspense>
     )
 }
-
