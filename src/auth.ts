@@ -9,7 +9,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     trustHost: true,
     session: {
         strategy: "jwt",
-        maxAge: 30 * 24 * 60 * 60, // 30 days - Remember Me (Standard Practice)
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+        updateAge: 24 * 60 * 60, // 24 hours
     },
     pages: {
         error: '/unauthorized',
