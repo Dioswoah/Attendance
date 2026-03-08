@@ -1846,27 +1846,29 @@ export default function UserPortal() {
                 })
             }
 
-            // 2. Break Start
-            if (record.breakStart) {
-                events.push({
-                    type: 'break-start',
-                    timestamp: record.breakStart,
-                    label: 'Started Break',
-                    isPending: false
+            // 2. Breaks (Multi-break support from the actual breaks array)
+            if (record.breaks && record.breaks.length > 0) {
+                record.breaks.forEach((b: any) => {
+                    if (b.startTime) {
+                        events.push({
+                            type: 'break-start',
+                            timestamp: b.startTime,
+                            label: 'Started Break',
+                            isPending: false
+                        })
+                    }
+                    if (b.endTime) {
+                        events.push({
+                            type: 'break-end',
+                            timestamp: b.endTime,
+                            label: 'Ended Break',
+                            isPending: false
+                        })
+                    }
                 })
             }
 
-            // 3. Break End
-            if (record.breakEnd) {
-                events.push({
-                    type: 'break-end',
-                    timestamp: record.breakEnd,
-                    label: 'Ended Break',
-                    isPending: false
-                })
-            }
-
-            // 4. Clock Out
+            // 3. Clock Out
             if (record.clockOut) {
                 events.push({
                     type: 'clock-out',
@@ -1924,22 +1926,45 @@ export default function UserPortal() {
             return eventPHT === todayPHT
         })
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        // De-duplicate: Remove pending requests if a real event exists at the same time (within 1 min)
-        .filter((event, _, allEvents) => {
-            if (!event.isPending) return true
-
-            // Check if a real event of similar type exists nearby
-            const hasRealDuplicate = allEvents.some(realEvent =>
-                !realEvent.isPending &&
-                Math.abs(new Date(realEvent.timestamp).getTime() - new Date(event.timestamp).getTime()) < 60000 && // 1 minute tolerance
-                (
-                    (event.type === 'clock-in-pending' && realEvent.type === 'clock-in') ||
-                    (event.type === 'clock-out-pending' && realEvent.type === 'clock-out') ||
-                    (event.type === 'break-start-pending' && realEvent.type === 'break-start') ||
-                    (event.type === 'break-end-pending' && realEvent.type === 'break-end')
+        // Filter and De-duplicate
+        .filter((event, index, allEvents) => {
+            // 1. De-duplicate identical real events (from overlapping records)
+            if (!event.isPending) {
+                const isDuplicate = allEvents.some((other, idx) =>
+                    idx < index &&
+                    !other.isPending &&
+                    other.type === event.type &&
+                    other.timestamp === event.timestamp
                 )
-            )
-            return !hasRealDuplicate
+                if (isDuplicate) return false
+
+                // 2. Filter out "Noise": If Clock In and Out happen at EXACTLY the same time,
+                // it is usually a system reset/auto-out. Hide the "Out" to avoid cluttering the feed.
+                if (event.type === 'clock-out') {
+                    const hasSimultaneousIn = allEvents.some(other =>
+                        other.type === 'clock-in' &&
+                        other.timestamp === event.timestamp
+                    )
+                    if (hasSimultaneousIn) return false
+                }
+            }
+
+            // 3. De-duplicate: Remove pending requests if a real event exists nearby
+            if (event.isPending) {
+                const hasRealDuplicate = allEvents.some(realEvent =>
+                    !realEvent.isPending &&
+                    Math.abs(new Date(realEvent.timestamp).getTime() - new Date(event.timestamp).getTime()) < 60000 &&
+                    (
+                        (event.type === 'clock-in-pending' && realEvent.type === 'clock-in') ||
+                        (event.type === 'clock-out-pending' && realEvent.type === 'clock-out') ||
+                        (event.type === 'break-start-pending' && realEvent.type === 'break-start') ||
+                        (event.type === 'break-end-pending' && realEvent.type === 'break-end')
+                    )
+                )
+                if (hasRealDuplicate) return false
+            }
+
+            return true
         })
 
 
