@@ -70,18 +70,19 @@ function buildEmailHtml(props: TemplateProps): string {
   `;
 }
 
-interface LeaveRequestEmailProps { managerName: string; managerEmail: string; userName: string; userEmail: string; userAccessToken: string; leaveType: string; startDate: string; endDate: string; duration: string; reason?: string; leaveId: string; refreshToken?: string; }
-export async function sendLeaveRequestEmail({ managerName, managerEmail, userName, userEmail, leaveType, startDate, endDate, duration, reason }: LeaveRequestEmailProps) {
+interface LeaveRequestEmailProps { managerName: string; managerEmail: string; userName: string; userEmail: string; userAccessToken: string; leaveType: string; startDate: string; endDate: string; duration: string; reason?: string; leaveId: string; refreshToken?: string; customTitle?: string; }
+export async function sendLeaveRequestEmail({ managerName, managerEmail, userName, userEmail, leaveType, startDate, endDate, duration, reason, customTitle }: LeaveRequestEmailProps) {
     try {
         if (!(await isEmailEnabled())) return;
+        const displayTitle = customTitle || `Leave Request: ${userName.toUpperCase()}`;
         const html = buildEmailHtml({
-            title: `Leave Request: ${userName.toUpperCase()}`,
+            title: displayTitle,
             subtitle: `${startDate} - ${endDate}`,
             buttonText: 'Review in Portal',
             buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: managerName,
             bodyHtml: `
-        <p><strong>${userName}</strong> has submitted a new leave request that requires your review.</p>
+        <p><strong>${userName}</strong> has submitted a new ${customTitle ? 'request' : 'leave request'} that requires your review.</p>
         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
             <p style="margin: 0;"><strong>Type:</strong> ${leaveType}</p>
             <p style="margin: 5px 0;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
@@ -96,28 +97,31 @@ export async function sendLeaveRequestEmail({ managerName, managerEmail, userNam
     }
 }
 
-interface LeaveStatusUpdateEmailProps { userName: string; userEmail: string; managerName: string; managerEmail: string; managerAccessToken: string; leaveType: string; startDate: string; endDate: string; status: 'APPROVED' | 'DECLINED'; updatedAt: string; declineReason?: string; managerRefreshToken?: string; }
-export async function sendLeaveStatusUpdateEmail({ userName, userEmail, managerName, managerEmail, leaveType, startDate, endDate, status, declineReason }: LeaveStatusUpdateEmailProps) {
+interface LeaveStatusUpdateEmailProps { userName: string; userEmail: string; managerName: string; managerEmail: string; managerAccessToken: string; leaveType: string; startDate: string; endDate: string; status: 'APPROVED' | 'DECLINED'; updatedAt: string; declineReason?: string; managerRefreshToken?: string; customTitle?: string; }
+export async function sendLeaveStatusUpdateEmail({ userName, userEmail, managerName, managerEmail, leaveType, startDate, endDate, status, declineReason, customTitle }: LeaveStatusUpdateEmailProps) {
     try {
         if (!(await isEmailEnabled())) return;
         const displayStatus = status === 'APPROVED' ? 'Approved' : 'Not Approved';
+        const displayTitle = customTitle ? `${customTitle} ${displayStatus}` : `Leave Request ${displayStatus}`;
+
         const html = buildEmailHtml({
-            title: `Leave Request ${displayStatus}`,
+            title: displayTitle,
             subtitle: `${startDate} - ${endDate}`,
             buttonText: 'View Details',
             buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: userName,
             bodyHtml: `
-        <p>Your recent leave request has been reviewed by <strong>${managerName}</strong>.</p>
+        <p>Your recent ${customTitle ? 'correction' : 'leave'} request has been reviewed by <strong>${managerName}</strong>.</p>
         <div style="background-color: ${status === 'APPROVED' ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${status === 'APPROVED' ? '#dcfce7' : '#fecaca'}; border-radius: 8px; padding: 15px; margin: 20px 0; color: ${status === 'APPROVED' ? '#166534' : '#991b1b'};">
             <p style="margin: 0;"><strong>Status:</strong> ${displayStatus}</p>
-            <p style="margin: 5px 0;"><strong>Leave Type:</strong> ${leaveType}</p>
+            <p style="margin: 5px 0;"><strong>Type:</strong> ${leaveType}</p>
             <p style="margin: 5px 0;"><strong>Dates:</strong> ${startDate} to ${endDate}</p>
             ${status === 'DECLINED' && declineReason ? `<p style="margin: 10px 0 0 0; padding-top: 10px; border-top: 1px solid #fecaca;"><strong>Note:</strong> ${declineReason}</p>` : ''}
         </div>
       `
         });
-        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, replyTo: managerEmail, subject: `[RSA] Leave Request ${displayStatus}`, html });
+        const subject = customTitle ? `[RSA] ${customTitle} Correction: ${displayStatus}` : `[RSA] Leave Request ${displayStatus}`;
+        await transporter.sendMail({ from: SENDER_EMAIL, to: userEmail, replyTo: managerEmail, subject: subject, html });
     } catch (error) {
         console.error("[ZeptoMail] Failed to send leave status update email:", error);
     }

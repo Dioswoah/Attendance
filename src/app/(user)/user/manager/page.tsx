@@ -751,6 +751,29 @@ export default function ManagerControlPage() {
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">Manager Control</h1>
                         <p className="text-muted-foreground mt-1">Review requests and monitor team availability</p>
                     </div>
+
+                    <TabsList className="bg-slate-100/50 border border-slate-200 p-1 h-12 rounded-2xl gap-1">
+                        <TabsTrigger value="requests" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
+                            <ListChecks className="w-4 h-4 mr-2" />
+                            Requests
+                        </TabsTrigger>
+                        <TabsTrigger value="history" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
+                            <History className="w-4 h-4 mr-2" />
+                            History
+                        </TabsTrigger>
+                        <TabsTrigger value="calendar" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
+                            <CalendarDays className="w-4 h-4 mr-2" />
+                            Calendar
+                        </TabsTrigger>
+                        <TabsTrigger value="performance" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
+                            <TrendingUp className="w-4 h-4 mr-2" />
+                            Performance
+                        </TabsTrigger>
+                        <TabsTrigger value="reports" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
+                            <Download className="w-4 h-4 mr-2" />
+                            Reports
+                        </TabsTrigger>
+                    </TabsList>
                 </div>
 
                 {/* --- REQUESTS TAB --- */}

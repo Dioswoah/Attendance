@@ -126,7 +126,8 @@ export async function POST(req: Request) {
                     duration: `${eventTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: user.manager?.selectedTimezone || 'Asia/Manila' })} (Your Time) / ${eventTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone })} (Staff Time)`,
                     reason: reason,
                     leaveId: request.id,
-                    refreshToken: session.refreshToken
+                    refreshToken: session.refreshToken,
+                    customTitle: 'Correction Request'
                 })
             }
         }

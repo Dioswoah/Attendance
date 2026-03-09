@@ -1487,9 +1487,12 @@ export default function UserPortal() {
             const record = allAttendance.find((a: any) => a.userId === member.id)
 
             // Check if they are on APPROVED leave today
+            const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
             const onLeaveToday = teamApprovedLeaves.find((l: any) =>
                 l.userId === member.id &&
-                isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
+                l.status === 'APPROVED' &&
+                todayStr >= l.startDate.split('T')[0] &&
+                todayStr <= l.endDate.split('T')[0]
             )
 
             let status = 'absent'
@@ -1541,9 +1544,12 @@ export default function UserPortal() {
 
             // LEAVE CHECK: If they are not clocked in, check if they are on leave today
             if (isStatus(liveStatus, 'out')) {
+                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
                 const onLeaveToday = todayTeamLeaves.find((l: any) =>
                     l.userId === staff.id &&
-                    isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
+                    l.status === 'APPROVED' &&
+                    todayStr >= l.startDate.split('T')[0] &&
+                    todayStr <= l.endDate.split('T')[0]
                 )
                 if (onLeaveToday) liveStatus = 'on-leave'
             }

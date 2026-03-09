@@ -155,7 +155,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 endDate: new Date(request.date).toLocaleDateString(),
                 status: status as 'APPROVED' | 'DECLINED',
                 updatedAt: new Date().toLocaleDateString(),
-                declineReason: declineReason || undefined
+                declineReason: declineReason || undefined,
+                customTitle: 'Correction Request'
             })
         }
 
