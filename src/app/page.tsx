@@ -177,9 +177,22 @@ function LoginContent() {
                         setIsLoggingIn(false)
                     }
                 },
-                auto_select: false, // Show bubble top-right instead of invisible auto-login
+                // do NOT auto_select — that would silently log in without user seeing it
+                auto_select: false,
+                // cancel_on_tap_outside keeps the prompt alive if user clicks elsewhere
+                cancel_on_tap_outside: false,
             })
-            g.accounts.id.prompt()
+
+            // Show the One Tap prompt (appears top-right as a sign-in widget)
+            g.accounts.id.prompt((notification: any) => {
+                if (notification.isNotDisplayed()) {
+                    console.log('[OneTap] not displayed:', notification.getNotDisplayedReason())
+                } else if (notification.isSkippedMoment()) {
+                    console.log('[OneTap] skipped:', notification.getSkippedReason())
+                } else if (notification.isDismissedMoment()) {
+                    console.log('[OneTap] dismissed:', notification.getDismissedReason())
+                }
+            })
         }
 
         if ((window as any).google?.accounts?.id) {
@@ -198,38 +211,24 @@ function LoginContent() {
     }, [status])
 
     // ── "Continue": sign in as the displayed account ─────────────────────────
+    // Uses prompt="none" + login_hint so Google silently authenticates the stored
+    // account WITHOUT showing an account chooser. If silent auth fails (e.g. session
+    // expired), we fall back to the full OAuth flow with login_hint pre-filled.
     const handleContinue = async () => {
         setIsLoggingIn(true)
         try {
             if (detectedUser?.credential) {
-                // We already have a fresh credential from the One Tap popup click → use it directly
+                // Fresh credential from the One Tap widget → use it directly (fastest)
                 await signIn("google-onetap", { credential: detectedUser.credential, callbackUrl: "/user" })
             } else if (storedUser?.email) {
-                // No fresh credential yet — re-trigger One Tap with the stored email as hint
-                const g = (window as any).google
-                if (g?.accounts?.id) {
-                    oneTapReady.current = false
-                    g.accounts.id.cancel()
-                    g.accounts.id.initialize({
-                        client_id: GOOGLE_CLIENT_ID,
-                        callback: async (response: any) => {
-                            try {
-                                await signIn("google-onetap", { credential: response.credential, callbackUrl: "/user" })
-                            } catch { setIsLoggingIn(false) }
-                        },
-                        hint: storedUser.email,
-                        auto_select: true,
-                    })
-                    g.accounts.id.prompt((notification: any) => {
-                        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                            setIsLoggingIn(false)
-                            // Fall back: OAuth with login_hint for this email
-                            signIn("google", { callbackUrl: "/user", login_hint: storedUser!.email })
-                        }
-                    })
-                } else {
-                    await signIn("google", { callbackUrl: "/user", login_hint: storedUser.email })
-                }
+                // Silent OAuth: tells Google to skip the account chooser and use the
+                // already-consented account matching the login_hint email.
+                // If the Google session is still valid this redirects straight to /user.
+                await signIn("google", {
+                    callbackUrl: "/user",
+                    login_hint: storedUser.email,
+                    prompt: "none",   // ← skip account chooser
+                })
             }
         } catch {
             setIsLoggingIn(false)
