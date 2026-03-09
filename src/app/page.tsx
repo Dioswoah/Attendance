@@ -148,12 +148,9 @@ function LoginContent() {
     }, [status, session, router])
 
     // ── Google One Tap initialization ─────────────────────────────────────────
-    // KEY BEHAVIOR:
-    //   • When the One Tap popup (top-right) appears and the user clicks an account,
-    //     the callback fires → we decode the JWT to get name/email/picture and show
-    //     the account in the center card WITHOUT signing in yet.
-    //   • The user sees their account in the card and clicks "Continue" to actually sign in.
-    //   • auto_select: false  — we always wait for user confirmation (no surprise auto-login)
+    // When user clicks an account in the top-right One Tap popup:
+    //   → immediately sign them in → redirect to /user (no extra Continue click needed)
+    // The center card "Continue" button is for the localStorage remembered user path.
     useEffect(() => {
         if (status !== "unauthenticated" || oneTapReady.current) return
 
@@ -164,30 +161,24 @@ function LoginContent() {
 
             g.accounts.id.initialize({
                 client_id: GOOGLE_CLIENT_ID,
-                callback: (response: any) => {
+                callback: async (response: any) => {
                     try {
-                        // Decode the JWT payload (middle base64url segment)
+                        // Decode to persist account info for future visits
                         const payload = JSON.parse(
                             atob(response.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
                         )
-                        const accountInfo = {
-                            name: payload.name,
-                            email: payload.email,
-                            image: payload.picture ?? "",
-                        }
-                        // Persist immediately so next page load shows the card without One Tap delay
+                        const accountInfo = { name: payload.name, email: payload.email, image: payload.picture ?? "" }
                         localStorage.setItem("last_logged_in_user", JSON.stringify(accountInfo))
                         setStoredUser(accountInfo)
 
-                        // Store the credential so Continue click works instantly
-                        setDetectedUser({ ...accountInfo, credential: response.credential })
+                        // Immediately sign in — clicking the popup IS the confirmation
+                        setIsLoggingIn(true)
+                        await signIn("google-onetap", { credential: response.credential, callbackUrl: "/user" })
                     } catch (e) {
-                        console.error("Failed to decode One Tap credential:", e)
+                        console.error("One Tap error:", e)
+                        setIsLoggingIn(false)
                     }
                 },
-                // auto_select: true → Google fires the callback automatically on page load
-                // for any browser that has an active Google session.
-                // The account card appears immediately — user just clicks Continue.
                 auto_select: true,
             })
             g.accounts.id.prompt()
