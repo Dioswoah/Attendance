@@ -292,7 +292,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                                 }
                             },
                             data: {
-                                refresh_token: account.refresh_token,
+                                // NEVER overwrite a valid refresh_token with null/undefined from a second login
+                                ...(account.refresh_token ? { refresh_token: account.refresh_token } : {}),
                                 access_token: account.access_token,
                                 expires_at: account.expires_at,
                                 scope: account.scope,
@@ -352,7 +353,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     ...token,
                     accessToken: account.access_token,
                     refreshToken: refreshToken,
-                    expiresAt: Date.now() + ((account.expires_in as number) * 1000), // expires_in is in seconds
+                    // expires_at is in seconds, we need milliseconds
+                    expiresAt: (account.expires_at as number) * 1000,
                     id: dbUser?.id || user.id,
                     issuedAt: Date.now(), // Fallback for some flows, though token.iat is standard
                 };
