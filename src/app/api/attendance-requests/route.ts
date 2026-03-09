@@ -73,8 +73,11 @@ export async function POST(req: Request) {
         })
 
         // PROVISIONAL ATTENDANCE:
-        // If this is a CLOCK_IN request, we create a provisional Attendance record (if none exists).
-        if (type === 'CLOCK_IN') {
+        // Only create a provisional attendance row when submitting a brand-new CLOCK_IN
+        // for a date that has NO existing attendance record at all (targetId is null).
+        // If targetId is provided, the user is amending an EXISTING record — we must NOT
+        // create a new row; the original record stays unchanged until the request is approved.
+        if (type === 'CLOCK_IN' && !targetId) {
             const existing = await prisma.attendance.findFirst({
                 where: {
                     userId,

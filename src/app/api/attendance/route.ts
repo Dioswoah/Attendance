@@ -549,7 +549,7 @@ export async function GET(req: Request) {
             ]
         }
 
-        const [attendance, leaves, allFutureLeaves, pendingRequests] = await Promise.all([
+        const [attendance, leaves, allFutureLeaves, pendingRequests, badProvisionIds] = await Promise.all([
             prisma.attendance.findMany({
                 where: whereClause,
                 include: {
@@ -599,8 +599,22 @@ export async function GET(req: Request) {
                     type: true,
                     status: true
                 }
+            }),
+            // Find provisional attendance IDs that belong to amendment requests (targetId set).
+            // These were incorrectly created and must be excluded from the UI.
+            prisma.attendanceRequest.findMany({
+                where: {
+                    targetId: { not: null },
+                    deletedAt: null,
+                    ...(userId && { userId })
+                },
+                select: { id: true }
             })
         ])
+
+        // Build set of "bad provisional" notes keys to exclude from display
+        const badProvisionNotes = new Set(badProvisionIds.map((r: any) => `PROVISIONAL_REQUEST:${r.id}`))
+
 
         // Transform Helpers
         const transformRecord = (a: any) => {
@@ -685,7 +699,10 @@ export async function GET(req: Request) {
 
         if (userId) {
             // User Portal: Return ALL records to support history and cumulative calc
-            const att = attendance.map(transformRecord)
+            // Exclude any provisional rows that were incorrectly created for amendment requests
+            const att = attendance
+                .filter((a: any) => !a.notes || !badProvisionNotes.has(a.notes))
+                .map(transformRecord)
             const lvs = leaves.map(transformLeave)
             transformed = [...att, ...lvs]
 
@@ -697,8 +714,10 @@ export async function GET(req: Request) {
             })
         } else {
             // Admin Dashboard: Return ALL records to support full activity feed history
-            // Previously we deduplicated, which hid intermediate clock-outs.
-            const att = attendance.map(transformRecord)
+            // Exclude bad provisional records from amendment requests
+            const att = attendance
+                .filter((a: any) => !a.notes || !badProvisionNotes.has(a.notes))
+                .map(transformRecord)
             const lvs = leaves.map(transformLeave)
 
             // Combine
