@@ -12,7 +12,6 @@ export default {
                 params: {
                     scope: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/chat.users.availability.readonly',
                     access_type: 'offline',
-                    prompt: 'consent',
                 }
             }
         }),

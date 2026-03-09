@@ -163,7 +163,6 @@ function LoginContent() {
                 client_id: GOOGLE_CLIENT_ID,
                 callback: async (response: any) => {
                     try {
-                        // Decode to persist account info for future visits
                         const payload = JSON.parse(
                             atob(response.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
                         )
@@ -171,7 +170,6 @@ function LoginContent() {
                         localStorage.setItem("last_logged_in_user", JSON.stringify(accountInfo))
                         setStoredUser(accountInfo)
 
-                        // Immediately sign in — clicking the popup IS the confirmation
                         setIsLoggingIn(true)
                         await signIn("google-onetap", { credential: response.credential, callbackUrl: "/user" })
                     } catch (e) {
@@ -179,7 +177,7 @@ function LoginContent() {
                         setIsLoggingIn(false)
                     }
                 },
-                auto_select: true,
+                auto_select: false, // Show bubble top-right instead of invisible auto-login
             })
             g.accounts.id.prompt()
         }
