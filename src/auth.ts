@@ -19,6 +19,43 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async signIn({ user, account, profile }) {
             if (!user.email) return false;
 
+            // ─── Google One Tap path ────────────────────────────────────────────
+            // Domain validation already happened in auth.config.ts authorize().
+            // We just need to sync the user with our DB.
+            if (account?.provider === 'google-onetap') {
+                try {
+                    let dbUser = await prisma.user.findUnique({ where: { email: user.email } })
+                    if (!dbUser) {
+                        console.log(`[Auth] One Tap: Creating new user: ${user.email}`)
+                        dbUser = await prisma.user.create({
+                            data: {
+                                email: user.email,
+                                name: user.name,
+                                image: user.image,
+                                emailVerified: new Date(),
+                                availabilityStatus: 'AVAILABLE',
+                            }
+                        })
+                    } else if (dbUser.isArchived || dbUser.deletedAt) {
+                        console.warn(`[Auth] One Tap: Archived user attempted sign-in: ${user.email}`)
+                        return '/unauthorized'
+                    } else {
+                        // Update name/image if they've changed
+                        if (dbUser.name !== user.name || dbUser.image !== user.image) {
+                            await prisma.user.update({
+                                where: { id: dbUser.id },
+                                data: { name: user.name, image: user.image }
+                            })
+                        }
+                    }
+                    return true
+                } catch (e) {
+                    console.error('[Auth] One Tap DB sync error:', e)
+                    return false
+                }
+            }
+            // ────────────────────────────────────────────────────────────────────
+
             // 1. Domain Restriction Guardrail
             // DYNAMIC CHECK: Workspace Verification (Primary Domain + Aliases)
             // We check the 'hd' (Hosted Domain) claim. 
@@ -56,6 +93,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 console.error(`[Auth] Access denied for user: ${user.email}. Domain/Workspace validation failed.`);
                 return '/unauthorized';
             }
+
 
             try {
                 // ------------------------------------------------------------------
