@@ -55,6 +55,56 @@ function Avatar({ src, name }: { src?: string; name?: string }) {
 type StoredUser = { name: string; email: string; image: string }
 type DetectedUser = StoredUser & { credential: string }
 
+/** Shows while waiting for Google One Tap auto_select to fire.
+ *  Fades in the "Secure Sign In" button after 2.5s if nothing is detected. */
+function DetectingState({ onManualLogin, isLoggingIn }: { onManualLogin: () => void; isLoggingIn: boolean }) {
+    const [showFallback, setShowFallback] = useState(false)
+    useEffect(() => {
+        const t = setTimeout(() => setShowFallback(true), 2500)
+        return () => clearTimeout(t)
+    }, [])
+
+    if (showFallback) {
+        return (
+            <div className="flex flex-col items-center space-y-4 animate-in fade-in duration-500">
+                <p className="text-xs text-center text-muted-foreground">
+                    Sign in with your corporate Google account
+                </p>
+                <Button
+                    onClick={onManualLogin}
+                    disabled={isLoggingIn}
+                    className="w-full h-12 text-base bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-all"
+                >
+                    {isLoggingIn ? (
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    ) : (
+                        <svg className="mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+                            <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z" />
+                        </svg>
+                    )}
+                    Secure Sign In
+                </Button>
+            </div>
+        )
+    }
+
+    // Skeleton — same layout as the account card, pulsing while detecting
+    return (
+        <div className="flex flex-col items-center space-y-5 animate-in fade-in duration-300">
+            {/* Avatar skeleton */}
+            <div className="h-20 w-20 rounded-full bg-slate-200 animate-pulse" />
+            {/* Name skeleton */}
+            <div className="space-y-2 w-full flex flex-col items-center">
+                <div className="h-4 w-32 rounded bg-slate-200 animate-pulse" />
+                <div className="h-3 w-44 rounded bg-slate-100 animate-pulse" />
+            </div>
+            {/* Button skeleton */}
+            <div className="h-11 w-full rounded-xl bg-slate-200 animate-pulse" />
+            <p className="text-xs text-muted-foreground">Detecting your account…</p>
+        </div>
+    )
+}
+
 function LoginContent() {
     const { data: session, status } = useSession() as any
     const searchParams = useSearchParams()
@@ -120,13 +170,17 @@ function LoginContent() {
                         const payload = JSON.parse(
                             atob(response.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
                         )
-                        // Store decoded account + raw credential — sign-in happens on Continue click
-                        setDetectedUser({
+                        const accountInfo = {
                             name: payload.name,
                             email: payload.email,
                             image: payload.picture ?? "",
-                            credential: response.credential,
-                        })
+                        }
+                        // Persist immediately so next page load shows the card without One Tap delay
+                        localStorage.setItem("last_logged_in_user", JSON.stringify(accountInfo))
+                        setStoredUser(accountInfo)
+
+                        // Store the credential so Continue click works instantly
+                        setDetectedUser({ ...accountInfo, credential: response.credential })
                     } catch (e) {
                         console.error("Failed to decode One Tap credential:", e)
                     }
@@ -289,26 +343,8 @@ function LoginContent() {
                                 </button>
                             </div>
                         ) : (
-                            /* ── No account detected yet — generic sign-in button ── */
-                            <div className="space-y-3">
-                                <p className="text-xs text-muted-foreground text-center">
-                                    If your account appears in the top-right corner, click it to continue.
-                                </p>
-                                <Button
-                                    onClick={handleChooseAccount}
-                                    disabled={isLoggingIn}
-                                    className="w-full h-12 text-base bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-all"
-                                >
-                                    {isLoggingIn ? (
-                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                    ) : (
-                                        <svg className="mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
-                                            <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z" />
-                                        </svg>
-                                    )}
-                                    Secure Sign In
-                                </Button>
-                            </div>
+                            /* ── No stored account yet: show skeleton while One Tap detects ── */
+                            <DetectingState onManualLogin={handleChooseAccount} isLoggingIn={isLoggingIn} />
                         )}
                     </CardContent>
                 </Card>
