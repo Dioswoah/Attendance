@@ -112,13 +112,14 @@ function LoginContent() {
 
     const [showUnauthorizedDialog, setShowUnauthorizedDialog] = useState(false)
     const [isLoggingIn, setIsLoggingIn] = useState(false)
+    const [oneTapSuppressed, setOneTapSuppressed] = useState(false)
 
     // detectedUser  → fresh from the Google One Tap popup (has credential ready to use)
     // storedUser    → from localStorage, saved after a previous login (shows "Jump back in" card)
-    // The card shows detectedUser first, then storedUser, then nothing (generic button)
     const [detectedUser, setDetectedUser] = useState<DetectedUser | null>(null)
     const [storedUser, setStoredUser] = useState<StoredUser | null>(null)
     const oneTapReady = useRef(false)
+    const oneTapContainerRef = useRef<HTMLDivElement>(null)
 
     const displayUser: StoredUser | null = detectedUser ?? storedUser
 
@@ -148,9 +149,9 @@ function LoginContent() {
     }, [status, session, router])
 
     // ── Google One Tap initialization ─────────────────────────────────────────
-    // When user clicks an account in the top-right One Tap popup:
-    //   → immediately sign them in → redirect to /user (no extra Continue click needed)
-    // The center card "Continue" button is for the localStorage remembered user path.
+    // Initializes the GSI library and calls prompt() to show the top-right widget.
+    // If Google suppresses it (dismissed recently, multiple accounts, etc.),
+    // oneTapSuppressed → true and we render a fallback "Sign in with Google" button.
     useEffect(() => {
         if (status !== "unauthenticated" || oneTapReady.current) return
 
@@ -177,22 +178,44 @@ function LoginContent() {
                         setIsLoggingIn(false)
                     }
                 },
-                // do NOT auto_select — that would silently log in without user seeing it
-                auto_select: false,
-                // cancel_on_tap_outside keeps the prompt alive if user clicks elsewhere
+                // Keep prompt visible even if user clicks outside
                 cancel_on_tap_outside: false,
+                // Use FedCM when available (Chrome's privacy-safe flow)
+                use_fedcm_for_prompt: true,
+                // Don't auto-select — require user to click the top-right widget
+                auto_select: false,
+                itp_support: true,
             })
 
-            // Show the One Tap prompt (appears top-right as a sign-in widget)
+            // Show the One Tap prompt widget (top-right bubble)
             g.accounts.id.prompt((notification: any) => {
                 if (notification.isNotDisplayed()) {
-                    console.log('[OneTap] not displayed:', notification.getNotDisplayedReason())
+                    const reason = notification.getNotDisplayedReason()
+                    console.log("[OneTap] Not displayed:", reason)
+                    // Suppressed by Google (e.g. user dismissed it recently)
+                    setOneTapSuppressed(true)
                 } else if (notification.isSkippedMoment()) {
-                    console.log('[OneTap] skipped:', notification.getSkippedReason())
+                    const reason = notification.getSkippedReason()
+                    console.log("[OneTap] Skipped:", reason)
+                    setOneTapSuppressed(true)
                 } else if (notification.isDismissedMoment()) {
-                    console.log('[OneTap] dismissed:', notification.getDismissedReason())
+                    console.log("[OneTap] Dismissed:", notification.getDismissedReason())
                 }
             })
+
+            // Also render a Google Sign-In button into our hidden container as backup
+            // This is always clickable unlike the prompt() which Google can suppress
+            if (oneTapContainerRef.current) {
+                g.accounts.id.renderButton(oneTapContainerRef.current, {
+                    type: "standard",
+                    shape: "pill",
+                    theme: "outline",
+                    text: "signin_with",
+                    size: "large",
+                    logo_alignment: "left",
+                    width: 220,
+                })
+            }
         }
 
         if ((window as any).google?.accounts?.id) {
@@ -210,37 +233,89 @@ function LoginContent() {
         }
     }, [status])
 
-    // ── "Continue": sign in as the displayed account ─────────────────────────
-    // Uses prompt="none" + login_hint so Google silently authenticates the stored
-    // account WITHOUT showing an account chooser. If silent auth fails (e.g. session
-    // expired), we fall back to the full OAuth flow with login_hint pre-filled.
+    // ── "Continue": sign in as the stored/detected account ──────────────────
+    // Strategy:
+    //   1. If we have a fresh One Tap credential → use it directly (fastest, no redirect)
+    //   2. Otherwise, try One Tap silent flow (auto_select + login_hint) → no account chooser
+    //   3. If One Tap is suppressed by Google → OAuth with prompt=none + login_hint
+    //      NOTE: prompt & login_hint MUST go in the 3rd arg of signIn() in NextAuth v5
     const handleContinue = async () => {
         setIsLoggingIn(true)
         try {
             if (detectedUser?.credential) {
-                // Fresh credential from the One Tap widget → use it directly (fastest)
+                // Already have fresh credential from One Tap widget click
                 await signIn("google-onetap", { credential: detectedUser.credential, callbackUrl: "/user" })
-            } else if (storedUser?.email) {
-                // Silent OAuth: tells Google to skip the account chooser and use the
-                // already-consented account matching the login_hint email.
-                // If the Google session is still valid this redirects straight to /user.
-                await signIn("google", {
-                    callbackUrl: "/user",
-                    login_hint: storedUser.email,
-                    prompt: "none",   // ← skip account chooser
-                })
+                return
             }
+
+            if (!storedUser?.email) {
+                setIsLoggingIn(false)
+                return
+            }
+
+            const g = (window as any).google
+
+            if (g?.accounts?.id) {
+                // Try One Tap with auto_select + login_hint first.
+                // This silently picks the hinted account without showing an account chooser.
+                oneTapReady.current = false
+                g.accounts.id.cancel()
+
+                let resolved = false
+                const silentResult = await new Promise<"success" | "failed">((resolve) => {
+                    g.accounts.id.initialize({
+                        client_id: GOOGLE_CLIENT_ID,
+                        callback: async (response: any) => {
+                            resolved = true
+                            try {
+                                await signIn("google-onetap", { credential: response.credential, callbackUrl: "/user" })
+                                resolve("success")
+                            } catch {
+                                resolve("failed")
+                            }
+                        },
+                        login_hint: storedUser.email,  // Tells Google which account to silently pick
+                        auto_select: true,             // Auto-picks the hinted account silently
+                        cancel_on_tap_outside: false,
+                        use_fedcm_for_prompt: true,
+                        itp_support: true,
+                    })
+
+                    g.accounts.id.prompt((notification: any) => {
+                        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                            if (!resolved) resolve("failed")
+                        }
+                    })
+
+                    // Safety timeout: if neither callback fires within 4s, fall through
+                    setTimeout(() => { if (!resolved) resolve("failed") }, 4000)
+                })
+
+                if (silentResult === "success") return
+            }
+
+            // Fallback: OAuth with login_hint + prompt=none (skip account chooser)
+            // IMPORTANT: In NextAuth v5, authorization params go in the THIRD argument!
+            await signIn(
+                "google",
+                { callbackUrl: "/user" },           // ← 2nd arg: NextAuth options
+                { prompt: "none", login_hint: storedUser.email }  // ← 3rd arg: OAuth params → no account chooser
+            )
         } catch {
             setIsLoggingIn(false)
         }
     }
 
-    // ── "Continue with another account" / "Secure Sign In" ───────────────────
-    // Always shows the full Google account chooser
+    // ── "Sign in with another account" → full Google account chooser ─────────
     const handleChooseAccount = async () => {
         setIsLoggingIn(true)
         try {
-            await signIn("google", { callbackUrl: "/user", prompt: "select_account" })
+            // IMPORTANT: prompt goes in 3rd arg (authorizationParams) in NextAuth v5
+            await signIn(
+                "google",
+                { callbackUrl: "/user" },
+                { prompt: "select_account" }
+            )
         } catch {
             setIsLoggingIn(false)
         }
@@ -260,6 +335,14 @@ function LoginContent() {
     return (
         <div className="min-h-screen bg-muted/30 flex items-center justify-center p-6 relative overflow-hidden">
             <LoginBg />
+
+            {/* Hidden container for the rendered Google button (One Tap suppression fallback) */}
+            {/* Positioned top-right to mimic where One Tap normally appears */}
+            <div
+                ref={oneTapContainerRef}
+                className={`fixed top-4 right-4 z-50 transition-opacity duration-500 ${oneTapSuppressed ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+                style={{ minWidth: 220 }}
+            />
 
             <div className="w-full max-w-[400px] space-y-6 animate-in fade-in zoom-in duration-500 relative z-10">
 
@@ -302,7 +385,7 @@ function LoginContent() {
                                     <p className="text-sm text-muted-foreground">{displayUser.email}</p>
                                 </div>
 
-                                {/* Continue — uses the stored credential or re-triggers One Tap */}
+                                {/* Continue — silently signs in the stored account, no account chooser */}
                                 <Button
                                     onClick={handleContinue}
                                     disabled={isLoggingIn}
