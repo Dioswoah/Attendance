@@ -70,9 +70,11 @@ function LoginContent() {
                         try {
                             // Decode email from JWT to use as login_hint for seamless sign-in
                             const payload = JSON.parse(window.atob(response.credential.split('.')[1]));
+                            // prompt=none + login_hint tells Google to use this account without showing chooser
                             await signIn("google", {
                                 callbackUrl: "/user",
                                 login_hint: payload.email,
+                                prompt: "none",
                             });
                         } catch (error) {
                             console.error("One Tap error:", error);
@@ -100,7 +102,8 @@ function LoginContent() {
     const handleLoginWithHint = async (email: string) => {
         setIsLoggingIn(true)
         try {
-            await signIn("google", { callbackUrl: "/user", login_hint: email })
+            // prompt=none skips the account chooser UI for recognized/returning users
+            await signIn("google", { callbackUrl: "/user", login_hint: email, prompt: "none" })
         } catch (error) {
             // Login failed
         } finally {
