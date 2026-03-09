@@ -36,17 +36,14 @@ export default {
                     if (payload.aud !== process.env.AUTH_GOOGLE_ID) return null
                     if (payload.email_verified !== true && payload.email_verified !== 'true') return null
 
-                    // Domain/Workspace check
+                    // Domain/Workspace check — only Google Workspace accounts (hd claim) are allowed.
+                    // Personal Gmail accounts (no hd) are always rejected.
                     const allowedDomains = (process.env.ALLOWED_WORKSPACE_DOMAINS || 'redadair.com.au')
                         .split(',').map((d: string) => d.trim())
-                    const userDomain = payload.email?.split('@')[1]
-                    const hostedDomain = payload.hd
+                    const hostedDomain = payload.hd  // only Google Workspace accounts have hd
 
-                    const domainAllowed = allowedDomains.some(
-                        (d: string) => userDomain === d || hostedDomain === d
-                    )
-                    if (!domainAllowed) {
-                        console.warn(`[Auth] One Tap REJECTED: email=${payload.email}, hd=${hostedDomain}`)
+                    if (!hostedDomain || !allowedDomains.includes(hostedDomain)) {
+                        console.warn(`[Auth] One Tap REJECTED: email=${payload.email}, hd=${hostedDomain ?? 'none (personal Gmail)'}`)
                         return null
                     }
 
