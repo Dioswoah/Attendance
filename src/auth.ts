@@ -339,7 +339,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 // Recover refresh token from DB if missing (handle prompt=none or select_account flow)
                 let refreshToken = account.refresh_token;
                 if (!refreshToken && dbUser) {
-                    // Try to fetch from DB Account link
+                    // Try to fetch from DB Account link (covers google-onetap → no refresh token)
                     const linkedAccount = await prisma.account.findFirst({
                         where: { userId: dbUser.id, provider: 'google' }
                     });
@@ -349,14 +349,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     }
                 }
 
+                // One Tap (credentials provider) does NOT return expires_at or access_token.
+                // Defaulting to NaN causes Date.now() < NaN = false on every session check,
+                // which triggers refreshAccessToken → RefreshAccessTokenError → auth-lost loop.
+                // Fix: set a 30-day expiry for One Tap sessions so refresh is never triggered.
+                const expiresAt = account.expires_at
+                    ? (account.expires_at as number) * 1000
+                    : Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days for One Tap sessions
+
                 return {
                     ...token,
                     accessToken: account.access_token,
                     refreshToken: refreshToken,
-                    // expires_at is in seconds, we need milliseconds
-                    expiresAt: (account.expires_at as number) * 1000,
+                    expiresAt,
                     id: dbUser?.id || user.id,
-                    issuedAt: Date.now(), // Fallback for some flows, though token.iat is standard
+                    issuedAt: Date.now(),
+                    provider: account.provider, // track provider so refresh knows what to do
                 };
             }
 
@@ -429,6 +437,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 async function refreshAccessToken(token: any) {
     try {
         if (!token.refreshToken) {
+            // One Tap sessions (google-onetap) never receive a refresh token.
+            // Instead of crashing the session with RefreshAccessTokenError (which causes
+            // the auth-lost loop), silently extend the session for another 30 days.
+            // The user is still authenticated — their DB user record is valid.
+            if (token.provider === 'google-onetap') {
+                console.log('[Auth] One Tap session: no refresh token, extending session 30 days.');
+                return {
+                    ...token,
+                    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+                }
+            }
             console.error("[Auth] No refresh token available in the session. User needs to sign in again via Google.");
             return {
                 ...token,
