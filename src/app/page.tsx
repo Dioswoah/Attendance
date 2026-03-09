@@ -131,9 +131,10 @@ function LoginContent() {
                         console.error("Failed to decode One Tap credential:", e)
                     }
                 },
-                // auto_select: false → Google shows the popup, user must click to confirm
-                // This means the center card updates after the popup click (Canva-style)
-                auto_select: false,
+                // auto_select: true → Google fires the callback automatically on page load
+                // for any browser that has an active Google session.
+                // The account card appears immediately — user just clicks Continue.
+                auto_select: true,
             })
             g.accounts.id.prompt()
         }
