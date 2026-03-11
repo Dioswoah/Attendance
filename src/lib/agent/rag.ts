@@ -9,6 +9,7 @@ export interface ChatContext {
         role: UserRole[];
         department: string;
         manager: string | null;
+        currentStatus: string;
     };
     attendance: any[];
     leaves: any[];
@@ -16,11 +17,17 @@ export interface ChatContext {
 }
 
 export async function getAgentContext(userId: string, roles: UserRole[]): Promise<ChatContext> {
+    const todayStr = new Date().toISOString().split('T')[0];
+    
     const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
             department: true,
             manager: { select: { name: true } },
+            attendanceSummaries: {
+                where: { date: new Date(`${todayStr}T00:00:00.000Z`) },
+                take: 1
+            }
         }
     });
 
@@ -48,7 +55,8 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
             email: user.email,
             role: roles,
             department: user.department?.name || "Unassigned",
-            manager: user.manager?.name || null
+            manager: user.manager?.name || null,
+            currentStatus: user.attendanceSummaries?.[0]?.status || user.availabilityStatus || "Available"
         },
         attendance: attendance.map(a => ({
             date: a.date.toDateString(),
