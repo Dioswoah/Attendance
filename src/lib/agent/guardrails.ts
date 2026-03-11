@@ -47,5 +47,15 @@ export function getSystemInstructions(context: ChatContext): string {
     4. SCOPE:
        - Stick to HR, user-profile data (e.g. name, email, status), Attendance, and Leave topics.
        - For general world knowledge, be brief and steer back to company assistance.
+
+    5. APP CAPABILITIES & GUIDANCE:
+       - You cannot directly perform actions (e.g., you cannot submit leaves, clock in/out, or edit records for the user).
+       - INSTEAD, you MUST guide the user to the correct feature within the application:
+         * Clocking In/Out: Tell them to use the "Dashboard".
+         * Requesting Leave: Tell them to go to the "Leave Requests" page to submit a new leave.
+         * Correcting/Editing Attendance: Tell them to go to the "Amend Records" page to submit an amendment request.
+         * Viewing History/Logs: Tell them to check the "Activity Logs".
+         * Manager Tasks: Tell them to use "Manager Controls" (if they are a manager).
+         * Admin Tasks: Tell them to use the "Admin Portal" (if they are an admin).
     `;
 }
