@@ -10,9 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle, Clock, LogOut } from "lucide-react"
+import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle, Clock, LogOut, Globe } from "lucide-react"
 import { statusConfig } from "@/components/UserStatusDropdown"
 import { toast } from "sonner"
+import { useSession } from "next-auth/react"
+import { getBrowserTimezone } from "@/lib/timezone"
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<any[]>([])
@@ -56,6 +58,51 @@ export default function EmployeesPage() {
     // Bulk Actions
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+    const [isDSTDialogOpen, setIsDSTDialogOpen] = useState(false)
+
+    // Timezone Handling
+    const { data: session } = useSession()
+    const userPrefs = session?.user as any
+    const effectiveTimezone = userPrefs?.useCurrentTimezone !== false
+        ? (typeof window !== 'undefined' ? getBrowserTimezone() : 'Asia/Manila')
+        : (userPrefs?.selectedTimezone || 'Asia/Manila')
+
+    const formatShiftTime = (timeStr: string, empTz?: string) => {
+        if (!timeStr) return "N/A"
+        try {
+            const baseTz = empTz || 'Asia/Manila'
+            const [h, m] = timeStr.split(':').map(Number)
+
+            const getOffsetInMinutes = (tz: string) => {
+                const now = new Date()
+                const tzString = now.toLocaleString('en-US', { timeZone: tz, hour12: false })
+                const [datePart, timePart] = tzString.split(', ')
+                const [mon, day, year] = datePart.split('/').map(Number)
+                const [hh, mm, ss] = timePart.split(':').map(Number)
+                
+                const tzDate = new Date(year, mon - 1, day, hh, mm, ss)
+                const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC', hour12: false }))
+                const [uMon, uDay, uYear] = utcDate.toLocaleString('en-US', { timeZone: 'UTC' }).split(', ')[0].split('/').map(Number)
+                const [uH, uM, uS] = utcDate.toLocaleString('en-US', { timeZone: 'UTC', hour12: false }).split(', ')[1].split(':').map(Number)
+                const utcRef = new Date(uYear, uMon - 1, uDay, uH, uM, uS)
+                
+                return Math.round((tzDate.getTime() - utcRef.getTime()) / 60000)
+            }
+
+            const baseOffset = getOffsetInMinutes(baseTz)
+            const targetOffset = getOffsetInMinutes(effectiveTimezone)
+            const diffMinutes = targetOffset - baseOffset
+
+            // Calculate the new time
+            const totalMinutes = (h * 60 + m + diffMinutes + 1440) % 1440
+            const finalH = Math.floor(totalMinutes / 60)
+            const finalM = totalMinutes % 60
+
+            return `${String(finalH).padStart(2, '0')}:${String(finalM).padStart(2, '0')}`
+        } catch (e) {
+            return timeStr
+        }
+    }
 
     // Confirmation Dialog State
     const [confirmOpen, setConfirmOpen] = useState(false)
@@ -344,6 +391,57 @@ export default function EmployeesPage() {
         setConfirmOpen(true)
     }
 
+    const adjustTime = (timeStr: string, hours: number): string => {
+        if (!timeStr) return timeStr;
+        const [h, m] = timeStr.split(':').map(Number);
+        const totalMinutes = (h * 60 + m + (hours * 60) + 1440) % 1440;
+        const newH = Math.floor(totalMinutes / 60);
+        const newM = totalMinutes % 60;
+        return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+    }
+
+    const handleBulkDSTAdjustment = (hours: number) => {
+        setConfirmConfig({
+            title: "Confirm DST Adjustment",
+            description: `This will move the work hours for ${selectedIds.size} selected staff members ${hours > 0 ? 'forward' : 'back'} by 1 hour. Continue?`,
+            variant: "default",
+            action: async () => {
+                setIsBulkProcessing(true)
+                try {
+                    const updates = Array.from(selectedIds).map(id => {
+                        const emp = employees.find(e => e.id === id)
+                        if (!emp) return null
+
+                        const newStart = adjustTime(emp.shiftStartTime || "09:00", hours)
+                        const newEnd = adjustTime(emp.shiftEndTime || "17:00", hours)
+
+                        return fetch(`/api/employees/${id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                shiftStartTime: newStart,
+                                shiftEndTime: newEnd
+                            })
+                        })
+                    }).filter(Boolean) as Promise<Response>[]
+
+                    await Promise.all(updates)
+                    toast.success(`Successfully adjusted work hours for ${selectedIds.size} staff members`)
+                    setSelectedIds(new Set())
+                    fetchData()
+                    setConfirmOpen(false)
+                    setIsDSTDialogOpen(false)
+                } catch (error) {
+                    console.error("Bulk adjustment failed", error)
+                    toast.error("Failed to adjust work hours")
+                } finally {
+                    setIsBulkProcessing(false)
+                }
+            }
+        })
+        setConfirmOpen(true)
+    }
+
     const filteredEmployees = employees.filter(emp => {
         const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -392,12 +490,75 @@ export default function EmployeesPage() {
                     <p className="text-muted-foreground text-sm">Staff Directory & Operational Clearance</p>
                 </div>
 
-                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="font-medium gap-2">
-                            <UserPlus className="h-4 w-4" /> Add New Staff
-                        </Button>
-                    </DialogTrigger>
+                <div className="flex items-center gap-2">
+                    <Dialog open={isDSTDialogOpen} onOpenChange={setIsDSTDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                disabled={selectedIds.size === 0}
+                                className="font-medium gap-2 border-slate-200 hover:border-slate-900 transition-all opacity-100 disabled:opacity-50"
+                            >
+                                <Clock className="h-4 w-4" />
+                                Daylight Saving Amendment
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
+                            <div className="bg-primary p-8 text-center relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
+                                <div className="h-16 w-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner border border-white/5">
+                                    <Clock className="h-8 w-8 text-white" />
+                                </div>
+                                <DialogTitle className="text-xl font-black italic text-white uppercase tracking-tight relative z-10">DST Adjustment</DialogTitle>
+                                <DialogDescription className="text-white/70 font-bold text-[10px] uppercase tracking-widest mt-2 relative z-10">
+                                    Bulk Time Management
+                                </DialogDescription>
+                            </div>
+
+                            <div className="p-6 bg-white space-y-6">
+                                <div className="space-y-4">
+                                    <div className="flex items-start gap-4">
+                                        <div className="h-2 w-2 mt-2 rounded-full bg-primary shrink-0" />
+                                        <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                                            Choose the required adjustment for the <span className="text-primary font-bold">{selectedIds.size} selected</span> staff members.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-4">
+                                    <Button
+                                        onClick={() => handleBulkDSTAdjustment(1)}
+                                        className="w-full h-16 bg-primary hover:bg-primary/90 text-white font-black rounded-2xl shadow-xl shadow-primary/20 transition-all active:scale-95 uppercase tracking-widest text-xs gap-3 group"
+                                    >
+                                        <div className="flex flex-col items-center">
+                                            <span>Forward By 1 Hour</span>
+                                            <span className="text-[9px] opacity-70 font-bold tracking-normal italic mt-0.5 group-hover:opacity-100 transition-opacity">(e.g. 09:00 → 10:00)</span>
+                                        </div>
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => handleBulkDSTAdjustment(-1)}
+                                        className="w-full h-16 border-2 border-primary/20 hover:border-primary hover:bg-primary/5 text-primary font-black rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs gap-3 group"
+                                    >
+                                        <div className="flex flex-col items-center">
+                                            <span>Back By 1 Hour</span>
+                                            <span className="text-[9px] opacity-70 font-bold tracking-normal italic mt-0.5 group-hover:opacity-100 transition-opacity">(e.g. 09:00 → 08:00)</span>
+                                        </div>
+                                    </Button>
+                                </div>
+
+                                <p className="text-[9px] text-center text-muted-foreground font-bold uppercase tracking-tighter">
+                                    This will update both Shift Start and End times
+                                </p>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="font-medium gap-2">
+                                <UserPlus className="h-4 w-4" /> Add New Staff
+                            </Button>
+                        </DialogTrigger>
                     <DialogContent className="sm:max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Add New Staff</DialogTitle>
@@ -460,6 +621,34 @@ export default function EmployeesPage() {
                                     />
                                 </div>
 
+                                <div className="col-span-full bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <Globe className="h-4 w-4 text-primary" />
+                                        <span className="text-xs font-bold uppercase tracking-widest text-slate-700">Scheduling Intelligence</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Staff Local Time ({newLocation || 'Select Location'})</p>
+                                            <div className="flex items-baseline gap-1.5">
+                                                <p className="text-lg font-black text-slate-900 tracking-tight">{newShiftStart}</p>
+                                                <span className="text-[10px] font-bold text-slate-400">TO</span>
+                                                <p className="text-lg font-black text-slate-900 tracking-tight">{newShiftEnd}</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1 md:border-l md:pl-6 border-slate-200">
+                                            <p className="text-[10px] font-bold text-primary/60 uppercase tracking-wider">Your Display Equivalent</p>
+                                            <div className="flex items-baseline gap-1.5">
+                                                <p className="text-lg font-black text-primary tracking-tight">{formatShiftTime(newShiftStart, newLocation === 'Philippines' ? 'Asia/Manila' : newLocation === 'Australia' ? 'Australia/Sydney' : 'UTC')}</p>
+                                                <span className="text-[10px] font-bold text-primary/30">TO</span>
+                                                <p className="text-lg font-black text-primary tracking-tight">{formatShiftTime(newShiftEnd, newLocation === 'Philippines' ? 'Asia/Manila' : newLocation === 'Australia' ? 'Australia/Sydney' : 'UTC')}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="text-[9px] text-muted-foreground font-medium italic">
+                                        * The system automatically handles Daylight Saving shifts based on the staff member's location.
+                                    </p>
+                                </div>
+
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assigned Manager</Label>
                                     <div onClickCapture={(e) => {
@@ -513,7 +702,8 @@ export default function EmployeesPage() {
                         </form>
                     </DialogContent>
 
-                </Dialog>
+                    </Dialog>
+                </div>
             </div>
 
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
@@ -692,7 +882,10 @@ export default function EmployeesPage() {
                                     <TableCell className="py-4 px-6">
                                         <Badge variant="outline" className="font-mono text-xs bg-white text-slate-600 border-slate-200">
                                             <Clock className="h-3 w-3 mr-1.5 opacity-70" />
-                                            {emp.shiftStartTime || "09:00"} - {emp.shiftEndTime || "17:00"}
+                                            {formatShiftTime(emp.shiftStartTime || "09:00", emp.selectedTimezone)} - {formatShiftTime(emp.shiftEndTime || "17:00", emp.selectedTimezone)}
+                                            {effectiveTimezone !== (emp.selectedTimezone || 'Asia/Manila') && (
+                                                <span className="ml-1 opacity-40 text-[9px] font-bold">LCL</span>
+                                            )}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="py-4 px-6">
@@ -888,6 +1081,31 @@ export default function EmployeesPage() {
                                     required
                                     className="h-11"
                                 />
+                            </div>
+
+                            <div className="col-span-full bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3 mt-2">
+                                <div className="flex items-center gap-2">
+                                    <Globe className="h-4 w-4 text-primary" />
+                                    <span className="text-xs font-bold uppercase tracking-widest text-slate-700">Scheduling Intelligence</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Staff Local Time ({editLocation || 'Select Location'})</p>
+                                        <div className="flex items-baseline gap-1.5">
+                                            <p className="text-lg font-black text-slate-900 tracking-tight">{editShiftStart}</p>
+                                            <span className="text-[10px] font-bold text-slate-400">TO</span>
+                                            <p className="text-lg font-black text-slate-900 tracking-tight">{editShiftEnd}</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 md:border-l md:pl-6 border-slate-200">
+                                        <p className="text-[10px] font-bold text-primary/60 uppercase tracking-wider">Your Display Equivalent</p>
+                                        <div className="flex items-baseline gap-1.5">
+                                            <p className="text-lg font-black text-primary tracking-tight">{formatShiftTime(editShiftStart, editLocation === 'Philippines' ? 'Asia/Manila' : editLocation === 'Australia' ? 'Australia/Sydney' : 'UTC')}</p>
+                                            <span className="text-[10px] font-bold text-primary/30">TO</span>
+                                            <p className="text-lg font-black text-primary tracking-tight">{formatShiftTime(editShiftEnd, editLocation === 'Philippines' ? 'Asia/Manila' : editLocation === 'Australia' ? 'Australia/Sydney' : 'UTC')}</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="space-y-2">
