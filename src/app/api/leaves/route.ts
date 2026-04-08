@@ -13,11 +13,18 @@ export async function GET(req: Request) {
     const departmentId = searchParams.get('departmentId')
     const managerId = searchParams.get('managerId')
     const status = searchParams.get('status')
+    const userIdsStr = searchParams.get('userIds')
+
+    const userFilter = (ids: string | null) => {
+        if (!ids) return undefined
+        const splitIds = ids.split(',').filter(id => id.length > 0)
+        return splitIds.length > 0 ? { in: splitIds } : undefined
+    }
 
     try {
         const leaveFilter: any = {
             where: {
-                ...(userId && { userId }),
+                ...(userIdsStr ? { userId: userFilter(userIdsStr) } : userId ? { userId } : {}),
                 user: {
                     ...(departmentId && departmentId !== 'all' && { departmentId }),
                     ...(managerId && { managerId })
@@ -35,7 +42,7 @@ export async function GET(req: Request) {
 
         const requestFilter: any = {
             where: {
-                ...(userId && { userId }),
+                ...(userIdsStr ? { userId: userFilter(userIdsStr) } : userId ? { userId } : {}),
                 user: {
                     ...(departmentId && departmentId !== 'all' && { departmentId }),
                     ...(managerId && { managerId })

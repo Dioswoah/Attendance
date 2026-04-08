@@ -286,13 +286,12 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
             // Check if user profile setup is in progress
             // Wait longer to allow profile setup dialog to show first
             const checkProfileSetup = () => {
-                // Look for the onboarding dialog in the DOM
-                const onboardingDialog = document.querySelector('[role="dialog"]')
-                const hasOnboardingDialog = onboardingDialog?.textContent?.includes('Set Up Your Profile')
+                // Look for the onboarding dialog in the DOM by ID
+                const onboardingDialog = document.getElementById('profile-setup-dialog')
 
-                if (hasOnboardingDialog) {
+                if (onboardingDialog) {
                     // Profile setup is showing, check again later
-                    setTimeout(checkProfileSetup, 2000)
+                    setTimeout(checkProfileSetup, 1000)
                 } else {
                     // Profile setup is complete or not needed, show tour
                     setShowWelcomeDialog(true)
@@ -300,9 +299,10 @@ export function UserOnboardingTour({ mode = 'full' }: { mode?: 'full' | 'trigger
             }
 
             // Delay to ensure hydration and layout stability, then check
+            // Increased initial delay slightly to allow SWR to finish first fetch
             const timer = setTimeout(() => {
                 checkProfileSetup()
-            }, 2000)
+            }, 3000)
             return () => clearTimeout(timer)
         }
     }, [mounted, pathname, storageKey, mode])

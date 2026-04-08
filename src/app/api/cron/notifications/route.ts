@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from "@/lib/prisma";
-import { sendBreakLimitEmail, sendLateArrivalEmail, sendOverdueDepartureEmail, sendBreakExpectedReturnEmail } from "@/lib/email";
+import { sendBreakLimitEmail, sendLateArrivalEmail, sendOverdueDepartureEmail, sendBreakExpectedReturnEmail, sendManagerLateReportEmail } from "@/lib/email";
 import { generateMagicLink } from "@/lib/magic-link";
 import { broadcastUpdate } from "@/lib/eventBus";
 
@@ -178,8 +178,11 @@ export async function GET(request: Request) {
                 isArchived: false,
                 deletedAt: null,
             },
-            include: { accounts: true, department: true }
+            include: { accounts: true, department: true, manager: true }
         });
+
+        // Track late arrivals by manager for summary emails
+        const managerLateStaffMap = new Map<string, { managerName: string, managerEmail: string, lateStaff: { name: string, scheduledStart: string }[] }>();
 
         for (const user of allActiveUsers) {
             const tz = user.selectedTimezone || 'Asia/Manila';
@@ -200,6 +203,18 @@ export async function GET(request: Request) {
                 }
             });
             if (todayAttendance) continue;
+
+            // Check if on approved leave today
+            const approvedLeave = await prisma.leave.findFirst({
+                where: {
+                    userId: user.id,
+                    status: 'APPROVED',
+                    startDate: { lte: userStartOfDay },
+                    endDate: { gte: userStartOfDay },
+                    deletedAt: null
+                }
+            });
+            if (approvedLeave) continue;
 
             const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
             const alreadyNotified = await prisma.notification.findFirst({
@@ -246,8 +261,40 @@ export async function GET(request: Request) {
                         });
                         broadcastUpdate('notification', { userId: user.id });
                         console.log(`[Late Check] Sent email to ${user.email}`);
+
+                        // Add to manager's daily report (if enabled in their settings)
+                        if (user.manager?.email && user.manager.managerNotificationsEnabled !== false) {
+                            const mgrId = user.manager.id;
+                            if (!managerLateStaffMap.has(mgrId)) {
+                                managerLateStaffMap.set(mgrId, {
+                                    managerName: user.manager.name || "Manager",
+                                    managerEmail: user.manager.email,
+                                    lateStaff: []
+                                });
+                            }
+                            managerLateStaffMap.get(mgrId)?.lateStaff.push({
+                                name: user.name || "Employee",
+                                scheduledStart: shiftStartStr
+                            });
+                        }
                     }
                 }
+            }
+        }
+
+        // ============================================================
+        // 2b. Send Manager Daily Reports
+        // ============================================================
+        for (const [_, report] of managerLateStaffMap) {
+            try {
+                await sendManagerLateReportEmail({
+                    managerName: report.managerName,
+                    managerEmail: report.managerEmail,
+                    lateStaff: report.lateStaff
+                });
+                console.log(`[Late Check] Sent summary report to manager ${report.managerEmail} (${report.lateStaff.length} staff)`);
+            } catch (err) {
+                console.error(`[Late Check] Failed to send report to ${report.managerEmail}:`, err);
             }
         }
 

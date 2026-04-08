@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
     Clock,
@@ -61,8 +63,7 @@ export default function ManualEntryPage() {
 
     // Filter States for Lists
     const [filterDept, setFilterDept] = useState("all")
-    const [filterEmp, setFilterEmp] = useState("all")
-    const [filterQuery, setFilterQuery] = useState("")
+    const [filterEmpIds, setFilterEmpIds] = useState<string[]>([])
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
 
@@ -107,7 +108,7 @@ export default function ManualEntryPage() {
         if (activeMode === 'list') {
             fetchRecords()
         }
-    }, [activeMode, activeTab, filterDept, filterEmp, startDate, endDate])
+    }, [activeMode, activeTab, filterDept, filterEmpIds, startDate, endDate])
 
     const fetchInitialData = async () => {
         setLoading(true)
@@ -126,20 +127,28 @@ export default function ManualEntryPage() {
     const fetchRecords = async () => {
         setLoading(true)
         try {
-            let url = `/api/${activeTab}?`
-            if (activeTab === 'attendance') {
-                url += `startDate=${startDate}&endDate=${endDate}&departmentId=${filterDept}&userId=${filterEmp === 'all' ? '' : filterEmp}`
-            } else if (activeTab === 'leaves') {
-                url += `startDate=${startDate}&endDate=${endDate}&departmentId=${filterDept}`
-            } else if (activeTab === 'breaks') {
-                url += `startDate=${startDate}&endDate=${endDate}&userId=${filterEmp === 'all' ? '' : filterEmp}`
+            const params = new URLSearchParams()
+            params.set('startDate', startDate)
+            params.set('endDate', endDate)
+            if (activeTab !== 'breaks' && filterDept !== 'all') {
+                params.set('departmentId', filterDept)
             }
+            if (filterEmpIds.length > 0) {
+                params.set('userIds', filterEmpIds.join(','))
+            }
+            let url = `/api/${activeTab}?${params.toString()}`
 
             const res = await fetch(url)
             if (res.ok) setRecords(await res.json())
         } finally {
             setLoading(false)
         }
+    }
+
+    const toggleEmpSelection = (id: string) => {
+        setFilterEmpIds(prev =>
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        )
     }
 
     // Unified Time Formatting Helpers
@@ -638,12 +647,9 @@ export default function ManualEntryPage() {
         }
     }
 
-    const filteredRecords = records.filter(r =>
-        r.userName?.toLowerCase().includes(filterQuery.toLowerCase()) ||
-        r.department?.toLowerCase().includes(filterQuery.toLowerCase())
-    )
+    const filteredRecords = records
 
-    if (loading && records.length === 0) {
+    if (loading && employees.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[70vh] space-y-4">
                 <div className="h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-sm overflow-hidden animate-bounce p-2">
@@ -744,7 +750,7 @@ export default function ManualEntryPage() {
                                                 <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {employees.filter(e => formDeptId === 'all' || e.departmentId === formDeptId).map(e => (
+                                                {employees.filter(e => !e.isArchived && (formDeptId === 'all' || e.departmentId === formDeptId)).map(e => (
                                                     <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -825,7 +831,7 @@ export default function ManualEntryPage() {
                                                 <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {employees.filter(e => formDeptId === 'all' || e.departmentId === formDeptId).map(e => (
+                                                {employees.filter(e => !e.isArchived && (formDeptId === 'all' || e.departmentId === formDeptId)).map(e => (
                                                     <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -924,7 +930,7 @@ export default function ManualEntryPage() {
                                                 <SelectValue placeholder="Select Staff..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {employees.filter(e => formDeptId === 'all' || e.departmentId === formDeptId).map(e => (
+                                                {employees.filter(e => !e.isArchived && (formDeptId === 'all' || e.departmentId === formDeptId)).map(e => (
                                                     <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -965,7 +971,7 @@ export default function ManualEntryPage() {
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                             <div className="space-y-2">
                                 <Label>Department</Label>
-                                <Select value={filterDept} onValueChange={setFilterDept}>
+                                <Select value={filterDept} onValueChange={(val) => { setFilterDept(val); setFilterEmpIds([]); }}>
                                     <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
@@ -976,6 +982,55 @@ export default function ManualEntryPage() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
+                                <Label>Staff Name</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" className="w-full justify-start text-left font-normal bg-white h-10 px-3 truncate">
+                                            <div className="flex items-center gap-2 truncate">
+                                                <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                                                <span className="truncate">
+                                                    {filterEmpIds.length === 0 ? "All Staff" : 
+                                                     filterEmpIds.length === 1 ? employees.find(e => e.id === filterEmpIds[0])?.name : 
+                                                     `${filterEmpIds.length} Staff Selected`}
+                                                </span>
+                                            </div>
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                        <div className="p-2 space-y-1">
+                                            <div 
+                                                className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md cursor-pointer select-none" 
+                                                onClick={() => setFilterEmpIds([])}
+                                            >
+                                                <Checkbox checked={filterEmpIds.length === 0} onCheckedChange={() => setFilterEmpIds([])} />
+                                                <span className="text-sm font-medium">All Staff</span>
+                                            </div>
+                                            <div className="h-px bg-border my-1" />
+                                            <div className="max-h-60 overflow-y-auto">
+                                                {employees
+                                                    .filter(e => !e.isArchived && (filterDept === 'all' || e.departmentId === filterDept))
+                                                    .map(e => (
+                                                        <div 
+                                                            key={e.id} 
+                                                            className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md cursor-pointer select-none"
+                                                            onClick={(ev) => {
+                                                                ev.preventDefault();
+                                                                toggleEmpSelection(e.id);
+                                                            }}
+                                                        >
+                                                            <Checkbox 
+                                                                checked={filterEmpIds.includes(e.id)} 
+                                                                onCheckedChange={() => {}} // No-op to prevent double trigger
+                                                            />
+                                                            <span className="text-sm">{e.name}</span>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                            <div className="space-y-2">
                                 <Label>Date From</Label>
                                 <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
                             </div>
@@ -983,20 +1038,19 @@ export default function ManualEntryPage() {
                                 <Label>Date To</Label>
                                 <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                             </div>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    placeholder="Filter identity..."
-                                    value={filterQuery}
-                                    onChange={e => setFilterQuery(e.target.value)}
-                                    className="pl-9"
-                                />
-                            </div>
                         </div>
                     </Card>
 
                     <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                        <div className="p-0 overflow-x-auto min-h-[400px]">
+                        <div className="p-0 overflow-x-auto min-h-[400px] relative">
+                            {loading && (
+                                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/60 backdrop-blur-[1px] transition-all animate-in fade-in duration-300">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fetching Records...</p>
+                                    </div>
+                                </div>
+                            )}
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow className="border-border hover:bg-transparent">

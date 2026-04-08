@@ -88,33 +88,28 @@ export function NotificationBell({ role, userId: propUserId }: NotificationBellP
 
     const markAsRead = async (id?: string) => {
         try {
-            const targetUserId = propUserId || session?.user?.id
+            const userId = propUserId || session?.user?.id
+            if (!userId && !id) return; // Need at least a user ID or a specific notification ID
 
             let url = '/api/notifications'
             if (id) {
                 url += `?id=${id}`
-            } else if (targetUserId) {
-                url += `?userId=${targetUserId}` // Mark all for user
-            } else if (role) {
-                // Cannot mark all for "role" efficiently without user ID, currently API doesn't support "mark all for role"
-                // but we can just mark local state or iterate.
-                // For now, if role-based, we only support single mark read or we need API support.
-                // The API I wrote `PUT` uses `userId` to mark all.
-                // If I am Admin view, I don't have a userId. 
-                // So "Mark All" might not work for Admin unless I pass `role` to PUT.
-                // I'll skip "Mark All" for role-based for now.
-                if (id) url += `?id=${id}`
+            } else {
+                url += `?userId=${userId}` // Mark all for user
             }
 
             await fetch(url, { method: 'PUT' })
-            fetchNotifications()
+            await fetchNotifications()
         } catch (error) {
-            // Error handled
+            console.error("Failed to mark notifications as read:", error)
         }
     }
 
     return (
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <Popover open={isOpen} onOpenChange={(open) => {
+            setIsOpen(open);
+            if (open) fetchNotifications();
+        }}>
             <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all">
                     <Bell className="h-5 w-5" />
@@ -133,7 +128,6 @@ export function NotificationBell({ role, userId: propUserId }: NotificationBellP
                                 size="sm"
                                 onClick={() => markAsRead()}
                                 className="h-6 text-[9px] font-bold text-red-600 hover:bg-red-50 hover:text-red-700 uppercase tracking-wider px-2 rounded-lg"
-                                disabled={!!role} // Disable mark all for role-based for now
                             >
                                 Mark all read
                             </Button>

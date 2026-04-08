@@ -315,3 +315,43 @@ export async function sendOverdueDepartureEmail({ userName, userEmail, scheduled
         return false;
     }
 }
+
+interface LateStaffInfo { name: string; scheduledStart: string; }
+interface ManagerLateReportEmailProps { managerName: string; managerEmail: string; lateStaff: LateStaffInfo[]; }
+export async function sendManagerLateReportEmail({ managerName, managerEmail, lateStaff }: ManagerLateReportEmailProps): Promise<boolean> {
+    try {
+        if (!(await isEmailEnabled())) return true;
+        
+        const staffListHtml = lateStaff.map(s => `
+            <div style="padding: 12px; border-bottom: 1px solid #f1f5f9;">
+                <p style="margin: 0; font-weight: 700; color: #1e293b;">${s.name}</p>
+                <p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b;">Scheduled Start: ${s.scheduledStart}</p>
+            </div>
+        `).join('');
+
+        const html = buildEmailHtml({
+            title: `Staff Attendance Report`,
+            subtitle: `Late Arrival Summary`,
+            buttonText: 'View Dashboard',
+            buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
+            greetingName: managerName,
+            bodyHtml: `
+        <p>This is your daily report for staff members who haven't clocked in yet today (30+ minutes past their scheduled start):</p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin: 20px 0;">
+            ${staffListHtml}
+        </div>
+        <p style="font-size: 14px; color: #64748b;">The system has already sent check-in reminders to each of these individuals.</p>
+      `
+        });
+        
+        const subject = lateStaff.length === 1 
+            ? `[RSA] Late Arrival Alert: ${lateStaff[0].name}`
+            : `[RSA] Late Arrival Report: ${lateStaff.length} Staff Members`;
+
+        await transporter.sendMail({ from: SENDER_EMAIL, to: managerEmail, subject, html });
+        return true;
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send manager late report email:", error);
+        return false;
+    }
+}

@@ -24,6 +24,7 @@ import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
 import { Breadcrumbs } from "@/components/Breadcrumbs"
 import { WorkHoursSettings } from "@/components/WorkHoursSettings"
+import { ManagerNotificationSettings } from "@/components/ManagerNotificationSettings"
 
 export default function UserLayout({
     children,
@@ -411,6 +412,7 @@ function UserLayoutInner({
                                 </div>
 
                                 <WorkHoursSettings />
+                                <ManagerNotificationSettings />
 
                                 <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
                                     <TimezoneSettings
@@ -623,6 +625,7 @@ function UserLayoutInner({
                                             </div>
 
                                             <WorkHoursSettings />
+                                            <ManagerNotificationSettings />
 
                                             <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
                                                 <TimezoneSettings

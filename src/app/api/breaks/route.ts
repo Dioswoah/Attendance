@@ -10,12 +10,15 @@ export async function GET(req: Request) {
     const endDate = searchParams.get('endDate')
     const date = searchParams.get('date')
     const userId = searchParams.get('userId')
+    const userIdsStr = searchParams.get('userIds')
 
     try {
-        // Construct attendance filter object to avoid overwriting keys
         const attendanceWhere: any = {}
 
-        if (userId) {
+        if (userIdsStr) {
+            const ids = userIdsStr.split(',').filter(id => id.length > 0)
+            if (ids.length > 0) attendanceWhere.userId = { in: ids }
+        } else if (userId) {
             attendanceWhere.userId = userId
         }
 

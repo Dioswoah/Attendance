@@ -225,22 +225,27 @@ export default function UserPortal() {
                     loadManagerData()
                 }
 
-                // Check Onboarding
-                if (data.user.employmentLocation !== 'Philippines' && data.user.employmentLocation !== 'Australia') {
-                    const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
-                    if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
-                        setIsOnboardingOpen(true)
-                        const loadOnboarding = async () => {
-                            const [mRes, dRes] = await Promise.all([
-                                fetch('/api/managers'),
-                                fetch('/api/departments')
-                            ]).catch(() => [null, null])
+                // Check Onboarding - Show for fresh accounts to allow verification
+                const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
+                if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
+                    // Pre-fill state with existing data from admin setup
+                    setOnboardingLocation(data.user.employmentLocation || "")
+                    setOnboardingDepartment(data.user.departmentId || "")
+                    setOnboardingManager(data.user.managerId || "")
+                    setOnboardingShiftStart(data.user.shiftStartTime || "09:00")
+                    setOnboardingShiftEnd(data.user.shiftEndTime || "17:00")
+                    
+                    setIsOnboardingOpen(true)
+                    const loadOnboarding = async () => {
+                        const [mRes, dRes] = await Promise.all([
+                            fetch('/api/managers'),
+                            fetch('/api/departments')
+                        ]).catch(() => [null, null])
 
-                            if (mRes && mRes.ok) setManagerList(await mRes.json())
-                            if (dRes && dRes.ok) setDepartmentList(await dRes.json())
-                        }
-                        loadOnboarding()
+                        if (mRes && mRes.ok) setManagerList(await mRes.json())
+                        if (dRes && dRes.ok) setDepartmentList(await dRes.json())
                     }
+                    loadOnboarding()
                 }
             }
 
@@ -3326,7 +3331,7 @@ export default function UserPortal() {
 
             {/* Onboarding Dialog */}
             < Dialog open={isOnboardingOpen} onOpenChange={undefined} >
-                <DialogContent className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl [&>button]:hidden" onInteractOutside={(e) => e.preventDefault()}>
+                <DialogContent id="profile-setup-dialog" className="max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl [&>button]:hidden" onInteractOutside={(e) => e.preventDefault()}>
                     <div className="bg-[#8B2323] p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
                         <Shield className="h-12 w-12 text-white/20 mx-auto mb-4" />

@@ -398,114 +398,121 @@ export default function EmployeesPage() {
                             <UserPlus className="h-4 w-4" /> Add New Staff
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[450px]">
+                    <DialogContent className="sm:max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Add New Staff</DialogTitle>
                             <DialogDescription>Add new staff member to the system</DialogDescription>
                         </DialogHeader>
-                        <form onSubmit={handleAddEmployee} className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <Label>Full Legal Name</Label>
-                                <Input placeholder="Enter name" value={newName} onChange={e => setNewName(e.target.value)} required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Corporate Email Address</Label>
-                                <Input type="email" placeholder="email@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Department</Label>
-                                <Select value={newDeptId} onValueChange={setNewDeptId} required>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select Department" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {departments.map(d => (
-                                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Location</Label>
-                                <Select value={newLocation} onValueChange={setNewLocation} required>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select Location" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="Philippines">Philippines</SelectItem>
-                                        <SelectItem value="Australia">Australia</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Shift Start Time</Label>
-                                <Input
-                                    type="time"
-                                    value={newShiftStart}
-                                    onChange={e => setNewShiftStart(e.target.value)}
-                                    required
-                                />
-                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for attendance late calculations</p>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Shift End Time</Label>
-                                <Input
-                                    type="time"
-                                    value={newShiftEnd}
-                                    onChange={e => setNewShiftEnd(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Roles</Label>
-                                <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-lg border border-border">
-                                    {['USER', 'MANAGER', 'ADMIN'].map((role) => (
-                                        <div key={role} className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                id={`new-role-${role}`}
-                                                checked={newRoles.includes(role)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setNewRoles([...newRoles, role])
-                                                    } else {
-                                                        setNewRoles(newRoles.filter(r => r !== role))
-                                                    }
-                                                }}
-                                                className="rounded border-input text-primary focus:ring-primary"
-                                            />
-                                            <label htmlFor={`new-role-${role}`} className="text-sm font-medium text-foreground cursor-pointer select-none">
-                                                {role}
-                                            </label>
-                                        </div>
-                                    ))}
+                        <form onSubmit={handleAddEmployee} className="space-y-6 py-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Legal Name</Label>
+                                    <Input placeholder="Enter name" value={newName} onChange={e => setNewName(e.target.value)} required className="h-11" />
                                 </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Assigned Manager</Label>
-                                <div onClickCapture={(e) => {
-                                    if (!newDeptId) {
-                                        e.preventDefault()
-                                        e.stopPropagation()
-                                        setShowDeptWarning(true)
-                                    }
-                                }}>
-                                    <Select value={newManagerId} onValueChange={setNewManagerId}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select Manager" />
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Corporate Email Address</Label>
+                                    <Input type="email" placeholder="email@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} required className="h-11" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Department</Label>
+                                    <Select value={newDeptId} onValueChange={setNewDeptId} required>
+                                        <SelectTrigger className="h-11">
+                                            <SelectValue placeholder="Select Department" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
-                                            {employees.filter(e => e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
-                                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                            {departments.map(d => (
+                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location</Label>
+                                    <Select value={newLocation} onValueChange={setNewLocation} required>
+                                        <SelectTrigger className="h-11">
+                                            <SelectValue placeholder="Select Location" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Philippines">Philippines</SelectItem>
+                                            <SelectItem value="Australia">Australia</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Shift Start Time</Label>
+                                    <Input
+                                        type="time"
+                                        value={newShiftStart}
+                                        onChange={e => setNewShiftStart(e.target.value)}
+                                        required
+                                        className="h-11"
+                                    />
+                                    <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for late calculations</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Shift End Time</Label>
+                                    <Input
+                                        type="time"
+                                        value={newShiftEnd}
+                                        onChange={e => setNewShiftEnd(e.target.value)}
+                                        required
+                                        className="h-11"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assigned Manager</Label>
+                                    <div onClickCapture={(e) => {
+                                        if (!newDeptId) {
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                            setShowDeptWarning(true)
+                                        }
+                                    }}>
+                                        <Select value={newManagerId} onValueChange={setNewManagerId}>
+                                            <SelectTrigger className="h-11">
+                                                <SelectValue placeholder="Select Manager" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
+                                                {employees.filter(e => e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
+                                                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
+                                    <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
+                                        {['USER', 'MANAGER', 'ADMIN'].map((role) => (
+                                            <div key={role} className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id={`new-role-${role}`}
+                                                    checked={newRoles.includes(role)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setNewRoles([...newRoles, role])
+                                                        } else {
+                                                            setNewRoles(newRoles.filter(r => r !== role))
+                                                        }
+                                                    }}
+                                                    className="rounded border-input text-primary focus:ring-primary"
+                                                />
+                                                <label htmlFor={`new-role-${role}`} className="text-xs font-bold text-foreground cursor-pointer select-none">
+                                                    {role}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
-                            <Button type="submit" className="w-full">Create Staff Member</Button>
+                            <Button type="submit" className="w-full h-11 font-bold uppercase tracking-widest text-xs">Create Staff Member</Button>
                         </form>
                     </DialogContent>
+
                 </Dialog>
             </div>
 
@@ -807,104 +814,84 @@ export default function EmployeesPage() {
 
             {/* Edit Employee Dialog */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                <DialogContent className="sm:max-w-[450px]">
+                <DialogContent className="sm:max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>Edit Staff Member</DialogTitle>
                         <DialogDescription>Update staff member details and permissions</DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleUpdateEmployee} className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label>Full Legal Name</Label>
-                            <Input
-                                placeholder="Name"
-                                value={editName}
-                                onChange={e => setEditName(e.target.value)}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Corporate Email</Label>
-                            <Input
-                                type="email"
-                                placeholder="Email"
-                                value={editEmail}
-                                onChange={e => setEditEmail(e.target.value)}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Department</Label>
-                            <Select value={editDeptId} onValueChange={setEditDeptId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="unassigned" className="text-muted-foreground">Unassigned</SelectItem>
-                                    {departments.map(d => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Location</Label>
-                            <Select value={editLocation} onValueChange={setEditLocation}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select Location" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Philippines">Philippines</SelectItem>
-                                    <SelectItem value="Australia">Australia</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Shift Start Time</Label>
-                            <Input
-                                type="time"
-                                value={editShiftStart}
-                                onChange={e => setEditShiftStart(e.target.value)}
-                                required
-                            />
-                            <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for attendance late calculations</p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Shift End Time</Label>
-                            <Input
-                                type="time"
-                                value={editShiftEnd}
-                                onChange={e => setEditShiftEnd(e.target.value)}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Roles</Label>
-                            <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-lg border border-border">
-                                {['USER', 'MANAGER', 'ADMIN'].map((role) => (
-                                    <div key={role} className="flex items-center gap-2">
-                                        <input
-                                            type="checkbox"
-                                            id={`edit-role-${role}`}
-                                            checked={editRoles.includes(role)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setEditRoles([...editRoles, role])
-                                                } else {
-                                                    setEditRoles(editRoles.filter(r => r !== role))
-                                                }
-                                            }}
-                                            className="rounded border-input text-primary focus:ring-primary"
-                                        />
-                                        <label htmlFor={`edit-role-${role}`} className="text-sm font-medium text-foreground cursor-pointer select-none">
-                                            {role}
-                                        </label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="space-y-2">
+                    <form onSubmit={handleUpdateEmployee} className="space-y-6 py-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div className="space-y-2">
-                                <Label>Assigned Manager</Label>
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Legal Name</Label>
+                                <Input
+                                    placeholder="Name"
+                                    value={editName}
+                                    onChange={e => setEditName(e.target.value)}
+                                    required
+                                    className="h-11"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Corporate Email</Label>
+                                <Input
+                                    type="email"
+                                    placeholder="Email"
+                                    value={editEmail}
+                                    onChange={e => setEditEmail(e.target.value)}
+                                    required
+                                    className="h-11"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Department</Label>
+                                <Select value={editDeptId} onValueChange={setEditDeptId}>
+                                    <SelectTrigger className="h-11">
+                                        <SelectValue placeholder="Select Department" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unassigned" className="text-muted-foreground">Unassigned</SelectItem>
+                                        {departments.map(d => (
+                                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location</Label>
+                                <Select value={editLocation} onValueChange={setEditLocation}>
+                                    <SelectTrigger className="h-11">
+                                        <SelectValue placeholder="Select Location" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Philippines">Philippines</SelectItem>
+                                        <SelectItem value="Australia">Australia</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Shift Start Time</Label>
+                                <Input
+                                    type="time"
+                                    value={editShiftStart}
+                                    onChange={e => setEditShiftStart(e.target.value)}
+                                    required
+                                    className="h-11"
+                                />
+                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Standard start time for late calculations</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Shift End Time</Label>
+                                <Input
+                                    type="time"
+                                    value={editShiftEnd}
+                                    onChange={e => setEditShiftEnd(e.target.value)}
+                                    required
+                                    className="h-11"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assigned Manager</Label>
                                 <Select
                                     value={editManagerId}
                                     onValueChange={setEditManagerId}
@@ -922,7 +909,7 @@ export default function EmployeesPage() {
                                         }
                                     }}
                                 >
-                                    <SelectTrigger>
+                                    <SelectTrigger className="h-11">
                                         <SelectValue placeholder="Select Manager" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -933,10 +920,36 @@ export default function EmployeesPage() {
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
+                                <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
+                                    {['USER', 'MANAGER', 'ADMIN'].map((role) => (
+                                        <div key={role} className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                id={`edit-role-${role}`}
+                                                checked={editRoles.includes(role)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setEditRoles([...editRoles, role])
+                                                    } else {
+                                                        setEditRoles(editRoles.filter(r => r !== role))
+                                                    }
+                                                }}
+                                                className="rounded border-input text-primary focus:ring-primary"
+                                            />
+                                            <label htmlFor={`edit-role-${role}`} className="text-xs font-bold text-foreground cursor-pointer select-none">
+                                                {role}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                        <Button type="submit" disabled={isSaving} className="w-full gap-2">
+                        <Button type="submit" disabled={isSaving} className="w-full h-11 font-bold uppercase tracking-widest text-xs gap-2">
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                            Save Changes
+                            Save Staff Changes
                         </Button>
                     </form>
                 </DialogContent>
