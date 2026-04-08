@@ -227,7 +227,7 @@ export default function UserPortal() {
 
                 // Check Onboarding - Show for fresh accounts to allow verification
                 const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
-                if (isFreshAccount && !sessionStorage.getItem('onboardingSkipped')) {
+                if (isFreshAccount && !localStorage.getItem('onboardingSkipped')) {
                     // Pre-fill state with existing data from admin setup
                     setOnboardingLocation(data.user.employmentLocation || "")
                     setOnboardingDepartment(data.user.departmentId || "")
@@ -383,6 +383,7 @@ export default function UserPortal() {
                     if (updated.employmentLocation === 'Philippines') setUserTimeZone('Asia/Manila')
                     else if (updated.employmentLocation === 'Australia') setUserTimeZone('Australia/Sydney')
                 }
+                localStorage.setItem('onboardingSkipped', 'true')
                 setIsOnboardingOpen(false)
                 window.location.reload()
             }
