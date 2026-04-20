@@ -243,13 +243,12 @@ function UserLayoutInner({
         : 'Staff'
 
     return (
-        <div className="min-h-screen bg-background flex flex-col lg:flex-row font-sans selection:bg-red-100 selection:text-red-900 w-full relative overflow-x-hidden">
+        <div className="min-h-screen bg-background flex flex-col font-sans selection:bg-red-100 selection:text-red-900 w-full relative overflow-x-hidden">
             {/* Soft background glow */}
             <div className="fixed top-0 left-0 h-[500px] w-[500px] bg-red-100/30 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
 
-            {/* Sidebar - Desktop */}
             <aside className={cn(
-                "hidden lg:flex flex-col bg-sidebar backdrop-blur-xl border-sidebar-border sticky top-0 bottom-0 min-h-screen z-40 transition-all duration-300",
+                "hidden lg:flex flex-col bg-sidebar bg-[linear-gradient(to_bottom,_var(--sidebar),_rgba(0,0,0,0.05))] backdrop-blur-xl border-sidebar-border fixed inset-y-0 left-0 z-40 transition-all duration-300 shadow-2xl",
                 sidebarCollapsed ? "w-20" : "w-72"
             )}>
                 {/* Logo */}
@@ -278,7 +277,7 @@ function UserLayoutInner({
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-280px)] custom-scrollbar">
+                <nav className="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto custom-scrollbar">
                     {navItems.map((item) => {
                         const Icon = item.icon
                         const isActive = pathname === item.href || (item.subItems?.some(sub => pathname + (window?.location?.search || '') === sub.href))
@@ -370,105 +369,103 @@ function UserLayoutInner({
                     })}
                 </nav>
 
-                {/* User Profile Section */}
-                <div className="p-4 border-t border-white/5 mt-auto">
-                    <div className={cn(
-                        "flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/5 backdrop-blur-sm transition-all hover:bg-white/10 group",
-                        sidebarCollapsed && "justify-center p-2"
-                    )}>
-                        <div className="relative shrink-0">
-                            <Avatar className="w-12 h-12 border-2 border-white/10 shadow-lg transition-transform group-hover:scale-105">
-                                {session?.user?.image ? (
-                                    <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
-                                ) : (
-                                    <AvatarFallback className="bg-white text-[#8B2323] text-base font-black">
-                                        {getInitials(session?.user?.name)}
-                                    </AvatarFallback>
-                                )}
-                            </Avatar>
-                        </div>
-
-                        {!sidebarCollapsed && (
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[13px] font-bold text-white truncate leading-tight tracking-tight">{displayName}</p>
-                                <p className="text-[10px] font-medium text-white/40 uppercase tracking-[0.1em] mt-0.5">{userRole}</p>
+                {/* User Profile Section & Footer */}
+                <div className="mt-auto border-t border-white/10 bg-black/10 backdrop-blur-sm">
+                    <div className="p-4">
+                        <div className={cn(
+                            "flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/10 transition-all hover:bg-white/10 group",
+                            sidebarCollapsed && "justify-center p-2"
+                        )}>
+                            <div className="relative shrink-0">
+                                <Avatar className="w-10 h-10 border-2 border-white/20 shadow-md">
+                                    {session?.user?.image ? (
+                                        <img src={session.user.image} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                                    ) : (
+                                        <AvatarFallback className="bg-white text-[#8B2323] text-sm font-black">
+                                            {getInitials(session?.user?.name)}
+                                        </AvatarFallback>
+                                    )}
+                                </Avatar>
                             </div>
-                        )}
 
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button id="tour-sidebar-settings" variant="ghost" size="icon" className="text-white/40 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all shrink-0">
-                                    <Settings className="w-4 h-4 transition-transform group-hover:rotate-45" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                                align="end"
-                                side="right"
-                                sideOffset={12}
-                                className="w-72 rounded-[1.5rem] p-2 bg-white/95 backdrop-blur-md shadow-2xl border-slate-100 animate-in fade-in slide-in-from-left-2 duration-200"
-                            >
-                                <div className="px-3 py-3 border-b border-slate-50 mb-1">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Settings & Preferences</p>
+                            {!sidebarCollapsed && (
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] font-bold text-white truncate leading-tight tracking-tight">{displayName}</p>
+                                    <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.1em] mt-0.5">{userRole}</p>
                                 </div>
+                            )}
 
-                                <WorkHoursSettings />
-                                <ManagerNotificationSettings />
-
-                                <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
-                                    <TimezoneSettings
-                                        compact
-                                        showLabel={false}
-                                        trigger={
-                                            <div className="flex items-center w-full px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group">
-                                                <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-100 transition-colors">
-                                                    <Globe className="w-4 h-4" />
-                                                </div>
-                                                <div className="flex-1 ml-3 overflow-hidden">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-bold text-slate-700">Display Timezone</span>
-                                                        <div className="h-6 w-fit px-2 rounded-md bg-slate-50 flex items-center justify-center border border-slate-100 italic text-[10px] text-slate-400 group-hover:bg-white transition-colors">
-                                                            {((session?.user as any)?.useCurrentTimezone || (session?.user as any)?.selectedTimezone === Intl.DateTimeFormat().resolvedOptions().timeZone)
-                                                                ? "Local"
-                                                                : ((session?.user as any)?.selectedTimezone || "UTC").split('/').pop()?.replace('_', ' ')}
-                                                        </div>
-                                                    </div>
-                                                    <p className="text-[10px] text-slate-400 font-medium truncate">Adjust time display preferences</p>
-                                                </div>
-                                            </div>
-                                        }
-                                    />
-                                </DropdownMenuItem>
-
-                                <DropdownMenuSeparator className="bg-slate-50 my-1" />
-
-                                <DropdownMenuItem
-                                    onClick={() => signOut({ callbackUrl: '/' })}
-                                    className="flex items-center gap-3 px-3 py-2.5 text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group"
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button id="tour-sidebar-settings" variant="ghost" size="icon" className="text-white/40 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all shrink-0">
+                                        <Settings className="w-4 h-4 transition-transform group-hover:rotate-45" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                    align="end"
+                                    side="right"
+                                    sideOffset={12}
+                                    className="w-72 rounded-[1.5rem] p-2 bg-white/95 backdrop-blur-md shadow-2xl border-slate-100 animate-in fade-in slide-in-from-left-2 duration-200"
                                 >
-                                    <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0 group-hover:bg-slate-200 group-hover:text-slate-900 transition-colors">
-                                        <LogOut className="w-4 h-4" />
+                                    <div className="px-3 py-3 border-b border-slate-50 mb-1">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Settings & Preferences</p>
                                     </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-xs font-bold">Sign Out</span>
-                                        <p className="text-[10px] text-slate-500 font-medium">End your session</p>
-                                    </div>
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+
+                                    <WorkHoursSettings />
+                                    <ManagerNotificationSettings />
+
+                                    <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
+                                        <TimezoneSettings
+                                            compact
+                                            showLabel={false}
+                                            trigger={
+                                                <div className="flex items-center w-full px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group">
+                                                    <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 group-hover:bg-blue-100 transition-colors">
+                                                        <Globe className="w-4 h-4" />
+                                                    </div>
+                                                    <div className="flex-1 ml-3 overflow-hidden">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-bold text-slate-700">Display Timezone</span>
+                                                            <div className="h-6 w-fit px-2 rounded-md bg-slate-50 flex items-center justify-center border border-slate-100 italic text-[10px] text-slate-400 group-hover:bg-white transition-colors">
+                                                                {((session?.user as any)?.useCurrentTimezone || (session?.user as any)?.selectedTimezone === Intl.DateTimeFormat().resolvedOptions().timeZone)
+                                                                    ? "Local"
+                                                                    : ((session?.user as any)?.selectedTimezone || "UTC").split('/').pop()?.replace('_', ' ')}
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 font-medium truncate">Adjust time display preferences</p>
+                                                    </div>
+                                                </div>
+                                            }
+                                        />
+                                    </DropdownMenuItem>
+
+                                    <DropdownMenuSeparator className="bg-slate-50 my-1" />
+
+                                    <DropdownMenuItem
+                                        onClick={() => signOut({ callbackUrl: '/' })}
+                                        className="flex items-center gap-3 px-3 py-2.5 text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group"
+                                    >
+                                        <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0 group-hover:bg-slate-200 group-hover:text-slate-900 transition-colors">
+                                            <LogOut className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold">Sign Out</span>
+                                            <p className="text-[10px] text-slate-500 font-medium">End your session</p>
+                                        </div>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
                     </div>
 
-                </div>
-
-                {/* Footer */}
-                {
-                    !sidebarCollapsed && (
-                        <div className="p-4 border-sidebar-border">
-                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-center">
+                    {!sidebarCollapsed && (
+                        <div className="px-6 pb-6 pt-2">
+                            <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em] text-center">
                                 © 2024 Redadair
                             </p>
                         </div>
-                    )
-                }
+                    )}
+                </div>
             </aside >
 
             {/* Mobile Sidebar Overlay */}
@@ -670,7 +667,10 @@ function UserLayoutInner({
             }
 
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col min-h-screen min-w-0 w-full overflow-x-hidden">
+            <div className={cn(
+                "flex-1 flex flex-col min-h-screen min-w-0 overflow-x-hidden transition-all duration-300",
+                sidebarCollapsed ? "lg:ml-20" : "lg:ml-72"
+            )}>
                 {/* Top Header - Mobile */}
                 <header className="lg:hidden bg-white border-b border-border px-4 py-4 flex items-center justify-between sticky top-0 z-30">
                     <Button
