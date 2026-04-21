@@ -31,8 +31,8 @@ export async function GET(req: Request) {
                 },
                 ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
-                    startDate: { gte: new Date(startDate) },
-                    endDate: { lte: new Date(endDate) }
+                    startDate: { lte: new Date(endDate) },
+                    endDate: { gte: new Date(startDate) }
                 }),
                 deletedAt: null
             },
@@ -49,8 +49,8 @@ export async function GET(req: Request) {
                 },
                 ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
-                    startDate: { gte: new Date(startDate) },
-                    endDate: { lte: new Date(endDate) }
+                    startDate: { lte: new Date(endDate) },
+                    endDate: { gte: new Date(startDate) }
                 }),
                 deletedAt: null
             },
@@ -261,7 +261,7 @@ export async function POST(req: Request) {
             }
         }
 
-        if (user?.managerId) {
+        if (user?.managerId && status !== 'APPROVED') {
             await prisma.notification.create({
                 data: {
                     userId: user.managerId,

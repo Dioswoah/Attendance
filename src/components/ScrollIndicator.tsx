@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { ChevronUp as UpIcon, ChevronDown as DownIcon } from "lucide-react"
+import { ChevronUp as UpIcon } from "lucide-react"
 
 interface ScrollIndicatorProps {
     offset?: string; // Tailwind class for bottom offset, e.g. "bottom-24"
@@ -12,28 +12,11 @@ interface ScrollIndicatorProps {
 
 export function ScrollIndicator({ offset, variant = "primary" }: ScrollIndicatorProps) {
     const [showTop, setShowTop] = useState(false)
-    const [showBottom, setShowBottom] = useState(false)
     const observerRef = useRef<ResizeObserver | null>(null)
 
     const checkScroll = () => {
-        // We check both the body and the documentElement to be safe
         const scrolled = window.scrollY || document.documentElement.scrollTop
-        const viewportHeight = window.innerHeight
-        const fullHeight = Math.max(
-            document.body.scrollHeight,
-            document.documentElement.scrollHeight,
-            document.body.offsetHeight,
-            document.documentElement.offsetHeight
-        )
-
-        // Show "Scroll to Top" whenever we have scrolled down a bit
-        // This ensures the button is available as soon as the "Scroll to Bottom" button disappears
         setShowTop(scrolled > 100)
-
-        // Show "Scroll to Bottom" ONLY if we are at the top
-        // "remove the scroll down button if the user is in the center"
-        const isAtTop = scrolled < 100
-        setShowBottom(isAtTop && fullHeight > viewportHeight + 50)
     }
 
     useEffect(() => {
@@ -72,11 +55,7 @@ export function ScrollIndicator({ offset, variant = "primary" }: ScrollIndicator
         window.scrollTo({ top: 0, behavior: "smooth" })
     }
 
-    const scrollToBottom = () => {
-        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })
-    }
-
-    if (!showTop && !showBottom) return null
+    if (!showTop) return null
 
     const colorClasses = {
         primary: "bg-[#8B2323] shadow-[#8B2323]/20 hover:shadow-[#8B2323]/40",
@@ -89,23 +68,6 @@ export function ScrollIndicator({ offset, variant = "primary" }: ScrollIndicator
             "fixed right-6 z-[100] flex flex-col gap-3 group transition-all duration-300",
             offset || "bottom-6"
         )}>
-            {/* Scroll Down Hint - Only at Top */}
-            {showBottom && (
-                <Button
-                    variant="default"
-                    size="icon"
-                    className={cn(
-                        "h-12 w-12 rounded-full shadow-lg transition-all duration-300 animate-bounce hover:animate-none border-2 border-white/20",
-                        colorClasses[variant]
-                    )}
-                    onClick={scrollToBottom}
-                    title="Scroll to bottom"
-                >
-                    <DownIcon className="h-6 w-6 text-white" />
-                </Button>
-            )}
-
-            {/* Scroll to Top Button - Only at Bottom */}
             {showTop && (
                 <Button
                     variant="default"

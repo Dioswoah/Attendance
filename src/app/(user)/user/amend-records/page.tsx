@@ -77,10 +77,10 @@ export default function AmendRecordsPage() {
     }, [])
 
     const [dateFilter, setDateFilter] = useState({
-        start: format(subDays(new Date(), 2), 'yyyy-MM-dd'),
+        start: format(subDays(new Date(), 6), 'yyyy-MM-dd'),
         end: format(new Date(), 'yyyy-MM-dd')
     })
-    const [viewFilter, setViewFilter] = useState("all") // 'all', 'today', 'yesterday', 'before'
+    const [viewFilter, setViewFilter] = useState("all") // 'all', 'today', 'yesterday'
 
     const [actualRecords, setActualRecords] = useState<any[]>([])
     const [isLoadingRecords, setIsLoadingRecords] = useState(true)
@@ -110,6 +110,8 @@ export default function AmendRecordsPage() {
     const [recordType, setRecordType] = useState("CLOCK_IN")
     const [time, setTime] = useState("")
     const [reason, setReason] = useState("")
+    const [workMode, setWorkMode] = useState("OFFICE")
+    const [locationDetails, setLocationDetails] = useState("")
 
     // Reference Data
     const [attendanceHistory, setAttendanceHistory] = useState<any[]>([])
@@ -256,12 +258,12 @@ export default function AmendRecordsPage() {
 
             const payload = {
                 userId: session.user.id,
-                // For the logical 'date' field, we always want UTC Midnight of the selected day,
-                // regardless of user timezone, so it matches the canonical session date.
                 date: new Date(`${dateStr}T00:00:00Z`).toISOString(),
                 type: recordType,
                 time: new Date(dateTimeStr).toISOString(),
                 reason,
+                workMode: ['CLOCK_IN', 'CLOCK_OUT'].includes(recordType) ? workMode : undefined,
+                locationDetails: ['CLOCK_IN', 'CLOCK_OUT'].includes(recordType) ? locationDetails : undefined,
                 targetId: selectedEntryId === 'new' ? undefined : selectedEntryId
             }
 
@@ -381,6 +383,8 @@ export default function AmendRecordsPage() {
         setRecordType("CLOCK_IN")
         setTime("")
         setReason("")
+        setWorkMode("OFFICE")
+        setLocationDetails("")
     }
 
     const getStatusBadge = (status: RequestStatus) => {
@@ -497,6 +501,11 @@ export default function AmendRecordsPage() {
                                                             } else {
                                                                 setTime("")
                                                             }
+                                                            const attRecord = actualRecords.find(r => r.id === e.id)
+                                                            if (attRecord) {
+                                                                setWorkMode(attRecord.mode || "OFFICE")
+                                                                setLocationDetails(attRecord.locationDetails || "")
+                                                            }
                                                         }}
                                                         className={cn(
                                                             "flex items-center justify-between p-3 rounded-xl border-2 transition-all cursor-pointer group",
@@ -577,6 +586,34 @@ export default function AmendRecordsPage() {
                                 </p>
                             </div>
 
+                            {['CLOCK_IN', 'CLOCK_OUT'].includes(recordType) && (
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold">Work Mode</Label>
+                                        <Select value={workMode} onValueChange={setWorkMode}>
+                                            <SelectTrigger className="h-10 bg-white border-border/50">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="OFFICE">Office</SelectItem>
+                                                <SelectItem value="REMOTE">Remote</SelectItem>
+                                                <SelectItem value="HYBRID">Hybrid</SelectItem>
+                                                <SelectItem value="OFFSITE">Offsite</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold">Location / Job No.</Label>
+                                        <Input
+                                            value={locationDetails}
+                                            onChange={e => setLocationDetails(e.target.value)}
+                                            placeholder="e.g. Site A / J-1234"
+                                            className="h-10 bg-white border-border/50"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-2">
                                 <Label>Reason</Label>
                                 <Textarea
@@ -612,7 +649,7 @@ export default function AmendRecordsPage() {
                             className={cn("h-7 text-[10px] font-bold uppercase tracking-wider px-3", viewFilter === "all" ? "bg-red-600 hover:bg-red-700" : "")}
                             onClick={() => setViewFilter("all")}
                         >
-                            Last 3 Days
+                            Last 7 Days
                         </Button>
                         <Button
                             variant={viewFilter === "today" ? "default" : "ghost"}
@@ -629,14 +666,6 @@ export default function AmendRecordsPage() {
                             onClick={() => setViewFilter("yesterday")}
                         >
                             Yesterday
-                        </Button>
-                        <Button
-                            variant={viewFilter === "before" ? "default" : "ghost"}
-                            size="sm"
-                            className={cn("h-7 text-[10px] font-bold uppercase tracking-wider px-3", viewFilter === "before" ? "bg-red-600 hover:bg-red-700" : "")}
-                            onClick={() => setViewFilter("before")}
-                        >
-                            Day Before
                         </Button>
                     </div>
                 </div>
@@ -838,14 +867,24 @@ export default function AmendRecordsPage() {
                                                         // Identify default action based on record status
                                                         if (!hasAnyRecord) {
                                                             setRecordType("CLOCK_IN")
+                                                            setSelectedEntryId('new')
                                                             setReferenceTime("No log found for this date. You can request a Clock In.")
                                                         } else if (latestRecord && !latestRecord.clockOut) {
-                                                            // If clocked in but not out, user might want to correct Clock In OR add Clock Out
-                                                            setRecordType("CLOCK_OUT")
-                                                            setReferenceTime(`Clocked in at ${format(parseISO(latestRecord.clockIn), 'hh:mm a')}. You can request a Clock Out time or switch to correct Clock In.`)
+                                                            // Default to CLOCK_IN so user amends the existing clock-in time.
+                                                            // To add a missing clock-out, user should change the dropdown to CLOCK_OUT.
+                                                            setRecordType("CLOCK_IN")
+                                                            setSelectedEntryId(latestRecord.id)
+                                                            if (latestRecord.clockIn) {
+                                                                try {
+                                                                    setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(latestRecord.clockIn)))
+                                                                } catch {
+                                                                    setTime(format(parseISO(latestRecord.clockIn), 'HH:mm'))
+                                                                }
+                                                            }
+                                                            setReferenceTime(`Clocked in at ${latestRecord.clockIn ? format(parseISO(latestRecord.clockIn), 'hh:mm a') : '?'}. Switch dropdown to Clock Out to add a missing clock-out.`)
                                                         } else {
                                                             setRecordType("CLOCK_IN")
-                                                            setReferenceTime("Multiple records or completed shift found. Use the dropdown to select which to amend, or use specific icons in the table.")
+                                                            setReferenceTime("Multiple records or completed shift found. Use the icons in the table rows to amend a specific time.")
                                                         }
 
                                                         setDialogOpen(true)
@@ -951,7 +990,6 @@ export default function AmendRecordsPage() {
                                                             const d = new Date(req.date)
                                                             if (isSameDay(d, new Date())) return "Today"
                                                             if (isSameDay(d, subDays(new Date(), 1))) return "Yesterday"
-                                                            if (isSameDay(d, subDays(new Date(), 2))) return "Day Before"
                                                             return format(d, 'EEEE')
                                                         })()}
                                                     </span>
@@ -970,7 +1008,7 @@ export default function AmendRecordsPage() {
                                                     </div>
                                                 </div>
                                                 <p className="text-sm text-foreground/80 pl-1 border-l-2 border-muted mt-1 italic">
-                                                    "{req.reason}"
+                                                    "{(() => { try { return JSON.parse(req.reason || '{}').reason || req.reason } catch { return req.reason } })()}"
                                                 </p>
                                                 {req.declineReason && (
                                                     <p className="text-xs text-red-600 font-semibold mt-1">Declined: {req.declineReason}</p>

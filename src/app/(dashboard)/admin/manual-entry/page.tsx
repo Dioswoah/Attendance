@@ -213,7 +213,13 @@ export default function ManualEntryPage() {
             })
             if (res.ok) {
                 showStatus('success')
-                toast.success("Attendance record created successfully")
+                toast.success("Attendance record created. Form cleared — ready for another entry.")
+                setAttEmpId("")
+                setAttDate(format(new Date(), "yyyy-MM-dd"))
+                setAttIn("09:00")
+                setAttOut("18:00")
+                setAttMode("OFFICE")
+                setAttLocationDetails("")
             } else {
                 showStatus('error')
                 const data = await res.json()
@@ -263,7 +269,15 @@ export default function ManualEntryPage() {
             })
             if (res.ok) {
                 showStatus('success')
-                toast.success("Leave record created successfully")
+                toast.success("Leave record created. Form cleared — ready for another entry.")
+                setLvEmpId("")
+                setLvStart(format(new Date(), "yyyy-MM-dd"))
+                setLvEnd(format(new Date(), "yyyy-MM-dd"))
+                setLvType("SICK")
+                setLvDuration("Full Day")
+                setLvStartTime("09:00")
+                setLvEndTime("13:00")
+                setLvReason("")
             } else {
                 showStatus('error')
                 const data = await res.json()
@@ -302,7 +316,11 @@ export default function ManualEntryPage() {
             })
             if (res.ok) {
                 showStatus('success')
-                toast.success("Break session created successfully")
+                toast.success("Break session created. Form cleared — ready for another entry.")
+                setBrEmpId("")
+                setBrDate(format(new Date(), "yyyy-MM-dd"))
+                setBrIn("12:00")
+                setBrOut("13:00")
             } else {
                 showStatus('error')
                 const data = await res.json()

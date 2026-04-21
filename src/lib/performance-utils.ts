@@ -52,6 +52,9 @@ export function calculateTardiness(
 ): number {
     if (!attendance.clockIn) return 0
 
+    // If manager approved a clock-in amendment, treat this day as on-time
+    if (attendance.notes === 'CLOCK_IN_AMENDMENT_APPROVED') return 0
+
     // Only assess tardiness on working days unless explicitly scheduled
     const sessionDate = attendance.date ? new Date(attendance.date) : new Date(attendance.clockIn)
     if (!attendance.scheduledStart && isNonWorkingDay(sessionDate)) {

@@ -41,23 +41,23 @@ export function StaffPerformanceCard({ user, attendanceRecords, dateRange, onEdi
             onClick={() => onClick?.(user)}
         >
             <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-4 pb-3">
-                <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <Avatar className="h-10 w-10 border-2 border-white shadow-sm shrink-0">
                             <AvatarFallback className="bg-slate-900 text-white font-bold text-xs">
                                 {user.name.charAt(0)}
                             </AvatarFallback>
                         </Avatar>
-                        <div>
-                            <h3 className="font-bold text-sm text-foreground">{user.name}</h3>
-                            <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-widest truncate max-w-[120px]">
+                        <div className="min-w-0">
+                            <h3 className="font-bold text-sm text-foreground truncate">{user.name}</h3>
+                            <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-widest truncate">
                                 {(typeof user.department === 'object' ? (user.department as any)?.name : user.department) || 'Staff Member'}
                             </p>
                         </div>
                     </div>
-                    <div className="flex flex-col items-end">
+                    <div className="flex flex-col items-end shrink-0">
                         <div
-                            className="group flex items-center gap-2 cursor-pointer hover:bg-slate-100 active:bg-slate-200 px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-slate-200 z-10 relative"
+                            className="group flex items-center gap-1.5 cursor-pointer hover:bg-slate-100 active:bg-slate-200 px-2 py-1.5 rounded-lg transition-all border border-transparent hover:border-slate-200 z-10 relative"
                             onClick={(e) => {
                                 e.stopPropagation()
                                 onEditWorkHours?.(user)
@@ -66,10 +66,10 @@ export function StaffPerformanceCard({ user, attendanceRecords, dateRange, onEdi
                             tabIndex={0}
                             title="Edit Work Hours"
                         >
-                            <Badge variant="outline" className="font-mono text-[10px] bg-white border-slate-200 text-slate-600 mb-0 group-hover:border-slate-300 pointer-events-none">
+                            <Badge variant="outline" className="font-mono text-[10px] bg-white border-slate-200 text-slate-600 mb-0 group-hover:border-slate-300 pointer-events-none whitespace-nowrap">
                                 {user.shiftStartTime || "09:00"} - {user.shiftEndTime || "17:00"}
                             </Badge>
-                            {onEditWorkHours && <Clock className="w-3.5 h-3.5 text-slate-400 group-hover:text-primary transition-colors" />}
+                            {onEditWorkHours && <Clock className="w-3 h-3 text-slate-400 group-hover:text-primary transition-colors shrink-0" />}
                         </div>
                     </div>
                 </div>

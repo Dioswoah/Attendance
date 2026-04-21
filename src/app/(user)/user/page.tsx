@@ -1797,8 +1797,8 @@ export default function UserPortal() {
         // 1. Leaves (Approved & Pending)
         const leaves = teamApprovedLeaves.filter((leave: any) => {
             const isMatch = isWithinInterval(date, {
-                start: parseISO(leave.startDate),
-                end: parseISO(leave.endDate)
+                start: parseISO(leave.startDate.slice(0, 10)),
+                end: parseISO(leave.endDate.slice(0, 10))
             })
             if (!isMatch) return false
 

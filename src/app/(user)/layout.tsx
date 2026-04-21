@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, Suspense } from "react"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2 } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -198,7 +198,8 @@ function UserLayoutInner({
                 { name: "History", href: "/user/manager?tab=history", icon: History },
                 { name: "Calendar", href: "/user/manager?tab=calendar", icon: CalendarDays },
                 { name: "Performance", href: "/user/manager?tab=performance", icon: TrendingUp },
-                { name: "Reports", href: "/user/manager?tab=reports", icon: Download }
+                { name: "Reports", href: "/user/manager?tab=reports", icon: Download },
+                { name: "Grant Leave", href: "/user/manager?tab=grant-leave", icon: FilePlus2 }
             ]
         }] : []),
         ...(userRoles.includes('ADMIN') ? [{

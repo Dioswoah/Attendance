@@ -49,6 +49,7 @@ export default function HistoryPage() {
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
     const [history, setHistory] = useState<any[]>([])
+    const [approvedLeaves, setApprovedLeaves] = useState<any[]>([])
     const [departments, setDepartments] = useState<any[]>([])
 
     // Timezone Logic
@@ -139,14 +140,16 @@ export default function HistoryPage() {
     const fetchInitialData = async () => {
         setLoading(true)
         try {
-            const [deptRes, attRes, staffRes] = await Promise.all([
+            const [deptRes, attRes, staffRes, leavesRes] = await Promise.all([
                 fetch('/api/departments'),
                 fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}`),
-                fetch('/api/employees')
+                fetch('/api/employees'),
+                fetch(`/api/leaves?startDate=${startDate}&endDate=${endDate}&status=APPROVED`)
             ])
             if (deptRes.ok) setDepartments(await deptRes.json())
             if (attRes.ok) setHistory(await attRes.json())
             if (staffRes.ok) setAllStaff(await staffRes.json())
+            if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
         } catch (error) {
             // Error handled silently for production
         } finally {
@@ -157,8 +160,12 @@ export default function HistoryPage() {
     const refreshData = async () => {
         setRefreshing(true)
         try {
-            const res = await fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}`)
-            if (res.ok) setHistory(await res.json())
+            const [attRes, leavesRes] = await Promise.all([
+                fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}`),
+                fetch(`/api/leaves?startDate=${startDate}&endDate=${endDate}&status=APPROVED`)
+            ])
+            if (attRes.ok) setHistory(await attRes.json())
+            if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
         } finally {
             setRefreshing(false)
         }
@@ -634,7 +641,13 @@ export default function HistoryPage() {
                                                     {emp.dept}
                                                 </TableCell>
                                                 {dateRange.map(date => {
-                                                    const record = history.find(h => h.userId === emp.id && h.date === format(date, "yyyy-MM-dd"))
+                                                    const dateStr = format(date, "yyyy-MM-dd")
+                                                    const record = history.find(h => h.userId === emp.id && h.date === dateStr)
+                                                    const isOnLeave = !record && approvedLeaves.some(l =>
+                                                        l.userId === emp.id &&
+                                                        dateStr >= l.startDate.slice(0, 10) &&
+                                                        dateStr <= l.endDate.slice(0, 10)
+                                                    )
                                                     return (
                                                         <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
                                                             {record ? (
@@ -650,6 +663,8 @@ export default function HistoryPage() {
                                                                         {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '--'}
                                                                     </span>
                                                                 </div>
+                                                            ) : isOnLeave ? (
+                                                                <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                             ) : (
                                                                 <div className="h-1.5 w-1.5 bg-muted rounded-full mx-auto" />
                                                             )}
@@ -750,7 +765,7 @@ export default function HistoryPage() {
                                                         ) : (
                                                             <span className="text-xs text-muted-foreground font-mono tabular-nums">
                                                                 {record && record.clockOut && record.clockIn
-                                                                    ? formatDuration((new Date(record.clockOut).getTime() - new Date(record.clockIn).getTime()))
+                                                                    ? formatDuration(calculateDurations([record]).workMs)
                                                                     : '---'}
                                                             </span>
                                                         )}
@@ -903,13 +918,14 @@ export default function HistoryPage() {
             </Dialog>
 
             {/* Legend / Metrics Info */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 {[
                     { label: 'Work Hours', color: 'bg-green-500' },
                     { label: 'Break Hours', color: 'bg-yellow-500' },
                     { label: 'Break > 1h', color: 'bg-red-500' },
                     { label: 'Leave', color: 'bg-blue-500' },
                     { label: 'Office/WFH', color: 'bg-slate-500' },
+                    { label: 'No Log', color: 'bg-muted border border-border' },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">
                         <div className={`h-2.5 w-2.5 rounded-full ${item.color}`} />

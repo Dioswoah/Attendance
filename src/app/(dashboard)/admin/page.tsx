@@ -12,6 +12,7 @@ import { io } from "socket.io-client"
 import { useSession } from "next-auth/react"
 import { getBrowserTimezone } from "@/lib/timezone"
 import { statusConfig } from "@/components/UserStatusDropdown"
+import { UserAvatar } from "@/components/UserAvatar"
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState({
@@ -343,11 +344,7 @@ export default function AdminDashboard() {
                                         <div className="flex items-center gap-4">
                                             <div className="relative">
                                                 <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground font-medium text-sm overflow-hidden border border-border">
-                                                    {log.userImage ? (
-                                                        <img src={log.userImage} alt={log.userName} className="h-full w-full object-cover" />
-                                                    ) : (
-                                                        log.userName?.charAt(0)
-                                                    )}
+                                                    <UserAvatar src={log.userImage} name={log.userName} className="h-full w-full" />
                                                 </div>
                                                 <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10">
                                                     {log.type === 'clock-in' && <Zap className="h-3 w-3 text-green-500 fill-green-500" />}
@@ -503,7 +500,7 @@ export default function AdminDashboard() {
                                             <div className="flex items-center gap-3">
                                                 <div className="relative">
                                                     <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
-                                                        {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : (emp.name?.charAt(0) || "U")}
+                                                        <UserAvatar src={emp.image} name={emp.name} className="h-full w-full" />
                                                     </div>
                                                     {/* Status Indicator */}
                                                     {(() => {

@@ -39,6 +39,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
     CheckCircle2,
     XCircle,
@@ -56,7 +57,9 @@ import {
     History as HistoryIcon,
     Search,
     Filter,
-    Users
+    Users,
+    LogIn,
+    LogOut
 } from "lucide-react"
 import { format, parseISO, subDays, eachDayOfInterval } from "date-fns"
 import { toast } from "sonner"
@@ -101,6 +104,9 @@ export default function ManagerActivityPage() {
     const [managerTeam, setManagerTeam] = useState<any[]>([])
     const [perfStartDate, setPerfStartDate] = useState(format(subDays(new Date(), 7), "yyyy-MM-dd"))
     const [perfEndDate, setPerfEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+
+    // Performance Log View State
+    const [selectedStaffForLogs, setSelectedStaffForLogs] = useState<any | null>(null)
 
     // Report Selection State
     const [reportStaffFilter, setReportStaffFilter] = useState<string[]>([])
@@ -1025,6 +1031,7 @@ export default function ManagerActivityPage() {
                                                                                 user={member}
                                                                                 attendanceRecords={rawPerformanceData.filter((a: any) => a.userId === member.id)}
                                                                                 dateRange={{ start: perfStartDate, end: perfEndDate }}
+                                                                                onClick={setSelectedStaffForLogs}
                                                                             />
                                                                         ))}
                                                                     </div>
@@ -1215,6 +1222,136 @@ export default function ManagerActivityPage() {
                     )}
                 </>
             )}
+
+            {/* Performance Detail Dialog */}
+            <Dialog open={!!selectedStaffForLogs} onOpenChange={(open) => !open && setSelectedStaffForLogs(null)}>
+                <DialogContent className="w-[95vw] max-w-5xl max-h-[85vh] flex flex-col">
+                    <DialogHeader className="border-b pb-4">
+                        <div className="flex items-center gap-4">
+                            <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                                <AvatarFallback className="bg-slate-900 text-white font-bold">{selectedStaffForLogs?.name?.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <DialogTitle className="text-xl">{selectedStaffForLogs?.name}</DialogTitle>
+                                <DialogDescription className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="font-normal bg-slate-50">
+                                        {selectedStaffForLogs?.department?.name || selectedStaffForLogs?.department || 'Staff Member'}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">•</span>
+                                    <span className="text-xs text-muted-foreground">Performance Logs ({format(parseISO(perfStartDate), 'MMM dd')} - {format(parseISO(perfEndDate), 'MMM dd')})</span>
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-[300px] p-1">
+                        <Table>
+                            <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
+                                <TableRow>
+                                    <TableHead className="w-[140px]">Date</TableHead>
+                                    <TableHead>Clock In</TableHead>
+                                    <TableHead>Clock Out</TableHead>
+                                    <TableHead>Breaks</TableHead>
+                                    <TableHead>Total Hours</TableHead>
+                                    <TableHead>Lateness</TableHead>
+                                    <TableHead className="text-right">Status</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {(() => {
+                                    if (!selectedStaffForLogs) return null
+                                    const logs = rawPerformanceData
+                                        .filter((a: any) => a.userId === selectedStaffForLogs.id)
+                                        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+                                    if (logs.length === 0) {
+                                        return (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="h-40 text-center text-muted-foreground">
+                                                    No attendance records found for this period.
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    }
+
+                                    return logs.map((log: any) => {
+                                        const date = parseISO(log.date.split('T')[0])
+                                        const clockIn = log.clockIn ? new Date(log.clockIn) : null
+                                        const clockOut = log.clockOut ? new Date(log.clockOut) : null
+                                        const tardiness = calculateTardiness(log, selectedStaffForLogs)
+
+                                        const breakDuration = log.breaks?.reduce((total: number, b: any) => {
+                                            if (b.startTime && b.endTime) {
+                                                return total + (new Date(b.endTime).getTime() - new Date(b.startTime).getTime())
+                                            }
+                                            return total
+                                        }, 0) || 0
+                                        const breakMinutes = Math.floor(breakDuration / 1000 / 60)
+
+                                        let statusColor = "bg-slate-100 text-slate-600"
+                                        if (clockIn && clockOut) statusColor = "bg-green-100 text-green-700"
+                                        if (log.status === 'late') statusColor = "bg-amber-100 text-amber-700"
+                                        if (log.status === 'absent' || log.status === 'on-leave') statusColor = "bg-red-100 text-red-700"
+
+                                        return (
+                                            <TableRow key={log.id} className="hover:bg-slate-50">
+                                                <TableCell className="font-medium text-xs">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-700">{format(date, 'MMM dd, yyyy')}</span>
+                                                        <span className="text-[10px] text-muted-foreground uppercase">{format(date, 'EEEE')}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {clockIn ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <LogIn className="w-3 h-3 text-green-600" />
+                                                            <span className="font-mono">{format(clockIn, 'hh:mm a')}</span>
+                                                        </div>
+                                                    ) : <span className="text-slate-300">--:--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {clockOut ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <LogOut className="w-3 h-3 text-red-600" />
+                                                            <span className="font-mono">{format(clockOut, 'hh:mm a')}</span>
+                                                        </div>
+                                                    ) : <span className="text-slate-300">--:--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {breakMinutes > 0 ? (
+                                                        <Badge variant="outline" className="font-normal text-[10px] h-5">
+                                                            {breakMinutes} min
+                                                        </Badge>
+                                                    ) : <span className="text-slate-300 text-[10px]">-</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs font-mono font-bold text-slate-700">
+                                                    {clockIn && clockOut ? (
+                                                        (() => {
+                                                            const diff = clockOut.getTime() - clockIn.getTime() - breakDuration
+                                                            const hours = Math.floor(diff / 1000 / 60 / 60)
+                                                            const mins = Math.floor((diff / 1000 / 60) % 60)
+                                                            return `${hours}h ${mins}m`
+                                                        })()
+                                                    ) : <span className="text-slate-300">--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {tardiness > 0 ? (
+                                                        <span className="text-amber-600 font-bold">{tardiness} min</span>
+                                                    ) : <span className="text-slate-300">--</span>}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Badge variant="secondary" className={cn("text-[10px] font-bold h-5 px-1.5 uppercase tracking-wide", statusColor)}>
+                                                        {log.status?.replace('_', ' ') || 'Absent'}
+                                                    </Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })
+                                })()}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
                 <DialogContent>

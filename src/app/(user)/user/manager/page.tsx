@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { toast } from "sonner"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import useSWR, { mutate } from "swr"
@@ -21,7 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, History, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit, LogIn, LogOut, MapPin, ChevronDown } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, History, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit, LogIn, LogOut, MapPin, ChevronDown, ArrowRight, FileEdit, FilePlus2 } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -53,6 +54,8 @@ interface Request {
     kind?: 'LEAVE' | 'ATTENDANCE'
     declineReason?: string
     userTimeZone?: string
+    targetId?: string
+    targetAttendance?: any
 }
 
 export default function ManagerControlPage() {
@@ -119,6 +122,17 @@ export default function ManagerControlPage() {
 
     // Report Selection State
     const [reportSelectedStaff, setReportSelectedStaff] = useState<string[]>([])
+
+    // Grant Leave State
+    const [grantLeaveEmpId, setGrantLeaveEmpId] = useState("")
+    const [grantLeaveStart, setGrantLeaveStart] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [grantLeaveEnd, setGrantLeaveEnd] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [grantLeaveType, setGrantLeaveType] = useState("SICK")
+    const [grantLeaveDuration, setGrantLeaveDuration] = useState("Full Day")
+    const [grantLeaveStartTime, setGrantLeaveStartTime] = useState("09:00")
+    const [grantLeaveEndTime, setGrantLeaveEndTime] = useState("18:00")
+    const [grantLeaveReason, setGrantLeaveReason] = useState("")
+    const [isGrantingLeave, setIsGrantingLeave] = useState(false)
 
     // fetchInitialData removed
     // useEffect(() => {
@@ -503,6 +517,63 @@ export default function ManagerControlPage() {
         }
     }
 
+    const handleGrantLeave = async (e: React.FormEvent) => {
+        e.preventDefault()
+
+        if (!grantLeaveEmpId) {
+            toast.error("Please select a staff member")
+            return
+        }
+        if (new Date(grantLeaveEnd) < new Date(grantLeaveStart)) {
+            toast.error("End date cannot be before start date")
+            return
+        }
+        if (grantLeaveDuration !== 'Full Day' && grantLeaveEndTime <= grantLeaveStartTime) {
+            toast.error("End time must be after start time")
+            return
+        }
+
+        setIsGrantingLeave(true)
+        try {
+            const res = await fetch('/api/leaves', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: grantLeaveEmpId,
+                    startDate: grantLeaveStart,
+                    endDate: grantLeaveEnd,
+                    type: grantLeaveType,
+                    reason: grantLeaveReason,
+                    duration: grantLeaveDuration,
+                    status: 'APPROVED',
+                    startTime: grantLeaveDuration !== 'Full Day' ? new Date(`${grantLeaveStart}T${grantLeaveStartTime}:00`).toISOString() : null,
+                    endTime: grantLeaveDuration !== 'Full Day' ? new Date(`${grantLeaveStart}T${grantLeaveEndTime}:00`).toISOString() : null
+                })
+            })
+
+            if (res.ok) {
+                toast.success("Leave record created successfully")
+                setGrantLeaveEmpId("")
+                setGrantLeaveStart(format(new Date(), "yyyy-MM-dd"))
+                setGrantLeaveEnd(format(new Date(), "yyyy-MM-dd"))
+                setGrantLeaveType("SICK")
+                setGrantLeaveDuration("Full Day")
+                setGrantLeaveStartTime("09:00")
+                setGrantLeaveEndTime("18:00")
+                setGrantLeaveReason("")
+                mutateApprovedLeaves()
+                mutateHistoryLeaves()
+            } else {
+                const data = await res.json()
+                toast.error(data.error || "Failed to create leave record")
+            }
+        } catch {
+            toast.error("An error occurred")
+        } finally {
+            setIsGrantingLeave(false)
+        }
+    }
+
     const openEditWorkHours = (member: any) => {
         setEditingMember(member)
         setEditShiftStart(member.shiftStartTime || "09:00")
@@ -649,27 +720,13 @@ export default function ManagerControlPage() {
     const getEventsForDay = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd')
 
-        // Leaves
-        const leaves = filteredApprovedLeaves.filter(leave =>
+        // Leave only — attendance is intentionally excluded from this calendar view
+        const events: any[] = filteredApprovedLeaves.filter(leave =>
             isWithinInterval(date, {
-                start: parseISO(leave.startDate),
-                end: parseISO(leave.endDate)
+                start: parseISO(leave.startDate.slice(0, 10)),
+                end: parseISO(leave.endDate.slice(0, 10))
             })
         ).map(l => ({ type: 'leave', data: l }))
-
-        // Attendance (Present)
-        const attendance = filteredMonthlyAttendance.filter((a: any) => {
-            const attDate = a.date ? a.date.split('T')[0] : (a.clockIn ? a.clockIn.split('T')[0] : null)
-            return attDate === dateStr
-        }).map(a => ({ type: 'present', data: a }))
-
-        const uniqueEventsMap = new Map();
-        [...attendance, ...leaves].forEach(event => {
-            if (event.data && event.data.userId) {
-                uniqueEventsMap.set(event.data.userId, event);
-            }
-        });
-        const events: any[] = Array.from(uniqueEventsMap.values());
 
         // Holidays
         if (NSW_HOLIDAYS_2026[dateStr]) {
@@ -689,8 +746,8 @@ export default function ManagerControlPage() {
             const leave = filteredApprovedLeaves.find(l =>
                 l.userId === member.id &&
                 isWithinInterval(date, {
-                    start: parseISO(l.startDate),
-                    end: parseISO(l.endDate)
+                    start: parseISO(l.startDate.slice(0, 10)),
+                    end: parseISO(l.endDate.slice(0, 10))
                 })
             )
 
@@ -719,7 +776,7 @@ export default function ManagerControlPage() {
             // Check if they are on APPROVED leave today
             const onLeaveToday = filteredApprovedLeaves.find(l =>
                 l.userId === member.id &&
-                isWithinInterval(new Date(), { start: parseISO(l.startDate), end: parseISO(l.endDate) })
+                isWithinInterval(new Date(), { start: parseISO(l.startDate.slice(0, 10)), end: parseISO(l.endDate.slice(0, 10)) })
             )
 
             let status = 'absent'
@@ -772,6 +829,10 @@ export default function ManagerControlPage() {
                         <TabsTrigger value="reports" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
                             <Download className="w-4 h-4 mr-2" />
                             Reports
+                        </TabsTrigger>
+                        <TabsTrigger value="grant-leave" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
+                            <FilePlus2 className="w-4 h-4 mr-2" />
+                            Grant Leave
                         </TabsTrigger>
                     </TabsList>
                 </div>
@@ -905,179 +966,356 @@ export default function ManagerControlPage() {
                                 </CardContent>
                             </Card>
                         ) : viewMode === 'card' ? (
-                            // Card View
-                            filteredRequests.map(request => (
-                                <Card key={request.id} className="group hover:shadow-md transition-all border-border bg-white overflow-hidden">
-                                    <div className="flex flex-col lg:flex-row">
-                                        {/* Status Strip */}
-                                        <div className="lg:w-1 bg-yellow-500/50" />
+                            // Card View — split into Amendment Requests + Approval Requests
+                            <div className="space-y-8">
+                                {/* === AMENDMENT REQUESTS === */}
+                                {filteredRequests.filter(r => r.kind === 'ATTENDANCE').length > 0 && (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <div className="h-4 w-1 bg-orange-400 rounded-full" />
+                                            <FileEdit className="w-4 h-4 text-orange-500" />
+                                            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">Amendment Requests</h3>
+                                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 shadow-none text-[10px] font-bold">
+                                                {filteredRequests.filter(r => r.kind === 'ATTENDANCE').length}
+                                            </Badge>
+                                        </div>
+                                        <div className="grid gap-4">
+                                            {filteredRequests.filter(r => r.kind === 'ATTENDANCE').map(request => {
+                                                const ta = request.targetAttendance
+                                                const currentTime = ta ? (
+                                                    request.type === 'CLOCK_IN' ? ta.clockIn :
+                                                    request.type === 'CLOCK_OUT' ? ta.clockOut :
+                                                    request.type === 'BREAK_START' ? ta.breakStart :
+                                                    request.type === 'BREAK_END' ? ta.breakEnd : null
+                                                ) : null
+                                                return (
+                                                    <Card key={request.id} className="group hover:shadow-md transition-all border-border bg-white overflow-hidden">
+                                                        <div className="flex flex-col lg:flex-row">
+                                                            <div className="lg:w-1 bg-orange-400" />
+                                                            <CardContent className="flex-1 p-6">
+                                                                <div className="flex flex-col lg:flex-row gap-6 items-start">
+                                                                    <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                                                                        <AvatarFallback className="bg-slate-900 text-white font-bold">{request.userName.charAt(0)}</AvatarFallback>
+                                                                    </Avatar>
+                                                                    <div className="flex-1 space-y-4">
+                                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                                            <div>
+                                                                                <h3 className="font-bold text-lg text-foreground">{request.userName}</h3>
+                                                                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{request.department || 'Team Member'}</p>
+                                                                            </div>
+                                                                            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200 self-start sm:self-auto">
+                                                                                Needs Review
+                                                                            </Badge>
+                                                                        </div>
 
-                                        <CardContent className="flex-1 p-6">
-                                            <div className="flex flex-col lg:flex-row gap-6 items-start">
-                                                <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
-                                                    <AvatarFallback className="bg-slate-900 text-white font-bold">{request.userName.charAt(0)}</AvatarFallback>
-                                                </Avatar>
+                                                                        {/* Amendment type + date */}
+                                                                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                                                                            <Badge variant="outline" className="font-bold uppercase text-xs tracking-wider border-orange-200 text-orange-700 bg-orange-50">
+                                                                                {request.type.replace(/_/g, ' ')}
+                                                                            </Badge>
+                                                                            <div className="flex items-center gap-1.5 text-slate-500">
+                                                                                <CalendarIcon className="w-3.5 h-3.5 text-primary" />
+                                                                                <span className="font-medium text-xs">{format(parseISO(request.startDate), 'MMM dd, yyyy')}</span>
+                                                                            </div>
+                                                                        </div>
 
-                                                <div className="flex-1 space-y-4">
-                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                                        <div>
-                                                            <h3 className="font-bold text-lg text-foreground">{request.userName}</h3>
-                                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{request.department || 'Team Member'}</p>
-                                                        </div>
-                                                        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200">
-                                                            Needs Review
-                                                        </Badge>
-                                                    </div>
+                                                                        {/* Current → Requested comparison */}
+                                                                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                                                            <div>
+                                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Currently Recorded</p>
+                                                                                {currentTime ? (
+                                                                                    <div>
+                                                                                        <p className="font-bold text-slate-700 text-sm">{formatWithTimezone(new Date(currentTime), viewerTimeZone, 'time')}</p>
+                                                                                        <p className="text-[9px] text-slate-400 mt-0.5">Staff: {formatWithTimezone(new Date(currentTime), (request as any).userTimeZone || 'UTC', 'time')}</p>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <p className="text-xs text-slate-400 italic">Not recorded</p>
+                                                                                )}
+                                                                            </div>
+                                                                            <ArrowRight className="w-5 h-5 text-slate-300" />
+                                                                            <div className="text-right">
+                                                                                <p className="text-[10px] font-black uppercase tracking-wider text-orange-500 mb-1.5">Requested Change</p>
+                                                                                {request.time && (
+                                                                                    <div>
+                                                                                        <p className="font-bold text-orange-700 text-sm">{formatWithTimezone(new Date(request.time), viewerTimeZone, 'time')}</p>
+                                                                                        <p className="text-[9px] text-orange-400 mt-0.5">Staff: {formatWithTimezone(new Date(request.time), (request as any).userTimeZone || 'UTC', 'time')}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
 
-                                                    <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                                        <div className="bg-muted/30 p-3 rounded-lg">
-                                                            <p className="text-xs text-muted-foreground mb-1">Leave Type</p>
-                                                            <p className="font-semibold capitalize">{request.type.toLowerCase().replace('_', ' ')}</p>
-                                                        </div>
-                                                        <div className="bg-muted/30 p-3 rounded-lg">
-                                                            <p className="text-xs text-muted-foreground mb-1">Duration/Time</p>
-                                                            <div className="flex flex-col">
-                                                                <p className="font-semibold">
-                                                                    {request.kind === 'ATTENDANCE' && request.time
-                                                                        ? formatWithTimezone(new Date(request.time), viewerTimeZone, 'time')
-                                                                        : (request.kind === 'LEAVE' && request.startTime
-                                                                            ? `${request.duration} (${formatWithTimezone(new Date(request.startTime), viewerTimeZone, 'time')})`
-                                                                            : request.duration)}
-                                                                </p>
-                                                                {((request.kind === 'ATTENDANCE' && request.time) || (request.kind === 'LEAVE' && request.startTime)) && (
-                                                                    <div className="flex flex-col">
-                                                                        <p className="text-[8px] text-primary/60 font-bold uppercase tracking-wider">
-                                                                            Your Local Time
-                                                                        </p>
-                                                                        <p className="text-[8px] text-muted-foreground font-medium">
-                                                                            Staff Local: {formatWithTimezone(new Date(request.kind === 'ATTENDANCE' ? request.time! : request.startTime!), (request as any).userTimeZone || 'UTC', 'time')}
-                                                                        </p>
+                                                                        {request.reason && (
+                                                                            <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl">
+                                                                                <p className="text-sm italic text-slate-600">"{request.reason}"</p>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        <div className="bg-muted/30 p-3 rounded-lg col-span-2">
-                                                            <p className="text-xs text-muted-foreground mb-1">Date Range</p>
-                                                            <div className="flex items-center gap-2 font-medium">
-                                                                <CalendarIcon className="w-4 h-4 text-primary" />
-                                                                {format(parseISO(request.startDate), 'MMM dd, yyyy')}
-                                                                {request.startDate !== request.endDate && (
-                                                                    <> - {format(parseISO(request.endDate), 'MMM dd, yyyy')}</>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
-                                                        <p className="text-sm italic text-slate-600">"{request.reason}"</p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex lg:flex-col gap-2 pt-2 lg:pt-0">
-                                                    <Button
-                                                        onClick={() => handleAction(request, "approve")}
-                                                        className="bg-green-600 hover:bg-green-700 text-white shadow-sm w-full sm:w-auto"
-                                                    >
-                                                        <Check className="w-4 h-4 mr-2" /> Approve
-                                                    </Button>
-                                                    <Button
-                                                        onClick={() => handleAction(request, "deny")}
-                                                        variant="ghost"
-                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto"
-                                                    >
-                                                        <X className="w-4 h-4 mr-2" /> Deny
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </div>
-                                </Card>
-                            ))
-                        ) : (
-                            // Table View
-                            <Card className="border-border bg-white overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead className="bg-slate-50 border-b border-slate-200">
-                                            <tr>
-                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Staff</th>
-                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Type</th>
-                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Date/Time</th>
-                                                <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Reason</th>
-                                                <th className="text-right p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {filteredRequests.map(request => (
-                                                <tr key={request.id} className="hover:bg-slate-50/50 transition-colors">
-                                                    <td className="p-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
-                                                                <AvatarFallback className="bg-slate-900 text-white font-bold text-sm">{request.userName.charAt(0)}</AvatarFallback>
-                                                            </Avatar>
-                                                            <div>
-                                                                <p className="font-semibold text-sm text-foreground">{request.userName}</p>
-                                                                <p className="text-xs text-muted-foreground">{request.department || 'Team Member'}</p>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <Badge variant="outline" className="font-medium">
-                                                            {request.type.toLowerCase().replace('_', ' ')}
-                                                        </Badge>
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <div className="text-sm">
-                                                            <p className="font-medium text-foreground">
-                                                                {format(parseISO(request.startDate), 'MMM dd, yyyy')}
-                                                            </p>
-                                                            {((request.kind === 'ATTENDANCE' && request.time) || (request.kind === 'LEAVE' && request.startTime)) && (
-                                                                <div className="flex flex-col">
-                                                                    <p className="text-xs text-foreground font-medium">
-                                                                        {formatWithTimezone(new Date(request.kind === 'ATTENDANCE' ? request.time! : request.startTime!), viewerTimeZone, 'time')}
-                                                                    </p>
-                                                                    <p className="text-[8px] text-muted-foreground uppercase font-bold tracking-tighter">
-                                                                        Staff: {formatWithTimezone(new Date(request.kind === 'ATTENDANCE' ? request.time! : request.startTime!), (request as any).userTimeZone || 'UTC', 'time')}
-                                                                    </p>
+                                                                    <div className="flex lg:flex-col gap-2 pt-2 lg:pt-0">
+                                                                        <Button onClick={() => handleAction(request, "approve")} className="bg-green-600 hover:bg-green-700 text-white shadow-sm w-full sm:w-auto">
+                                                                            <Check className="w-4 h-4 mr-2" /> Approve
+                                                                        </Button>
+                                                                        <Button onClick={() => handleAction(request, "deny")} variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto">
+                                                                            <X className="w-4 h-4 mr-2" /> Deny
+                                                                        </Button>
+                                                                    </div>
                                                                 </div>
-                                                            )}
-                                                            {request.startDate !== request.endDate && (
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    to {format(parseISO(request.endDate), 'MMM dd')}
-                                                                </p>
-                                                            )}
+                                                            </CardContent>
                                                         </div>
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <p className="text-sm text-slate-600 italic line-clamp-2 max-w-md">
-                                                            "{request.reason}"
-                                                        </p>
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <Button
-                                                                onClick={() => handleAction(request, "approve")}
-                                                                size="sm"
-                                                                className="bg-green-600 hover:bg-green-700 text-white h-8"
-                                                            >
-                                                                <Check className="w-3 h-3 mr-1" /> Approve
-                                                            </Button>
-                                                            <Button
-                                                                onClick={() => handleAction(request, "deny")}
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8"
-                                                            >
-                                                                <X className="w-3 h-3 mr-1" /> Deny
-                                                            </Button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                    </Card>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* === APPROVAL REQUESTS (Leave) === */}
+                                {filteredRequests.filter(r => r.kind === 'LEAVE').length > 0 && (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <div className="h-4 w-1 bg-blue-400 rounded-full" />
+                                            <CalendarDays className="w-4 h-4 text-blue-500" />
+                                            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">Approval Requests</h3>
+                                            <Badge className="bg-blue-100 text-blue-700 border-blue-200 shadow-none text-[10px] font-bold">
+                                                {filteredRequests.filter(r => r.kind === 'LEAVE').length}
+                                            </Badge>
+                                        </div>
+                                        <div className="grid gap-4">
+                                            {filteredRequests.filter(r => r.kind === 'LEAVE').map(request => (
+                                                <Card key={request.id} className="group hover:shadow-md transition-all border-border bg-white overflow-hidden">
+                                                    <div className="flex flex-col lg:flex-row">
+                                                        <div className="lg:w-1 bg-blue-400" />
+                                                        <CardContent className="flex-1 p-6">
+                                                            <div className="flex flex-col lg:flex-row gap-6 items-start">
+                                                                <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                                                                    <AvatarFallback className="bg-slate-900 text-white font-bold">{request.userName.charAt(0)}</AvatarFallback>
+                                                                </Avatar>
+                                                                <div className="flex-1 space-y-4">
+                                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                                        <div>
+                                                                            <h3 className="font-bold text-lg text-foreground">{request.userName}</h3>
+                                                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{request.department || 'Team Member'}</p>
+                                                                        </div>
+                                                                        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200 self-start sm:self-auto">
+                                                                            Needs Review
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                                        <div className="bg-muted/30 p-3 rounded-lg">
+                                                                            <p className="text-xs text-muted-foreground mb-1">Leave Type</p>
+                                                                            <p className="font-semibold capitalize">{request.type.toLowerCase().replace(/_/g, ' ')}</p>
+                                                                        </div>
+                                                                        <div className="bg-muted/30 p-3 rounded-lg">
+                                                                            <p className="text-xs text-muted-foreground mb-1">Duration/Time</p>
+                                                                            <p className="font-semibold">
+                                                                                {request.startTime
+                                                                                    ? `${request.duration} (${formatWithTimezone(new Date(request.startTime), viewerTimeZone, 'time')})`
+                                                                                    : request.duration}
+                                                                            </p>
+                                                                            {request.startTime && (
+                                                                                <p className="text-[9px] text-muted-foreground mt-0.5">
+                                                                                    Staff: {formatWithTimezone(new Date(request.startTime), (request as any).userTimeZone || 'UTC', 'time')}
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="bg-muted/30 p-3 rounded-lg col-span-2">
+                                                                            <p className="text-xs text-muted-foreground mb-1">Date Range</p>
+                                                                            <div className="flex items-center gap-2 font-medium">
+                                                                                <CalendarIcon className="w-4 h-4 text-primary" />
+                                                                                {format(parseISO(request.startDate), 'MMM dd, yyyy')}
+                                                                                {request.startDate !== request.endDate && (
+                                                                                    <> — {format(parseISO(request.endDate), 'MMM dd, yyyy')}</>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    {request.reason && (
+                                                                        <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                                                                            <p className="text-sm italic text-slate-600">"{request.reason}"</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex lg:flex-col gap-2 pt-2 lg:pt-0">
+                                                                    <Button onClick={() => handleAction(request, "approve")} className="bg-green-600 hover:bg-green-700 text-white shadow-sm w-full sm:w-auto">
+                                                                        <Check className="w-4 h-4 mr-2" /> Approve
+                                                                    </Button>
+                                                                    <Button onClick={() => handleAction(request, "deny")} variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto">
+                                                                        <X className="w-4 h-4 mr-2" /> Deny
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </CardContent>
+                                                    </div>
+                                                </Card>
                                             ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            // Table View — split into two tables
+                            <div className="space-y-8">
+                                {/* Amendment Requests Table */}
+                                {filteredRequests.filter(r => r.kind === 'ATTENDANCE').length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <div className="h-4 w-1 bg-orange-400 rounded-full" />
+                                            <FileEdit className="w-4 h-4 text-orange-500" />
+                                            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">Amendment Requests</h3>
+                                        </div>
+                                        <Card className="border-border bg-white overflow-hidden">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead className="bg-orange-50 border-b border-orange-100">
+                                                        <tr>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Staff</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Amendment Type</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Date</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Currently Recorded</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Requested Change</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Reason</th>
+                                                            <th className="text-right p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {filteredRequests.filter(r => r.kind === 'ATTENDANCE').map(request => {
+                                                            const ta = request.targetAttendance
+                                                            const currentTime = ta ? (
+                                                                request.type === 'CLOCK_IN' ? ta.clockIn :
+                                                                request.type === 'CLOCK_OUT' ? ta.clockOut :
+                                                                request.type === 'BREAK_START' ? ta.breakStart :
+                                                                request.type === 'BREAK_END' ? ta.breakEnd : null
+                                                            ) : null
+                                                            return (
+                                                                <tr key={request.id} className="hover:bg-slate-50/50 transition-colors">
+                                                                    <td className="p-4">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <Avatar className="h-9 w-9 border-2 border-white shadow-sm">
+                                                                                <AvatarFallback className="bg-slate-900 text-white font-bold text-xs">{request.userName.charAt(0)}</AvatarFallback>
+                                                                            </Avatar>
+                                                                            <div>
+                                                                                <p className="font-semibold text-sm text-foreground">{request.userName}</p>
+                                                                                <p className="text-xs text-muted-foreground">{request.department || 'Team Member'}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="p-4">
+                                                                        <Badge variant="outline" className="font-bold uppercase text-[10px] border-orange-200 text-orange-700 bg-orange-50">
+                                                                            {request.type.replace(/_/g, ' ')}
+                                                                        </Badge>
+                                                                    </td>
+                                                                    <td className="p-4 text-sm font-medium text-foreground">
+                                                                        {format(parseISO(request.startDate), 'MMM dd, yyyy')}
+                                                                    </td>
+                                                                    <td className="p-4">
+                                                                        {currentTime ? (
+                                                                            <div>
+                                                                                <p className="text-sm font-semibold text-slate-700">{formatWithTimezone(new Date(currentTime), viewerTimeZone, 'time')}</p>
+                                                                                <p className="text-[9px] text-slate-400">Staff: {formatWithTimezone(new Date(currentTime), (request as any).userTimeZone || 'UTC', 'time')}</p>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-xs text-slate-400 italic">Not recorded</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="p-4">
+                                                                        {request.time && (
+                                                                            <div>
+                                                                                <p className="text-sm font-bold text-orange-700">{formatWithTimezone(new Date(request.time), viewerTimeZone, 'time')}</p>
+                                                                                <p className="text-[9px] text-orange-400">Staff: {formatWithTimezone(new Date(request.time), (request as any).userTimeZone || 'UTC', 'time')}</p>
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="p-4">
+                                                                        <p className="text-sm text-slate-600 italic line-clamp-2 max-w-[200px]">"{request.reason}"</p>
+                                                                    </td>
+                                                                    <td className="p-4">
+                                                                        <div className="flex items-center justify-end gap-2">
+                                                                            <Button onClick={() => handleAction(request, "approve")} size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8">
+                                                                                <Check className="w-3 h-3 mr-1" /> Approve
+                                                                            </Button>
+                                                                            <Button onClick={() => handleAction(request, "deny")} size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8">
+                                                                                <X className="w-3 h-3 mr-1" /> Deny
+                                                                            </Button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Approval Requests Table */}
+                                {filteredRequests.filter(r => r.kind === 'LEAVE').length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <div className="h-4 w-1 bg-blue-400 rounded-full" />
+                                            <CalendarDays className="w-4 h-4 text-blue-500" />
+                                            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">Approval Requests</h3>
+                                        </div>
+                                        <Card className="border-border bg-white overflow-hidden">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead className="bg-blue-50 border-b border-blue-100">
+                                                        <tr>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Staff</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Leave Type</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Date Range</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Duration</th>
+                                                            <th className="text-left p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Reason</th>
+                                                            <th className="text-right p-4 text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {filteredRequests.filter(r => r.kind === 'LEAVE').map(request => (
+                                                            <tr key={request.id} className="hover:bg-slate-50/50 transition-colors">
+                                                                <td className="p-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <Avatar className="h-9 w-9 border-2 border-white shadow-sm">
+                                                                            <AvatarFallback className="bg-slate-900 text-white font-bold text-xs">{request.userName.charAt(0)}</AvatarFallback>
+                                                                        </Avatar>
+                                                                        <div>
+                                                                            <p className="font-semibold text-sm text-foreground">{request.userName}</p>
+                                                                            <p className="text-xs text-muted-foreground">{request.department || 'Team Member'}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    <Badge variant="outline" className="font-medium capitalize">
+                                                                        {request.type.toLowerCase().replace(/_/g, ' ')}
+                                                                    </Badge>
+                                                                </td>
+                                                                <td className="p-4 text-sm font-medium text-foreground">
+                                                                    {format(parseISO(request.startDate), 'MMM dd, yyyy')}
+                                                                    {request.startDate !== request.endDate && (
+                                                                        <> — {format(parseISO(request.endDate), 'MMM dd')}</>
+                                                                    )}
+                                                                </td>
+                                                                <td className="p-4 text-sm text-slate-600">{request.duration}</td>
+                                                                <td className="p-4">
+                                                                    <p className="text-sm text-slate-600 italic line-clamp-2 max-w-[200px]">"{request.reason}"</p>
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    <div className="flex items-center justify-end gap-2">
+                                                                        <Button onClick={() => handleAction(request, "approve")} size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8">
+                                                                            <Check className="w-3 h-3 mr-1" /> Approve
+                                                                        </Button>
+                                                                        <Button onClick={() => handleAction(request, "deny")} size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8">
+                                                                            <X className="w-3 h-3 mr-1" /> Deny
+                                                                        </Button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </Card>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </TabsContent>
@@ -1432,7 +1670,10 @@ export default function ManagerControlPage() {
                                                                 >
                                                                     <div className={cn("w-1 h-1 rounded-full", event.type === 'leave' ? "bg-blue-600" : "bg-emerald-600")} />
                                                                     {event.data.userName.split(' ')[0]}
-                                                                    {event.type === 'leave' && <span className="opacity-60 text-[8px]">({event.data.type === 'ANNUAL' ? 'AL' : 'SL'})</span>}
+                                                                    {event.type === 'leave' && <span className="opacity-60 text-[8px]">({({
+                                                                        SICK: 'SL', VACATION: 'VL', ANNUAL: 'AL',
+                                                                        BIRTHDAY: 'BL', MATERNITY: 'ML', OTHER: 'OTH'
+                                                                    } as Record<string,string>)[event.data.type] || event.data.type?.slice(0,3)})</span>}
                                                                 </div>
                                                             ))}
 
@@ -2209,11 +2450,195 @@ export default function ManagerControlPage() {
                         </CardContent>
                     </Card>
                 </TabsContent>
+
+                {/* --- GRANT LEAVE TAB --- */}
+                <TabsContent value="grant-leave" className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-border shadow-sm">
+                        <FilePlus2 className="w-5 h-5 text-green-600" />
+                        <div>
+                            <h2 className="font-semibold text-foreground">Grant Leave Record</h2>
+                            <p className="text-xs text-muted-foreground mt-0.5">Create an approved leave record for a team member. They will be notified and will not appear as late or absent.</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Form Card */}
+                        <Card className="lg:col-span-2 border-border bg-white shadow-sm">
+                            <CardHeader className="pb-4">
+                                <CardTitle className="text-base font-semibold">Leave Details</CardTitle>
+                                <CardDescription>Fill in the details below to create an approved leave record.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <form onSubmit={handleGrantLeave} className="space-y-5">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="grant-staff">Staff Member</Label>
+                                        <Select value={grantLeaveEmpId} onValueChange={setGrantLeaveEmpId}>
+                                            <SelectTrigger id="grant-staff" className="bg-muted/30 h-10">
+                                                <SelectValue placeholder="Select team member..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {myTeam.map((emp: any) => (
+                                                    <SelectItem key={emp.id} value={emp.id}>
+                                                        {emp.name}{emp.department?.name ? ` — ${emp.department.name}` : ""}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="grant-start">Start Date</Label>
+                                            <Input
+                                                id="grant-start"
+                                                type="date"
+                                                value={grantLeaveStart}
+                                                onChange={(e) => {
+                                                    setGrantLeaveStart(e.target.value)
+                                                    if (e.target.value > grantLeaveEnd) setGrantLeaveEnd(e.target.value)
+                                                }}
+                                                className="bg-muted/30 h-10"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="grant-end">End Date</Label>
+                                            <Input
+                                                id="grant-end"
+                                                type="date"
+                                                value={grantLeaveEnd}
+                                                min={grantLeaveStart}
+                                                onChange={(e) => setGrantLeaveEnd(e.target.value)}
+                                                className="bg-muted/30 h-10"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="grant-type">Leave Type</Label>
+                                            <Select value={grantLeaveType} onValueChange={setGrantLeaveType}>
+                                                <SelectTrigger id="grant-type" className="bg-muted/30 h-10">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="SICK">Sick Leave</SelectItem>
+                                                    <SelectItem value="VACATION">Vacation</SelectItem>
+                                                    <SelectItem value="BIRTHDAY">Birthday Leave</SelectItem>
+                                                    <SelectItem value="MATERNITY">Maternity / Paternity</SelectItem>
+                                                    <SelectItem value="OTHER">Other</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="grant-duration">Duration</Label>
+                                            <Select value={grantLeaveDuration} onValueChange={setGrantLeaveDuration}>
+                                                <SelectTrigger id="grant-duration" className="bg-muted/30 h-10">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Full Day">Full Day</SelectItem>
+                                                    <SelectItem value="Part Day">Part Day</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {grantLeaveDuration === 'Part Day' && (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="grant-start-time">Start Time</Label>
+                                                <Input
+                                                    id="grant-start-time"
+                                                    type="time"
+                                                    value={grantLeaveStartTime}
+                                                    onChange={(e) => setGrantLeaveStartTime(e.target.value)}
+                                                    className="bg-muted/30 h-10"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="grant-end-time">End Time</Label>
+                                                <Input
+                                                    id="grant-end-time"
+                                                    type="time"
+                                                    value={grantLeaveEndTime}
+                                                    onChange={(e) => setGrantLeaveEndTime(e.target.value)}
+                                                    className="bg-muted/30 h-10"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="grant-reason">
+                                            Reason / Notes <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+                                        </Label>
+                                        <Textarea
+                                            id="grant-reason"
+                                            placeholder="Add any notes about this leave..."
+                                            value={grantLeaveReason}
+                                            onChange={(e) => setGrantLeaveReason(e.target.value)}
+                                            className="bg-muted/30 resize-none"
+                                            rows={4}
+                                        />
+                                    </div>
+
+                                    <div className="flex justify-end pt-2">
+                                        <Button
+                                            type="submit"
+                                            disabled={isGrantingLeave}
+                                            className="bg-green-600 hover:bg-green-700 text-white px-8 h-10 font-semibold"
+                                        >
+                                            {isGrantingLeave ? (
+                                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating Record...</>
+                                            ) : (
+                                                <><CheckCircle2 className="w-4 h-4 mr-2" /> Grant Leave</>
+                                            )}
+                                        </Button>
+                                    </div>
+                                </form>
+                            </CardContent>
+                        </Card>
+
+                        {/* Info Panel */}
+                        <div className="space-y-4">
+                            <Card className="border-green-100 bg-green-50 shadow-none">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        What this does
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2 text-xs text-green-700">
+                                    <p>• Creates an <strong>approved</strong> leave record immediately — no approval step needed.</p>
+                                    <p>• The staff member will receive an in-app notification and email.</p>
+                                    <p>• They will <strong>not</strong> appear as late or absent on that day.</p>
+                                    <p>• They will <strong>not</strong> be sent a missed check-in reminder.</p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-border bg-white shadow-sm">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                        <AlertCircle className="w-4 h-4 text-amber-500" />
+                                        Leave Types
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2 text-xs text-muted-foreground">
+                                    <p><strong className="text-foreground">Sick Leave</strong> — Medical absence</p>
+                                    <p><strong className="text-foreground">Vacation</strong> — Annual leave</p>
+                                    <p><strong className="text-foreground">Birthday</strong> — One per calendar year</p>
+                                    <p><strong className="text-foreground">Maternity / Paternity</strong> — Parental leave</p>
+                                    <p><strong className="text-foreground">Other</strong> — Any other reason</p>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
+                </TabsContent>
             </Tabs>
 
             {/* Performance Detail Dialog */}
             <Dialog open={!!selectedStaffForLogs} onOpenChange={(open) => !open && setSelectedStaffForLogs(null)}>
-                <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+                <DialogContent className="w-[95vw] max-w-5xl max-h-[85vh] flex flex-col">
                     <DialogHeader className="border-b pb-4">
                         <div className="flex items-center gap-4">
                             <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
@@ -2232,7 +2657,7 @@ export default function ManagerControlPage() {
                         </div>
                     </DialogHeader>
 
-                    <div className="flex-1 overflow-y-auto min-h-[300px] p-1">
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-[300px] p-1">
                         <Table>
                             <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
                                 <TableRow>

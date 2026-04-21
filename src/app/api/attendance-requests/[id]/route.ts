@@ -47,6 +47,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const status = updatedRequest.status
         const declineReason = updatedRequest.declineReason
 
+        // Extract stored metadata from the reason JSON (if any)
+        let storedMeta: { reason?: string; workMode?: string; locationDetails?: string } = {}
+        try { storedMeta = JSON.parse(request.reason || '{}') } catch { /* plain text reason */ }
+
         if (status === 'APPROVED') {
             if (request.targetId) {
                 if (['CLOCK_IN', 'CLOCK_OUT'].includes(request.type)) {
@@ -54,7 +58,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         where: { id: request.targetId },
                         data: {
                             [request.type === 'CLOCK_IN' ? 'clockIn' : 'clockOut']: request.time,
-                            status: 'PRESENT'
+                            status: 'PRESENT',
+                            ...(storedMeta.workMode && { mode: storedMeta.workMode as any }),
+                            ...(storedMeta.locationDetails !== undefined && { locationDetails: storedMeta.locationDetails }),
+                            ...(request.type === 'CLOCK_IN' && { notes: 'CLOCK_IN_AMENDMENT_APPROVED' })
                         }
                     })
                 } else if (['BREAK_START', 'BREAK_END'].includes(request.type)) {
@@ -83,10 +90,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     updateData.notes = null
                 }
 
-                if (request.type === 'CLOCK_IN') updateData.clockIn = request.time
+                if (request.type === 'CLOCK_IN') {
+                    updateData.clockIn = request.time
+                    updateData.notes = 'CLOCK_IN_AMENDMENT_APPROVED'
+                }
                 if (request.type === 'CLOCK_OUT') updateData.clockOut = request.time
                 if (request.type === 'BREAK_START') updateData.breakStart = request.time
                 if (request.type === 'BREAK_END') updateData.breakEnd = request.time
+                if (storedMeta.workMode) updateData.mode = storedMeta.workMode
+                if (storedMeta.locationDetails !== undefined) updateData.locationDetails = storedMeta.locationDetails
 
                 if (request.type === 'CLOCK_IN' && (!attendance || attendance.status === 'ABSENT')) {
                     updateData.status = 'PRESENT'

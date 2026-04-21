@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from "@/components/ui/label"
 import { Plus, Building2, Users, MoreVertical, Trash2, Search, ArrowRight, Loader2, UserMinus, ShieldCheck, LayoutGrid, Edit2, Flame } from "lucide-react"
 import { toast } from "sonner"
+import { UserAvatar } from "@/components/UserAvatar"
 
 export default function DepartmentsPage() {
     const [departments, setDepartments] = useState<any[]>([])
@@ -305,7 +306,7 @@ export default function DepartmentsPage() {
                                 <div key={emp.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors">
                                     <div className="flex items-center gap-3">
                                         <div className="h-8 w-8 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden font-medium text-muted-foreground text-xs">
-                                            {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : emp.name.charAt(0)}
+                                            <UserAvatar src={emp.image} name={emp.name} className="h-full w-full" />
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="font-medium text-sm text-foreground leading-none">{emp.name}</span>

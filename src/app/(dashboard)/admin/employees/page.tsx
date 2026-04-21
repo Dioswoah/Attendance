@@ -15,6 +15,7 @@ import { statusConfig } from "@/components/UserStatusDropdown"
 import { toast } from "sonner"
 import { useSession } from "next-auth/react"
 import { getBrowserTimezone } from "@/lib/timezone"
+import { UserAvatar } from "@/components/UserAvatar"
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<any[]>([])
@@ -844,7 +845,7 @@ export default function EmployeesPage() {
                                         <div className="flex items-center gap-3">
                                             <div className="relative">
                                                 <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground font-medium relative overflow-hidden text-sm">
-                                                    {emp.image ? <img src={emp.image} alt="" className="h-full w-full object-cover" /> : emp.name?.charAt(0) || "U"}
+                                                    <UserAvatar src={emp.image} name={emp.name} className="h-full w-full" />
                                                 </div>
                                                 {/* Status Indicator */}
                                                 {emp.availabilityStatus && statusConfig[emp.availabilityStatus as keyof typeof statusConfig] && (() => {

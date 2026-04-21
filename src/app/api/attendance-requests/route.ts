@@ -31,7 +31,17 @@ export async function GET(req: Request) {
             orderBy: { createdAt: 'desc' }
         })
 
-        return NextResponse.json(requests)
+        // Attach the current attendance record for amendment requests (targetId present)
+        const targetIds = requests.map(r => r.targetId).filter(Boolean) as string[]
+        const targetAttendances = targetIds.length > 0
+            ? await prisma.attendance.findMany({ where: { id: { in: targetIds } } })
+            : []
+        const targetMap = new Map(targetAttendances.map(a => [a.id, a]))
+
+        return NextResponse.json(requests.map(r => ({
+            ...r,
+            targetAttendance: r.targetId ? (targetMap.get(r.targetId) ?? null) : null
+        })))
     } catch (error) {
         return NextResponse.json({ error: "Failed to fetch requests" }, { status: 500 })
     }
@@ -40,7 +50,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { userId, type, time, reason, targetId } = body
+        const { userId, type, time, reason, targetId, workMode, locationDetails } = body
 
         // Fetch User to determine timezone for proper date normalization
         const user = await prisma.user.findUnique({
@@ -60,13 +70,47 @@ export async function POST(req: Request) {
         const localDateStr = eventTime.toLocaleDateString('en-CA', { timeZone }) // YYYY-MM-DD
         const normalizedDate = new Date(`${localDateStr}T00:00:00Z`)
 
+        // Auto-approve if only metadata changed (Clock In time is identical to existing)
+        if (type === 'CLOCK_IN' && targetId) {
+            const existingAttendance = await prisma.attendance.findUnique({ where: { id: targetId } })
+            if (existingAttendance?.clockIn) {
+                const timeDiffMs = Math.abs(eventTime.getTime() - existingAttendance.clockIn.getTime())
+                if (timeDiffMs < 60000) { // Under 1 minute = time unchanged, metadata-only change
+                    const autoRequest = await prisma.attendanceRequest.create({
+                        data: { userId, date: normalizedDate, type, time: eventTime, reason, status: 'APPROVED', targetId }
+                    })
+                    await prisma.attendance.update({
+                        where: { id: targetId },
+                        data: {
+                            ...(workMode && { mode: workMode as any }),
+                            ...(locationDetails !== undefined && { locationDetails }),
+                            notes: 'METADATA_AMENDMENT_AUTO_APPROVED'
+                        }
+                    })
+                    await prisma.notification.create({
+                        data: {
+                            userId,
+                            title: 'Record Updated',
+                            message: 'Your attendance record details were updated automatically.',
+                            type: 'LEAVE_STATUS',
+                            link: '/user/amend-records'
+                        }
+                    })
+                    await updateAttendanceSummary(userId, normalizedDate)
+                    await logActivity({ userId, action: 'ATTENDANCE_REQUEST_SUBMIT', entityType: 'ATTENDANCE_REQUEST', entityId: autoRequest.id, details: { type, auto_approved: true } })
+                    broadcastUpdate('attendance', autoRequest)
+                    return NextResponse.json({ ...autoRequest, autoApproved: true })
+                }
+            }
+        }
+
         const request = await prisma.attendanceRequest.create({
             data: {
                 userId,
                 date: normalizedDate,
                 type,
                 time: eventTime,
-                reason,
+                reason: JSON.stringify({ reason, workMode, locationDetails }),
                 status: 'PENDING',
                 targetId
             }
