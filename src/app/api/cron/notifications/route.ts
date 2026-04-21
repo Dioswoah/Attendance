@@ -305,12 +305,20 @@ export async function GET(request: Request) {
             where: {
                 clockOut: null,
                 deletedAt: null,
+                overdueDepartureSent: false,
             },
             include: { user: { include: { accounts: true } } }
         });
 
+        // Deduplicate by userId — only process one session per user per cron run
+        const seenUserIds = new Set<string>();
+
         for (const session of activeSessions) {
             const user = session.user;
+
+            // Skip if we already processed this user in this cron run
+            if (seenUserIds.has(user.id)) continue;
+
             const tz = user.selectedTimezone || 'Asia/Manila';
 
             const userLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
@@ -318,12 +326,6 @@ export async function GET(request: Request) {
 
             // Only consider sessions that started on the user's local today
             if (session.date < userStartOfDay) continue;
-
-            const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
-            const alreadyNotified = await prisma.notification.findFirst({
-                where: { userId: session.userId, type: 'OVERDUE_REMINDER', createdAt: { gte: twelveHoursAgo } }
-            });
-            if (alreadyNotified) continue;
 
             const nowTimeStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour12: false });
             const [nowH, nowM] = nowTimeStr.split(':').map(Number);
@@ -337,6 +339,14 @@ export async function GET(request: Request) {
             if (nowTotalMins >= endTotalMins + 30) {
                 const account = user.accounts.find(a => a.provider === 'google');
                 if (account?.access_token) {
+                    // Mark flag first to block concurrent cron runs from also sending
+                    await prisma.attendance.update({
+                        where: { id: session.id },
+                        data: { overdueDepartureSent: true }
+                    });
+
+                    seenUserIds.add(user.id);
+
                     const magicLink = generateMagicLink(user.id, 'clock-out');
 
                     const sent = await sendOverdueDepartureEmail({

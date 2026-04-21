@@ -68,6 +68,7 @@ export default function UserPortal() {
     const [userDepartment, setUserDepartment] = useState<string>("")
     const [userDepartmentId, setUserDepartmentId] = useState<string>("")
     const [managedDepartments, setManagedDepartments] = useState<any[]>([])
+    const [userSecondaryDepartments, setUserSecondaryDepartments] = useState<any[]>([])
     const [userManagerId, setUserManagerId] = useState<string | null>(null)
     const [pendingLeaves, setPendingLeaves] = useState<any[]>([])
     const [isLeaveOpen, setIsLeaveOpen] = useState(false)
@@ -205,6 +206,7 @@ export default function UserPortal() {
                 setUserDepartment(data.user.department?.name || "Unassigned")
                 setUserDepartmentId(data.user.departmentId || "")
                 setManagedDepartments(data.user.managedDepartments || [])
+                setUserSecondaryDepartments(data.user.secondaryDepartments || [])
                 setUserManagerId(data.user.managerId || null)
 
                 // Handle Manager/Admin extra data
@@ -1618,8 +1620,15 @@ export default function UserPortal() {
             // Direct reporting line visibility
             const isDirectReport = s.managerId === userId
 
-            // Departmental peer visibility (Same department)
-            const isInMyDepartment = userDepartmentId && s.departmentId === userDepartmentId
+            // Departmental peer visibility (Primary or secondary department)
+            const myAllDeptIds = [
+                userDepartmentId,
+                ...userSecondaryDepartments.map((d: any) => d.id)
+            ].filter(Boolean)
+            const isInMyDepartment = myAllDeptIds.length > 0 && (
+                myAllDeptIds.includes(s.departmentId) ||
+                (s.secondaryDepartments || []).some((d: any) => myAllDeptIds.includes(d.id))
+            )
 
             // Managed departments visibility (For managers)
             const managedDeptIds = managedDepartments.map((d: any) => d.id || d)
@@ -1630,7 +1639,7 @@ export default function UserPortal() {
 
             return isSelf || isDirectReport || isInMyDepartment || isInManagedDept || isMyManager
         })
-    }, [enrichedStaffList, userId, userDepartmentId, managedDepartments, userManagerId])
+    }, [enrichedStaffList, userId, userDepartmentId, userSecondaryDepartments, managedDepartments, userManagerId])
 
     // 3. UI List (Filtered for the table) - GLOBAL DIRECTORY
     const sortedStaff = useMemo(() => {
@@ -1641,8 +1650,10 @@ export default function UserPortal() {
             .filter((staff: any) => {
                 if (filterDepartments.length === 0) return true
                 const dObj = staff.department
-                const dept = typeof dObj === 'string' ? dObj : (dObj?.name || staff.departmentName)
-                return filterDepartments.includes(dept)
+                const primaryDept = typeof dObj === 'string' ? dObj : (dObj?.name || staff.departmentName)
+                const secondaryDeptNames = (staff.secondaryDepartments || []).map((d: any) => d.name)
+                return filterDepartments.includes(primaryDept) ||
+                    secondaryDeptNames.some((n: string) => filterDepartments.includes(n))
             })
             .filter((staff: any) => {
                 if (filterEmploymentLocations.length === 0) return true
@@ -1696,21 +1707,22 @@ export default function UserPortal() {
 
         return base.filter((s: any) => {
             const dObj = s.department
-            const deptName = typeof dObj === 'string' ? dObj : (dObj?.name || s.departmentName || "Unassigned")
-            return deptName === activeDept
+            const primaryDeptName = typeof dObj === 'string' ? dObj : (dObj?.name || s.departmentName || "Unassigned")
+            const secondaryDeptNames = (s.secondaryDepartments || []).map((d: any) => d.name)
+            return primaryDeptName === activeDept || secondaryDeptNames.includes(activeDept)
         })
     }, [enrichedStaffList, managedStaffBase, filterDepartments, calendarFilterDepartment, activeTab])
 
     // Standardized Status Checker
     const uniqueDepartments = useMemo(() => {
-        return Array.from(new Set(
-            enrichedStaffList
-                .map((e: any) => {
-                    const dObj = e.department
-                    return typeof dObj === 'string' ? dObj : (dObj?.name || e.departmentName || "Unassigned")
-                })
-                .filter((d): d is string => typeof d === 'string' && d.length > 0)
-        )).sort()
+        const names: string[] = []
+        enrichedStaffList.forEach((e: any) => {
+            const dObj = e.department
+            const primary = typeof dObj === 'string' ? dObj : (dObj?.name || e.departmentName || "")
+            if (primary) names.push(primary)
+            ;(e.secondaryDepartments || []).forEach((d: any) => { if (d.name) names.push(d.name) })
+        })
+        return Array.from(new Set(names)).sort()
     }, [enrichedStaffList])
 
     // --- Team Calendar Logic ---
@@ -1805,8 +1817,9 @@ export default function UserPortal() {
             // Dept Filter
             if (calendarFilterDepartment !== 'all') {
                 const staff = employees.find((e: any) => e.id === leave.userId)
-                const dept = staff?.department?.name || staff?.department || "Unassigned"
-                if (dept !== calendarFilterDepartment) return false
+                const primaryDept = staff?.department?.name || staff?.department || "Unassigned"
+                const secondaryDepts = (staff?.secondaryDepartments || []).map((d: any) => d.name)
+                if (primaryDept !== calendarFilterDepartment && !secondaryDepts.includes(calendarFilterDepartment)) return false
             }
             return true
         }).map((l: any) => ({ type: l.status === 'APPROVED' ? 'leave-approved' : 'leave-pending', data: l }))
@@ -1819,8 +1832,9 @@ export default function UserPortal() {
             // Dept Filter
             if (calendarFilterDepartment !== 'all') {
                 const staff = employees.find((e: any) => e.id === a.userId)
-                const dept = staff?.department?.name || staff?.department || "Unassigned"
-                if (dept !== calendarFilterDepartment) return false
+                const primaryDept = staff?.department?.name || staff?.department || "Unassigned"
+                const secondaryDepts = (staff?.secondaryDepartments || []).map((d: any) => d.name)
+                if (primaryDept !== calendarFilterDepartment && !secondaryDepts.includes(calendarFilterDepartment)) return false
             }
             return true
         }).map((a: any) => {
@@ -2760,13 +2774,14 @@ export default function UserPortal() {
                                                                 // Dept Filter
                                                                 if (calendarFilterDepartment !== 'all') {
                                                                     const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
-                                                                    const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                                    if (dept !== calendarFilterDepartment) return false
+                                                                    const primaryDept = staff?.department?.name || staff?.department || "Unassigned"
+                                                                    const secondaryDepts = (staff?.secondaryDepartments || []).map((d: any) => d.name)
+                                                                    if (primaryDept !== calendarFilterDepartment && !secondaryDepts.includes(calendarFilterDepartment)) return false
                                                                 }
 
                                                                 return isWithinInterval(day, {
-                                                                    start: parseISO(leave.startDate),
-                                                                    end: parseISO(leave.endDate)
+                                                                    start: parseISO(leave.startDate.slice(0, 10)),
+                                                                    end: parseISO(leave.endDate.slice(0, 10))
                                                                 })
                                                             }).map((l: any) => ({ type: 'leave-approved', data: l }))
 
@@ -2777,13 +2792,14 @@ export default function UserPortal() {
                                                                 // Dept Filter
                                                                 if (calendarFilterDepartment !== 'all') {
                                                                     const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
-                                                                    const dept = staff?.department?.name || staff?.department || "Unassigned"
-                                                                    if (dept !== calendarFilterDepartment) return false
+                                                                    const primaryDept = staff?.department?.name || staff?.department || "Unassigned"
+                                                                    const secondaryDepts = (staff?.secondaryDepartments || []).map((d: any) => d.name)
+                                                                    if (primaryDept !== calendarFilterDepartment && !secondaryDepts.includes(calendarFilterDepartment)) return false
                                                                 }
 
                                                                 return isWithinInterval(day, {
-                                                                    start: parseISO(leave.startDate),
-                                                                    end: parseISO(leave.endDate)
+                                                                    start: parseISO(leave.startDate.slice(0, 10)),
+                                                                    end: parseISO(leave.endDate.slice(0, 10))
                                                                 })
                                                             }).map((l: any) => ({ type: 'leave-pending', data: l }))
 

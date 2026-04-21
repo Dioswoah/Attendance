@@ -9,6 +9,7 @@ export async function GET() {
             },
             include: {
                 department: true,
+                secondaryDepartments: { select: { id: true, name: true } },
                 manager: {
                     select: {
                         id: true,
@@ -29,7 +30,7 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { name, email, departmentId, roles, managerId, location, shiftStartTime } = body
+        const { name, email, departmentId, roles, managerId, location, shiftStartTime, secondaryDepartmentIds } = body
         const employee = await prisma.user.create({
             data: {
                 name,
@@ -39,6 +40,9 @@ export async function POST(req: Request) {
                 shiftStartTime: shiftStartTime || "09:00",
                 department: departmentId ? { connect: { id: departmentId } } : undefined,
                 manager: managerId ? { connect: { id: managerId } } : undefined,
+                secondaryDepartments: secondaryDepartmentIds?.length
+                    ? { connect: secondaryDepartmentIds.map((id: string) => ({ id })) }
+                    : undefined,
                 // SYNC: Set default timezone based on chosen location
                 selectedTimezone: location === 'Philippines' ? 'Asia/Manila' :
                     location === 'Australia' ? 'Australia/Sydney' : 'UTC',

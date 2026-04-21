@@ -239,7 +239,9 @@ export default function AdminDashboard() {
     const filteredEmployees = employees.filter(emp => {
         const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
-        const matchesDept = deptFilter === "all" || emp.departmentId === deptFilter
+        const matchesDept = deptFilter === "all" ||
+            emp.departmentId === deptFilter ||
+            (emp.secondaryDepartments || []).some((d: any) => d.id === deptFilter)
 
         const record = attendanceRecords.find(a => a.userId === emp.id)
         const status = record?.status || "absent"
@@ -397,7 +399,10 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent className="p-6 space-y-6 max-h-[400px] overflow-y-auto">
                         {departments.map(dept => {
-                            const deptEmps = employees.filter(e => e.departmentId === dept.id)
+                            const deptEmps = employees.filter(e =>
+                                e.departmentId === dept.id ||
+                                (e.secondaryDepartments || []).some((d: any) => d.id === dept.id)
+                            )
                             const present = deptEmps.filter(e => attendanceRecords.some(a => a.userId === e.id && a.status !== 'absent')).length
                             const percentage = (present / deptEmps.length) * 100 || 0
 

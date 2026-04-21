@@ -44,6 +44,7 @@ export async function GET() {
                     image: true,
                     departmentId: true,
                     department: { select: { id: true, name: true } },
+                    secondaryDepartments: { select: { id: true, name: true } },
                     availabilityStatus: true,
                     customStatusMessage: true,
                     employmentLocation: true,

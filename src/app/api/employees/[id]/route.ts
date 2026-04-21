@@ -10,7 +10,7 @@ export async function PATCH(
         const body = await req.json()
         console.log(`Updating employee ${id} with body:`, JSON.stringify(body, null, 2))
 
-        const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime } = body
+        const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime, secondaryDepartmentIds } = body
         const updateData: any = {}
         if (name !== undefined) updateData.name = name
         if (email !== undefined) updateData.email = email
@@ -44,6 +44,13 @@ export async function PATCH(
         }
         if (shiftStartTime !== undefined) updateData.shiftStartTime = shiftStartTime
         if (body.shiftEndTime !== undefined) updateData.shiftEndTime = body.shiftEndTime
+        if (secondaryDepartmentIds !== undefined) {
+            updateData.secondaryDepartments = {
+                set: Array.isArray(secondaryDepartmentIds)
+                    ? secondaryDepartmentIds.map((id: string) => ({ id }))
+                    : []
+            }
+        }
 
         console.log("Applying Prisma update with data:", JSON.stringify(updateData, null, 2))
 

@@ -46,9 +46,10 @@ model User {
   manager             User?               @relation("UserManager", fields: [managerId], references: [id])
   managedUsers        User[]              @relation("UserManager")
   team                Team?               @relation(fields: [teamId], references: [id])
-  attendanceSummaries AttendanceSummary[]
-  activityLogs        ActivityLog[]
-  overriddenSummaries AttendanceSummary[] @relation("OverrideManager")
+  attendanceSummaries  AttendanceSummary[]
+  activityLogs         ActivityLog[]
+  overriddenSummaries  AttendanceSummary[] @relation("OverrideManager")
+  secondaryDepartments Department[]        @relation("UserSecondaryDepartments")
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
@@ -104,6 +105,7 @@ model Department {
   manager        User?     @relation("DepartmentManager", fields: [managerId], references: [id])
   teams          Team[]
   users          User[]
+  secondaryUsers User[]    @relation("UserSecondaryDepartments")
   @@index([managerId])
 }
 
@@ -144,8 +146,9 @@ model Attendance {
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   summary        AttendanceSummary? @relation(fields: [summaryId], references: [id])
   breaks         Break[]
-  breakWarningSent      Boolean   @default(false)
-  breakLimitExceededSent Boolean  @default(false)
+  breakWarningSent       Boolean   @default(false)
+  breakLimitExceededSent Boolean   @default(false)
+  overdueDepartureSent   Boolean   @default(false)
 
   @@index([userId, date])
   @@index([summaryId])

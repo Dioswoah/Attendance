@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle, Clock, LogOut, Globe } from "lucide-react"
+import { Plus, Search, Mail, User, Building, Trash2, Edit2, Loader2, ShieldCheck, MailIcon, Flame, UserPlus, Archive, ArchiveRestore, MapPin, AlertTriangle, Clock, LogOut, Globe, ChevronDown } from "lucide-react"
 import { statusConfig } from "@/components/UserStatusDropdown"
 import { toast } from "sonner"
 import { useSession } from "next-auth/react"
@@ -27,6 +28,7 @@ export default function EmployeesPage() {
     const [newName, setNewName] = useState("")
     const [newEmail, setNewEmail] = useState("")
     const [newDeptId, setNewDeptId] = useState("")
+    const [newSecondaryDeptIds, setNewSecondaryDeptIds] = useState<string[]>([])
     const [newRoles, setNewRoles] = useState<string[]>(["USER"])
     const [newManagerId, setNewManagerId] = useState("")
     const [newLocation, setNewLocation] = useState("")
@@ -39,6 +41,7 @@ export default function EmployeesPage() {
     const [editName, setEditName] = useState("")
     const [editEmail, setEditEmail] = useState("")
     const [editDeptId, setEditDeptId] = useState("")
+    const [editSecondaryDeptIds, setEditSecondaryDeptIds] = useState<string[]>([])
     const [editRoles, setEditRoles] = useState<string[]>([])
     const [editManagerId, setEditManagerId] = useState("")
     const [editLocation, setEditLocation] = useState("")
@@ -157,6 +160,7 @@ export default function EmployeesPage() {
                     name: newName,
                     email: newEmail,
                     departmentId: newDeptId || null,
+                    secondaryDepartmentIds: newSecondaryDeptIds,
                     roles: newRoles,
                     managerId: newManagerId && newManagerId !== "unassigned" ? newManagerId : null,
                     location: newLocation,
@@ -170,6 +174,7 @@ export default function EmployeesPage() {
                 setNewName("")
                 setNewEmail("")
                 setNewDeptId("")
+                setNewSecondaryDeptIds([])
                 setNewRoles(["USER"])
                 setNewManagerId("")
                 setNewLocation("")
@@ -193,6 +198,7 @@ export default function EmployeesPage() {
         setEditName(emp.name || "")
         setEditEmail(emp.email || "")
         setEditDeptId(emp.departmentId || "")
+        setEditSecondaryDeptIds((emp.secondaryDepartments || []).map((d: any) => d.id))
         // Handle migration from single role to roles array if needed
         setEditRoles(emp.roles || (emp.role ? [emp.role] : ["USER"]))
         setEditManagerId(emp.managerId || "")
@@ -214,6 +220,7 @@ export default function EmployeesPage() {
                     name: editName,
                     email: editEmail,
                     departmentId: (editDeptId && editDeptId !== "unassigned") ? editDeptId : null,
+                    secondaryDepartmentIds: editSecondaryDeptIds,
                     roles: editRoles,
                     managerId: (editManagerId && editManagerId !== "unassigned") ? editManagerId : null,
                     location: editLocation,
@@ -447,7 +454,9 @@ export default function EmployeesPage() {
         const matchesSearch = emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             emp.email?.toLowerCase().includes(searchTerm.toLowerCase())
         const matchesArchive = showArchived ? emp.isArchived : !emp.isArchived
-        const matchesDept = deptFilter === "all" || emp.departmentId === deptFilter
+        const matchesDept = deptFilter === "all" ||
+            emp.departmentId === deptFilter ||
+            (emp.secondaryDepartments || []).some((d: any) => d.id === deptFilter)
         const currentRoles = emp.roles || (emp.role ? [emp.role] : [])
         const matchesRole = roleFilter === "all" ? true :
             roleFilter === "USER_ONLY" ? currentRoles.length === 1 && currentRoles.includes("USER") :
@@ -576,10 +585,10 @@ export default function EmployeesPage() {
                                     <Input type="email" placeholder="email@example.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} required className="h-11" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Department</Label>
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Primary Department</Label>
                                     <Select value={newDeptId} onValueChange={setNewDeptId} required>
                                         <SelectTrigger className="h-11">
-                                            <SelectValue placeholder="Select Department" />
+                                            <SelectValue placeholder="Select Primary Department" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {departments.map(d => (
@@ -587,6 +596,39 @@ export default function EmployeesPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Secondary Department(s)</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <button type="button" className="h-11 w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+                                                <span className="text-muted-foreground truncate">
+                                                    {newSecondaryDeptIds.length === 0
+                                                        ? "None"
+                                                        : newSecondaryDeptIds.length === 1
+                                                            ? departments.find(d => d.id === newSecondaryDeptIds[0])?.name
+                                                            : `${newSecondaryDeptIds.length} departments`}
+                                                </span>
+                                                <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                                            </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-56 p-2" align="start">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1 mb-1">Select Secondary Depts</p>
+                                            {departments.filter(d => d.id !== newDeptId).map(d => (
+                                                <div key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onClick={() => {
+                                                    setNewSecondaryDeptIds(prev =>
+                                                        prev.includes(d.id) ? prev.filter(id => id !== d.id) : [...prev, d.id]
+                                                    )
+                                                }}>
+                                                    <Checkbox checked={newSecondaryDeptIds.includes(d.id)} className="pointer-events-none" />
+                                                    <span className="text-sm">{d.name}</span>
+                                                </div>
+                                            ))}
+                                            {departments.filter(d => d.id !== newDeptId).length === 0 && (
+                                                <p className="text-xs text-muted-foreground px-2 py-1">No other departments</p>
+                                            )}
+                                        </PopoverContent>
+                                    </Popover>
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location</Label>
@@ -875,10 +917,18 @@ export default function EmployeesPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell className="py-4 px-6">
-                                        <Badge variant="outline" className="font-normal text-xs bg-muted/50 text-muted-foreground border-border">
-                                            <Building className="h-3 w-3 mr-1.5 opacity-70" />
-                                            {emp.department?.name || 'Unassigned'}
-                                        </Badge>
+                                        <div className="flex flex-col gap-1">
+                                            <Badge variant="outline" className="font-normal text-xs bg-muted/50 text-muted-foreground border-border w-fit">
+                                                <Building className="h-3 w-3 mr-1.5 opacity-70" />
+                                                {emp.department?.name || 'Unassigned'}
+                                            </Badge>
+                                            {(emp.secondaryDepartments || []).map((d: any) => (
+                                                <Badge key={d.id} variant="outline" className="font-normal text-[10px] bg-blue-50/50 text-blue-600 border-blue-200 w-fit">
+                                                    <Building className="h-2.5 w-2.5 mr-1 opacity-70" />
+                                                    {d.name}
+                                                </Badge>
+                                            ))}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="py-4 px-6">
                                         <Badge variant="outline" className="font-mono text-xs bg-white text-slate-600 border-slate-200">
@@ -1037,10 +1087,14 @@ export default function EmployeesPage() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Department</Label>
-                                <Select value={editDeptId} onValueChange={setEditDeptId}>
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Primary Department</Label>
+                                <Select value={editDeptId} onValueChange={val => {
+                                    setEditDeptId(val)
+                                    // Remove the newly selected primary from secondary if present
+                                    setEditSecondaryDeptIds(prev => prev.filter(id => id !== val))
+                                }}>
                                     <SelectTrigger className="h-11">
-                                        <SelectValue placeholder="Select Department" />
+                                        <SelectValue placeholder="Select Primary Department" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="unassigned" className="text-muted-foreground">Unassigned</SelectItem>
@@ -1049,6 +1103,39 @@ export default function EmployeesPage() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Secondary Department(s)</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <button type="button" className="h-11 w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+                                            <span className="text-muted-foreground truncate">
+                                                {editSecondaryDeptIds.length === 0
+                                                    ? "None"
+                                                    : editSecondaryDeptIds.length === 1
+                                                        ? departments.find(d => d.id === editSecondaryDeptIds[0])?.name
+                                                        : `${editSecondaryDeptIds.length} departments`}
+                                            </span>
+                                            <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                                        </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-56 p-2" align="start">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1 mb-1">Select Secondary Depts</p>
+                                        {departments.filter(d => d.id !== editDeptId).map(d => (
+                                            <div key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer" onClick={() => {
+                                                setEditSecondaryDeptIds(prev =>
+                                                    prev.includes(d.id) ? prev.filter(id => id !== d.id) : [...prev, d.id]
+                                                )
+                                            }}>
+                                                <Checkbox checked={editSecondaryDeptIds.includes(d.id)} className="pointer-events-none" />
+                                                <span className="text-sm">{d.name}</span>
+                                            </div>
+                                        ))}
+                                        {departments.filter(d => d.id !== editDeptId).length === 0 && (
+                                            <p className="text-xs text-muted-foreground px-2 py-1">No other departments</p>
+                                        )}
+                                    </PopoverContent>
+                                </Popover>
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location</Label>

@@ -37,7 +37,8 @@ export async function GET() {
                 include: {
                     manager: { select: { id: true, name: true, email: true } },
                     department: true,
-                    managedDepartments: true
+                    managedDepartments: true,
+                    secondaryDepartments: { select: { id: true, name: true } }
                 }
             }),
             // 2. My Recent Attendance (limit to 20 for history)
