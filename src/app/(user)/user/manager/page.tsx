@@ -133,6 +133,7 @@ export default function ManagerControlPage() {
     const [grantLeaveEndTime, setGrantLeaveEndTime] = useState("18:00")
     const [grantLeaveReason, setGrantLeaveReason] = useState("")
     const [isGrantingLeave, setIsGrantingLeave] = useState(false)
+    const [leaveFilter, setLeaveFilter] = useState<'all' | 'today'>('all')
 
     // fetchInitialData removed
     // useEffect(() => {
@@ -768,15 +769,17 @@ export default function ManagerControlPage() {
     }
 
     // --- Team Status Helpers ---
+    const todayDateStr = format(new Date(), 'yyyy-MM-dd')
+
     const sortedTeam = useMemo(() => {
         return [...filteredTeam].map(member => {
             // Find attendance record
             const record = todaysAttendance.find((a: any) => a.userId === member.id)
-            // Determine status
-            // Check if they are on APPROVED leave today
+            // Check if on APPROVED leave today using date-string comparison (avoids isWithinInterval midnight edge case)
             const onLeaveToday = filteredApprovedLeaves.find(l =>
                 l.userId === member.id &&
-                isWithinInterval(new Date(), { start: parseISO(l.startDate.slice(0, 10)), end: parseISO(l.endDate.slice(0, 10)) })
+                l.startDate.slice(0, 10) <= todayDateStr &&
+                l.endDate.slice(0, 10) >= todayDateStr
             )
 
             let status = 'absent'
@@ -793,6 +796,21 @@ export default function ManagerControlPage() {
     }, [filteredTeam, todaysAttendance, filteredApprovedLeaves])
 
 
+
+    // Future approved leaves (start date is strictly after today)
+    const upcomingTeamLeaves = useMemo(() => {
+        return filteredApprovedLeaves
+            .filter(leave => leave.startDate.slice(0, 10) > todayDateStr)
+            .sort((a, b) => a.startDate.slice(0, 10).localeCompare(b.startDate.slice(0, 10)))
+    }, [filteredApprovedLeaves, todayDateStr])
+
+    // Leaves active specifically today
+    const onLeaveTodayLeaves = useMemo(() => {
+        return filteredApprovedLeaves.filter(l =>
+            l.startDate.slice(0, 10) <= todayDateStr &&
+            l.endDate.slice(0, 10) >= todayDateStr
+        )
+    }, [filteredApprovedLeaves, todayDateStr])
 
     // Loading check removed to allow Skeleton UI rendering
     // if (status === "loading" || isLoading) { ... } removed
@@ -1699,30 +1717,50 @@ export default function ManagerControlPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Side Panel: Team Status Today */}
+                        {/* Side Panel: Team Leave Schedule */}
                         <div className="space-y-6">
                             <Card className="border border-border shadow-sm bg-white overflow-hidden h-full rounded-2xl flex flex-col">
                                 <CardHeader className="border-b border-border bg-muted/10 p-5">
                                     <div className="flex items-center gap-2">
-                                        <Users className="w-5 h-5 text-primary" />
+                                        <CalendarDays className="w-5 h-5 text-primary" />
                                         <div>
-                                            <CardTitle className="text-base font-bold">Team Status</CardTitle>
-                                            <CardDescription className="text-xs">
-                                                {format(new Date(), 'EEEE, MMMM do')}
-                                            </CardDescription>
+                                            <CardTitle className="text-base font-bold">Team Leave Schedule</CardTitle>
+                                            <CardDescription className="text-xs">Upcoming &amp; current approved leave</CardDescription>
                                         </div>
                                     </div>
-                                    {/* Stats */}
                                     <div className="flex items-center gap-2 mt-4 text-xs font-medium">
-                                        <div className="bg-green-100 text-green-700 px-2 py-1 rounded-md border border-green-200">
-                                            {sortedTeam.filter(m => m.status === 'present').length} Present
-                                        </div>
-                                        <div className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md border border-blue-200">
-                                            {sortedTeam.filter(m => m.status === 'leave').length} Leave
-                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLeaveFilter(f => f === 'all' ? 'all' : 'all')}
+                                            className={cn(
+                                                "px-2 py-1 rounded-md border transition-all",
+                                                leaveFilter === 'all'
+                                                    ? "bg-blue-600 text-white border-blue-600"
+                                                    : "bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200"
+                                            )}
+                                        >
+                                            {upcomingTeamLeaves.length} upcoming
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLeaveFilter(f => f === 'today' ? 'all' : 'today')}
+                                            className={cn(
+                                                "px-2 py-1 rounded-md border transition-all",
+                                                leaveFilter === 'today'
+                                                    ? "bg-amber-500 text-white border-amber-500"
+                                                    : "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200"
+                                            )}
+                                        >
+                                            {onLeaveTodayLeaves.length} on leave today
+                                        </button>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="p-0 flex-1 overflow-y-auto max-h-[600px]">
+                                    {leaveFilter === 'today' && (
+                                        <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                                            On Leave Today
+                                        </div>
+                                    )}
                                     <div className="divide-y divide-border">
                                         {isLoading ? (
                                             Array.from({ length: 5 }).map((_, i) => (
@@ -1735,41 +1773,56 @@ export default function ManagerControlPage() {
                                                     <Skeleton className="h-5 w-16 rounded-md" />
                                                 </div>
                                             ))
-                                        ) : sortedTeam.length === 0 ? (
-                                            <div className="p-8 text-center text-muted-foreground text-sm">
-                                                No team members found.
-                                            </div>
-                                        ) : (
-                                            sortedTeam.map(member => (
-                                                <div key={member.id} className="p-4 flex items-center gap-3 hover:bg-muted/50 transition-colors">
-                                                    <div className="relative">
-                                                        <Avatar className="h-9 w-9 border border-border">
-                                                            <AvatarFallback className="text-xs">{member.name.charAt(0)}</AvatarFallback>
-                                                        </Avatar>
-                                                        <div className={cn(
-                                                            "absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white",
-                                                            member.status === 'present' ? "bg-green-500" :
-                                                                member.status === 'break' ? "bg-yellow-500" :
-                                                                    member.status === 'leave' ? "bg-blue-500" :
-                                                                        "bg-slate-300"
-                                                        )} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-semibold truncate">{member.name}</p>
-                                                        <p className="text-[10px] text-muted-foreground truncate">{member.email}</p>
-                                                    </div>
-                                                    <Badge variant="outline" className={cn(
-                                                        "text-[9px] px-1.5 h-5 capitalize border-0 font-bold",
-                                                        member.status === 'present' ? "bg-green-100 text-green-700" :
-                                                            member.status === 'break' ? "bg-yellow-100 text-yellow-700" :
-                                                                member.status === 'leave' ? "bg-blue-100 text-blue-700" :
-                                                                    "bg-slate-100 text-slate-500"
-                                                    )}>
-                                                        {member.status}
-                                                    </Badge>
+                                        ) : (() => {
+                                            const displayLeaves = leaveFilter === 'today' ? onLeaveTodayLeaves : upcomingTeamLeaves
+                                            const typeColors: Record<string, string> = {
+                                                SICK: 'bg-rose-100 text-rose-700',
+                                                VACATION: 'bg-sky-100 text-sky-700',
+                                                BIRTHDAY: 'bg-purple-100 text-purple-700',
+                                                MATERNITY: 'bg-pink-100 text-pink-700',
+                                                OTHER: 'bg-slate-100 text-slate-600',
+                                            }
+                                            const typeLabel: Record<string, string> = {
+                                                SICK: 'Sick',
+                                                VACATION: 'Vacation',
+                                                BIRTHDAY: 'Birthday',
+                                                MATERNITY: 'Parental',
+                                                OTHER: 'Other',
+                                            }
+                                            if (displayLeaves.length === 0) return (
+                                                <div className="p-8 text-center text-muted-foreground text-sm">
+                                                    <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                                    {leaveFilter === 'today' ? 'No one on leave today.' : 'No upcoming leave scheduled.'}
                                                 </div>
-                                            ))
-                                        )}
+                                            )
+                                            return displayLeaves.map(leave => {
+                                                const startDate = parseISO(leave.startDate.slice(0, 10))
+                                                const endDate = parseISO(leave.endDate.slice(0, 10))
+                                                const isActive = leave.startDate.slice(0, 10) <= todayDateStr && leave.endDate.slice(0, 10) >= todayDateStr
+                                                const dateLabel = isSameDay(startDate, endDate)
+                                                    ? format(startDate, 'MMM d')
+                                                    : `${format(startDate, 'MMM d')} – ${format(endDate, 'MMM d')}`
+                                                return (
+                                                    <div key={leave.id} className="p-4 flex items-center gap-3 hover:bg-muted/50 transition-colors">
+                                                        <Avatar className="h-9 w-9 border border-border shrink-0">
+                                                            <AvatarFallback className="text-xs">{leave.userName?.charAt(0) || '?'}</AvatarFallback>
+                                                        </Avatar>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-semibold truncate">{leave.userName}</p>
+                                                            <p className="text-[10px] text-muted-foreground font-medium">
+                                                                {dateLabel}{isActive && leaveFilter !== 'today' ? ' · Today' : ''}
+                                                            </p>
+                                                        </div>
+                                                        <Badge variant="outline" className={cn(
+                                                            "text-[9px] px-1.5 h-5 border-0 font-bold shrink-0",
+                                                            typeColors[leave.type] || typeColors.OTHER
+                                                        )}>
+                                                            {typeLabel[leave.type] || leave.type}
+                                                        </Badge>
+                                                    </div>
+                                                )
+                                            })
+                                        })()}
                                     </div>
                                 </CardContent>
                             </Card>
