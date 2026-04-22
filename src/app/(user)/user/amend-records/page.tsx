@@ -589,16 +589,16 @@ export default function AmendRecordsPage() {
                             {['CLOCK_IN', 'CLOCK_OUT'].includes(recordType) && (
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-2">
-                                        <Label className="text-xs font-bold">Work Mode</Label>
+                                        <Label className="text-xs font-bold">Work Location</Label>
                                         <Select value={workMode} onValueChange={setWorkMode}>
                                             <SelectTrigger className="h-10 bg-white border-border/50">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="OFFICE">Office</SelectItem>
-                                                <SelectItem value="REMOTE">Remote</SelectItem>
-                                                <SelectItem value="HYBRID">Hybrid</SelectItem>
-                                                <SelectItem value="OFFSITE">Offsite</SelectItem>
+                                                <SelectItem value="OFFICE">In Office</SelectItem>
+                                                <SelectItem value="WFH">WFH</SelectItem>
+                                                <SelectItem value="ONSITE">Offsite</SelectItem>
+                                                <SelectItem value="OTHER">Other</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
