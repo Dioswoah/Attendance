@@ -1805,9 +1805,13 @@ export default function UserPortal() {
 
     const getEventsForDay = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd')
+        const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
 
         // 1. Leaves (Approved & Pending)
         const leaves = teamApprovedLeaves.filter((leave: any) => {
+            if (leave.type === 'SICK') return false
+            if (leave.status === 'PENDING' && !isManagerOrAdmin) return false
+
             const isMatch = isWithinInterval(date, {
                 start: parseISO(leave.startDate.slice(0, 10)),
                 end: parseISO(leave.endDate.slice(0, 10))
@@ -2728,10 +2732,12 @@ export default function UserPortal() {
                                             <div className="w-2 h-2 rounded-full bg-blue-500" />
                                             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Approved Leave</span>
                                         </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pending Leave</span>
-                                        </div>
+                                        {(userRoles.includes('MANAGER') || userRoles.includes('ADMIN')) && (
+                                            <div className="flex items-center gap-1.5">
+                                                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pending Leave</span>
+                                            </div>
+                                        )}
                                         <div className="flex items-center gap-1.5">
                                             <div className="w-2 h-2 rounded-full bg-red-500" />
                                             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Public Holiday</span>
@@ -2767,9 +2773,10 @@ export default function UserPortal() {
                                                         {calendarDays.map((day, i) => {
                                                             const dateStr = format(day, 'yyyy-MM-dd')
 
-                                                            // 1. Approved Leaves, Filter Dept
+                                                            // 1. Approved Leaves, Filter Dept (sick leave excluded)
                                                             const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
                                                                 if (leave.status !== 'APPROVED') return false
+                                                                if (leave.type === 'SICK') return false
 
                                                                 // Dept Filter
                                                                 if (calendarFilterDepartment !== 'all') {
@@ -2785,9 +2792,11 @@ export default function UserPortal() {
                                                                 })
                                                             }).map((l: any) => ({ type: 'leave-approved', data: l }))
 
-                                                            // 2. Pending Leaves, Filter Dept
-                                                            const pendingLeaves = teamApprovedLeaves.filter((leave: any) => {
+                                                            // 2. Pending Leaves — managers/admins only, sick leave excluded
+                                                            const calIsManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
+                                                            const pendingLeaves = !calIsManagerOrAdmin ? [] : teamApprovedLeaves.filter((leave: any) => {
                                                                 if (leave.status !== 'PENDING') return false
+                                                                if (leave.type === 'SICK') return false
 
                                                                 // Dept Filter
                                                                 if (calendarFilterDepartment !== 'all') {
