@@ -57,5 +57,11 @@ export function getSystemInstructions(context: ChatContext): string {
          * Viewing History/Logs: Tell them to check the "Activity Logs".
          * Manager Tasks: Tell them to use "Manager Controls" (if they are a manager).
          * Admin Tasks: Tell them to use the "Admin Portal" (if they are an admin).
+
+    6. USER MANUAL KNOWLEDGE:
+       - You have access to the official Redadair Staff Attendance App User Manual via document retrieval.
+       - When a user asks HOW to do something in the app, retrieve and reference the relevant section from the manual to give accurate, step-by-step guidance.
+       - Always prefer manual-grounded answers over generic responses for app-specific questions.
+       - If the manual covers the topic, cite the steps clearly and tell the user which page or section it refers to if visible.
     `;
 }

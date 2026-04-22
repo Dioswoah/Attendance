@@ -26,6 +26,7 @@ export async function runAgent(
         const systemInstruction = getSystemInstructions(context);
 
         // 3. Initialize Generative Model
+        const ragCorpusName = process.env.RAG_CORPUS_NAME
         const generativeModel = vertexAI.getGenerativeModel({
             model: AGENT_CONFIG.modelName,
             generationConfig: {
@@ -35,7 +36,18 @@ export async function runAgent(
             systemInstruction: {
                 role: 'system',
                 parts: [{ text: systemInstruction }]
-            }
+            },
+            ...(ragCorpusName && {
+                tools: [{
+                    retrieval: {
+                        vertexRagStore: {
+                            ragCorpora: [ragCorpusName],
+                            similarityTopK: 5,
+                            vectorDistanceThreshold: 0.5,
+                        }
+                    }
+                }]
+            })
         });
 
         // 4. Format History for Vertex AI
