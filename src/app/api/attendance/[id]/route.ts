@@ -201,7 +201,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         userId: attendance.user.manager.id,
                         title: "Admin Edited Attendance Record",
                         message: `${session.user.name || 'An admin'} edited the attendance record of ${attendance.user.name} for ${attendance.date.toLocaleDateString()}.`,
-                        type: "ADMIN_ACTION",
+                        type: "INFO",
                         link: "/user/manager?tab=history"
                     });
                     if (session.accessToken && attendance.user.manager.email) {

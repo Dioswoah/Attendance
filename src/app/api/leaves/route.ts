@@ -271,7 +271,7 @@ export async function POST(req: Request) {
 
             if (managerIsActor) {
                 // Manager granted leave — notify admins (in-app only)
-                await notifyRole("ADMIN", "Manager Granted Leave", `${session.user.name || 'A manager'} has granted ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`, "ADMIN_ACTION")
+                await notifyRole("ADMIN", "Manager Granted Leave", `${session.user.name || 'A manager'} has granted ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`, "INFO")
             } else {
                 // Admin granted leave — notify manager (in-app + email) for transparency
                 await prisma.notification.create({
