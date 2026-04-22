@@ -18,7 +18,7 @@ export async function GET(req: Request) {
             where: {
                 ...(userId && { userId }),
                 ...(managerId && { user: { managerId } }),
-                ...(status && { status }),
+                ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
                     date: {
                         gte: new Date(startDate),
