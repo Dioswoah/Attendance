@@ -293,10 +293,15 @@ export default function AmendRecordsPage() {
             })
 
             if (res.ok) {
+                const data = await res.json()
                 setDialogOpen(false)
                 resetForm()
                 fetchRequests()
-                toast.success(editingId ? "Request updated successfully" : "Request submitted successfully")
+                if (data.autoApproved) {
+                    toast.success("Record updated", { description: "Your changes were applied automatically." })
+                } else {
+                    toast.success(editingId ? "Request updated successfully" : "Request submitted successfully")
+                }
             } else {
                 toast.error("Failed to submit request")
             }
