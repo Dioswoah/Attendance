@@ -113,7 +113,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 mode: body.mode,
                 locationDetails: body.locationDetails,
                 status: body.status,
-                date: body.date ? new Date(body.date) : undefined
+                date: body.date ? new Date(body.date) : undefined,
+                // Clear amendment marker when admin manually edits clock-in, so tardiness recalculates correctly
+                ...(body.clockIn && existing.notes === 'CLOCK_IN_AMENDMENT_APPROVED' && { notes: null })
             },
             include: {
                 user: {
