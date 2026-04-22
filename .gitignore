@@ -46,3 +46,6 @@ next-env.d.ts
 /logs/
 /test-scripts/
 /test-results/
+
+# Claude Code local settings
+.claude/settings.local.json
