@@ -4,6 +4,7 @@ import { sendLeaveRequestEmail, sendAdminActionEmail } from "@/lib/email"
 import { auth } from "@/auth"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
+import { notifyRole } from "@/lib/notifications"
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -261,30 +262,41 @@ export async function POST(req: Request) {
             }
         }
 
-        if (user?.managerId && status === 'APPROVED' && session?.user?.id !== userId) {
-            // Admin directly granted leave — notify manager for transparency
-            await prisma.notification.create({
-                data: {
-                    userId: user.managerId,
-                    title: "Admin Granted Leave for Your Staff",
-                    message: `${session?.user?.name || 'An admin'} has directly approved ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
-                    type: "ADMIN_ACTION",
-                    link: "/user/manager?tab=calendar"
-                }
-            })
-            broadcastUpdate('notification', { userId: user.managerId })
-            if (user.manager?.email && session?.accessToken) {
-                await sendAdminActionEmail({
-                    userName: user.manager.name || "Manager",
-                    userEmail: user.manager.email,
-                    adminName: session.user.name || "Administrator",
-                    adminEmail: session.user.email,
-                    adminAccessToken: session.accessToken,
-                    actionType: 'LEAVE',
-                    details: `Admin granted ${type} leave for ${user.name}: ${duration} (${reason || 'No reason'})`,
-                    date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
-                    adminRefreshToken: session.refreshToken
+        const actorRoles: string[] = session?.user?.roles || []
+        const actorIsAdmin = actorRoles.includes('ADMIN')
+        const actorIsManager = session?.user?.id !== userId // someone other than the employee
+
+        if (user?.managerId && status === 'APPROVED' && actorIsManager) {
+            const managerIsActor = user.managerId === session?.user?.id
+
+            if (managerIsActor) {
+                // Manager granted leave — notify admins (in-app only)
+                await notifyRole("ADMIN", "Manager Granted Leave", `${session.user.name || 'A manager'} has granted ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`, "ADMIN_ACTION")
+            } else {
+                // Admin granted leave — notify manager (in-app + email) for transparency
+                await prisma.notification.create({
+                    data: {
+                        userId: user.managerId,
+                        title: "Admin Granted Leave for Your Staff",
+                        message: `${session?.user?.name || 'An admin'} has directly approved ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
+                        type: "ADMIN_ACTION",
+                        link: "/user/manager?tab=calendar"
+                    }
                 })
+                broadcastUpdate('notification', { userId: user.managerId })
+                if (user.manager?.email && session?.accessToken) {
+                    await sendAdminActionEmail({
+                        userName: user.manager.name || "Manager",
+                        userEmail: user.manager.email,
+                        adminName: session.user.name || "Administrator",
+                        adminEmail: session.user.email,
+                        adminAccessToken: session.accessToken,
+                        actionType: 'LEAVE',
+                        details: `Admin granted ${type} leave for ${user.name}: ${duration} (${reason || 'No reason'})`,
+                        date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
+                        adminRefreshToken: session.refreshToken
+                    })
+                }
             }
         }
 
