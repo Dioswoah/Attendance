@@ -154,6 +154,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 link: "/user/amend-records"
             }
         })
+        broadcastUpdate('notification', { userId: request.userId })
 
         if (session?.accessToken && request.user.email) {
             await sendLeaveStatusUpdateEmail({

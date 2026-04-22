@@ -165,6 +165,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         link: "/leaves"
                     }
                 })
+                broadcastUpdate('notification', { userId: updatedRequest.userId })
 
                 if (session.accessToken && session.user.email) {
                     await sendLeaveStatusUpdateEmail({
@@ -266,6 +267,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     link: "/leaves"
                 }
             })
+            broadcastUpdate('notification', { userId: updatedLeave.userId })
 
             if (session.accessToken && session.user.email) {
                 await sendLeaveStatusUpdateEmail({
