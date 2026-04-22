@@ -52,9 +52,10 @@ export function calculateTardiness(
 ): number {
     if (!attendance.clockIn) return 0
 
-    // If manager approved a clock-in amendment AND status is not explicitly LATE, treat as on-time
-    // Admin can override by manually setting status to LATE
-    if (attendance.notes === 'CLOCK_IN_AMENDMENT_APPROVED' && attendance.status !== 'LATE') return 0
+    // If manager approved a clock-in amendment AND admin hasn't explicitly marked it LATE, treat as on-time
+    // attendanceStatus is the DB-level status (LATE/PRESENT); status is the synthetic UI clock-state
+    const dbStatus = attendance.attendanceStatus || attendance.status
+    if (attendance.notes === 'CLOCK_IN_AMENDMENT_APPROVED' && dbStatus !== 'LATE') return 0
 
     // Only assess tardiness on working days unless explicitly scheduled
     const sessionDate = attendance.date ? new Date(attendance.date) : new Date(attendance.clockIn)

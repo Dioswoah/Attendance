@@ -638,6 +638,7 @@ export async function GET(req: Request) {
                 mode: a.mode,
                 locationDetails: a.locationDetails,
                 status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
+                attendanceStatus: a.status, // DB-level status: PRESENT, LATE, ABSENT, etc.
                 breakStart: a.breakStart?.toISOString(),
                 breakEnd: a.breakEnd?.toISOString(),
                 notes: a.notes,
