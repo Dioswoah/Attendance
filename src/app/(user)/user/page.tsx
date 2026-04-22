@@ -2767,9 +2767,9 @@ export default function UserPortal() {
                                                         {calendarDays.map((day, i) => {
                                                             const dateStr = format(day, 'yyyy-MM-dd')
 
-                                                            // 1. Paid Leaves (Approved) - Exclude SICK, Filter Dept
+                                                            // 1. Approved Leaves, Filter Dept
                                                             const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
-                                                                if (leave.type === 'SICK' || leave.status !== 'APPROVED') return false
+                                                                if (leave.status !== 'APPROVED') return false
 
                                                                 // Dept Filter
                                                                 if (calendarFilterDepartment !== 'all') {
@@ -2785,9 +2785,9 @@ export default function UserPortal() {
                                                                 })
                                                             }).map((l: any) => ({ type: 'leave-approved', data: l }))
 
-                                                            // 2. Pending Leaves - Exclude SICK, Filter Dept
+                                                            // 2. Pending Leaves, Filter Dept
                                                             const pendingLeaves = teamApprovedLeaves.filter((leave: any) => {
-                                                                if (leave.type === 'SICK' || leave.status !== 'PENDING') return false
+                                                                if (leave.status !== 'PENDING') return false
 
                                                                 // Dept Filter
                                                                 if (calendarFilterDepartment !== 'all') {
