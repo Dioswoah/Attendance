@@ -1458,11 +1458,11 @@ export default function ManagerControlPage() {
                                                     </div>
                                                     <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                                         <div className="bg-muted/30 p-3 rounded-lg">
-                                                            <p className="text-xs text-muted-foreground mb-1">Leave Type</p>
-                                                            <p className="font-semibold capitalize">{request.type.toLowerCase().replace('_', ' ')}</p>
+                                                            <p className="text-xs text-muted-foreground mb-1">{request.kind === 'ATTENDANCE' ? 'Amendment Type' : 'Leave Type'}</p>
+                                                            <p className="font-semibold capitalize">{request.type.toLowerCase().replace(/_/g, ' ')}</p>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-lg">
-                                                            <p className="text-xs text-muted-foreground mb-1">Duration / Time</p>
+                                                            <p className="text-xs text-muted-foreground mb-1">{request.kind === 'ATTENDANCE' ? 'Corrected Time' : 'Duration / Time'}</p>
                                                             <div className="flex flex-col">
                                                                 <p className="font-semibold">
                                                                     {request.kind === 'ATTENDANCE' && request.time
