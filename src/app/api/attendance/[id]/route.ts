@@ -195,6 +195,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     });
                 }
 
+                // Notify manager
+                if (attendance.user.manager && attendance.user.manager.id !== actorId) {
+                    await notifyUser({
+                        userId: attendance.user.manager.id,
+                        title: "Admin Edited Attendance Record",
+                        message: `${session.user.name || 'An admin'} edited the attendance record of ${attendance.user.name} for ${attendance.date.toLocaleDateString()}.`,
+                        type: "ADMIN_ACTION",
+                        link: "/user/manager?tab=history"
+                    });
+                    if (session.accessToken && attendance.user.manager.email) {
+                        await sendGeneralEmail({
+                            toEmail: attendance.user.manager.email,
+                            subject: "Staff Attendance Record Edited by Admin",
+                            title: "Attendance Record Edited",
+                            message: `${session.user.name || 'An administrator'} has edited the attendance record of ${attendance.user.name} for ${attendance.date.toLocaleDateString()}.`,
+                            accessToken: session.accessToken,
+                            refreshToken: session.refreshToken,
+                            link: `https://attendance-app-712513641417.us-central1.run.app/user/manager`
+                        });
+                    }
+                }
+
                 if (isManager) {
                     await notifyRole("ADMIN", "Manager Activity", `Manager ${session.user.name} edited a record for ${attendance.user.name}.`, "INFO");
                 }

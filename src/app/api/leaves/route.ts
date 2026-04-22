@@ -261,6 +261,33 @@ export async function POST(req: Request) {
             }
         }
 
+        if (user?.managerId && status === 'APPROVED' && session?.user?.id !== userId) {
+            // Admin directly granted leave — notify manager for transparency
+            await prisma.notification.create({
+                data: {
+                    userId: user.managerId,
+                    title: "Admin Granted Leave for Your Staff",
+                    message: `${session?.user?.name || 'An admin'} has directly approved ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
+                    type: "ADMIN_ACTION",
+                    link: "/user/manager?tab=calendar"
+                }
+            })
+            broadcastUpdate('notification', { userId: user.managerId })
+            if (user.manager?.email && session?.accessToken) {
+                await sendAdminActionEmail({
+                    userName: user.manager.name || "Manager",
+                    userEmail: user.manager.email,
+                    adminName: session.user.name || "Administrator",
+                    adminEmail: session.user.email,
+                    adminAccessToken: session.accessToken,
+                    actionType: 'LEAVE',
+                    details: `Admin granted ${type} leave for ${user.name}: ${duration} (${reason || 'No reason'})`,
+                    date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
+                    adminRefreshToken: session.refreshToken
+                })
+            }
+        }
+
         if (user?.managerId && status !== 'APPROVED') {
             await prisma.notification.create({
                 data: {

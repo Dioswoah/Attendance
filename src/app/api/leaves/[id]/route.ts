@@ -182,6 +182,38 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         managerRefreshToken: session.refreshToken
                     })
                 }
+
+                // Notify manager if actor is not the manager (i.e. admin acted on it)
+                const mgr = updatedRequest.user.manager
+                if (mgr && mgr.id !== session.user.id) {
+                    await prisma.notification.create({
+                        data: {
+                            userId: mgr.id,
+                            title: `Leave Request ${updatedRequest.status} by Admin`,
+                            message: `${session.user.name || 'Admin'} has ${updatedRequest.status.toLowerCase()} a ${updatedRequest.type} leave request for ${updatedRequest.user.name} (${new Date(updatedRequest.startDate).toLocaleDateString()} - ${new Date(updatedRequest.endDate).toLocaleDateString()}).`,
+                            type: "ADMIN_ACTION",
+                            link: "/user/manager?tab=calendar"
+                        }
+                    })
+                    broadcastUpdate('notification', { userId: mgr.id })
+                    if (session.accessToken && mgr.email) {
+                        const mgrAccount = await prisma.account.findFirst({ where: { userId: mgr.id, provider: 'google' } })
+                        await sendLeaveStatusUpdateEmail({
+                            userName: mgr.name || "Manager",
+                            userEmail: mgr.email,
+                            managerName: session.user.name || "Admin",
+                            managerEmail: session.user.email,
+                            managerAccessToken: mgrAccount?.access_token || session.accessToken,
+                            leaveType: `${updatedRequest.type} leave for ${updatedRequest.user.name}`,
+                            startDate: new Date(updatedRequest.startDate).toLocaleDateString(),
+                            endDate: new Date(updatedRequest.endDate).toLocaleDateString(),
+                            status: updatedRequest.status as 'APPROVED' | 'DECLINED',
+                            updatedAt: new Date().toLocaleDateString(),
+                            declineReason: updatedRequest.declineReason || undefined,
+                            customTitle: 'Staff Leave Decision by Admin'
+                        })
+                    }
+                }
             }
 
             broadcastUpdate('leaves', updatedRequest)

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { auth } from '@/auth'
+import { sendAdminActionEmail } from '@/lib/email'
+import { broadcastUpdate } from '@/lib/eventBus'
 
 export async function PATCH(
     req: Request,
@@ -8,6 +11,7 @@ export async function PATCH(
     try {
         const { id } = await params
         const body = await req.json()
+        const session = await auth() as any
         console.log(`Updating employee ${id} with body:`, JSON.stringify(body, null, 2))
 
         const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime, secondaryDepartmentIds } = body
@@ -56,8 +60,51 @@ export async function PATCH(
 
         const updated = await prisma.user.update({
             where: { id },
-            data: updateData
+            data: updateData,
+            include: { accounts: true }
         })
+
+        // Notify the employee when an admin edits their profile (skip self-edits)
+        if (session?.user?.id && session.user.id !== id) {
+            const changedFields: string[] = []
+            if (name !== undefined) changedFields.push('name')
+            if (email !== undefined) changedFields.push('email')
+            if (departmentId !== undefined) changedFields.push('department')
+            if (roles !== undefined) changedFields.push('roles')
+            if (managerId !== undefined) changedFields.push('reporting manager')
+            if (location !== undefined) changedFields.push('work location')
+            if (shiftStartTime !== undefined || body.shiftEndTime !== undefined) changedFields.push('shift hours')
+            if (secondaryDepartmentIds !== undefined) changedFields.push('secondary departments')
+            if (isArchived !== undefined) changedFields.push('account status')
+
+            const changedSummary = changedFields.length > 0 ? changedFields.join(', ') : 'profile details'
+
+            await prisma.notification.create({
+                data: {
+                    userId: id,
+                    title: "Your Profile Was Updated",
+                    message: `${session.user.name || 'An administrator'} has updated your profile (${changedSummary}).`,
+                    type: "ADMIN_ACTION",
+                    link: "/user"
+                }
+            })
+            broadcastUpdate('notification', { userId: id })
+
+            const empAccount = updated.accounts?.find((a: any) => a.provider === 'google')
+            if (empAccount?.access_token && updated.email) {
+                await sendAdminActionEmail({
+                    userName: updated.name || "Employee",
+                    userEmail: updated.email,
+                    adminName: session.user.name || "Administrator",
+                    adminEmail: session.user.email,
+                    adminAccessToken: session.accessToken || empAccount.access_token,
+                    actionType: 'ATTENDANCE',
+                    details: `Your profile has been updated by an administrator. Fields changed: ${changedSummary}.`,
+                    date: new Date().toLocaleDateString(),
+                    adminRefreshToken: session.refreshToken
+                })
+            }
+        }
 
         return NextResponse.json(updated)
     } catch (error) {

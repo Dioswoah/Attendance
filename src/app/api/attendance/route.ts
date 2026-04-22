@@ -852,6 +852,35 @@ export async function POST(req: Request) {
                         adminRefreshToken: session.refreshToken
                     })
                 }
+
+                // Notify manager
+                const fullUser = await prisma.user.findUnique({ where: { id: userId }, include: { manager: { include: { accounts: true } } } })
+                if (fullUser?.manager) {
+                    await prisma.notification.create({
+                        data: {
+                            userId: fullUser.manager.id,
+                            title: "Admin Added Attendance Record",
+                            message: `${session.user.name || 'An admin'} added an attendance record for ${user.name || 'a staff member'} on ${new Date(attendance.date).toLocaleDateString()}.`,
+                            type: "ADMIN_ACTION",
+                            link: "/user/manager?tab=history"
+                        }
+                    })
+                    broadcastUpdate('notification', { userId: fullUser.manager.id })
+                    const mgrAccount = fullUser.manager.accounts?.find((a: any) => a.provider === 'google')
+                    if (mgrAccount?.access_token) {
+                        await sendAdminActionEmail({
+                            userName: fullUser.manager.name || "Manager",
+                            userEmail: fullUser.manager.email,
+                            adminName: session.user.name || "Administrator",
+                            adminEmail: session.user.email,
+                            adminAccessToken: mgrAccount.access_token,
+                            actionType: 'ATTENDANCE',
+                            details: `Admin added an attendance record for ${user.name || 'a staff member'}: ${details}`,
+                            date: new Date(attendance.date).toLocaleDateString(),
+                            adminRefreshToken: mgrAccount.refresh_token || undefined
+                        })
+                    }
+                }
             }
         }
 

@@ -172,6 +172,38 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             })
         }
 
+        // Notify manager if actor is not the manager
+        const manager = request.user.manager
+        if (manager && manager.id !== session?.user?.id && !isUserEditing) {
+            await prisma.notification.create({
+                data: {
+                    userId: manager.id,
+                    title: `Correction Request ${status}`,
+                    message: `${session?.user?.name || 'Admin'} has ${status.toLowerCase()} a ${request.type.replace('_', ' ')} correction request for ${request.user.name} on ${new Date(request.date).toLocaleDateString()}.`,
+                    type: "LEAVE_STATUS",
+                    link: "/user/manager?tab=history"
+                }
+            })
+            broadcastUpdate('notification', { userId: manager.id })
+            if (session?.accessToken && manager.email) {
+                const mgrAccount = await prisma.account.findFirst({ where: { userId: manager.id, provider: 'google' } })
+                await sendLeaveStatusUpdateEmail({
+                    userName: manager.name || "Manager",
+                    userEmail: manager.email,
+                    managerName: session.user.name || "Admin",
+                    managerEmail: session.user.email,
+                    managerAccessToken: mgrAccount?.access_token || session.accessToken,
+                    leaveType: `Correction: ${request.type} for ${request.user.name}`,
+                    startDate: new Date(request.date).toLocaleDateString(),
+                    endDate: new Date(request.date).toLocaleDateString(),
+                    status: status as 'APPROVED' | 'DECLINED',
+                    updatedAt: new Date().toLocaleDateString(),
+                    declineReason: declineReason || undefined,
+                    customTitle: 'Staff Correction Request Decision'
+                })
+            }
+        }
+
         broadcastUpdate('attendance', updatedRequest)
         return NextResponse.json(updatedRequest)
 
