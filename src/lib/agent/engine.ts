@@ -41,7 +41,7 @@ export async function runAgent(
                 tools: [{
                     retrieval: {
                         vertexRagStore: {
-                            ragCorpora: [ragCorpusName],
+                            ragResources: [{ ragCorpus: ragCorpusName }],
                             similarityTopK: 5,
                             vectorDistanceThreshold: 0.5,
                         }

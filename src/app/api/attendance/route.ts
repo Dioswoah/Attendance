@@ -834,12 +834,11 @@ export async function POST(req: Request) {
                 broadcastUpdate('notification', { userId })
 
                 // 3. Send Email
+                const emailTz = user.selectedTimezone || 'Asia/Manila'
+                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
+                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
+                    ` (${attendance.mode})`
                 if (user.email) {
-                    const emailTz = user.selectedTimezone || 'Asia/Manila'
-                    const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
-                        (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
-                        ` (${attendance.mode})`
-
                     await sendAdminActionEmail({
                         userName: user.name || "Employee",
                         userEmail: user.email,

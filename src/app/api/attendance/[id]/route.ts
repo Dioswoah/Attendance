@@ -211,7 +211,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                             title: "Attendance Record Edited",
                             message: `${session.user.name || 'An administrator'} has edited the attendance record of ${attendance.user.name} for ${attendance.date.toLocaleDateString()}.`,
                             accessToken: session.accessToken,
-                            refreshToken: session.refreshToken,
+                            refreshToken: (session as any).refreshToken,
                             link: `https://attendance-app-712513641417.us-central1.run.app/user/manager`
                         });
                     }

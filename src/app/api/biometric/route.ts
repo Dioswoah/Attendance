@@ -36,12 +36,11 @@ async function fetchViaServiceAccount(dateParam: string): Promise<{ tab: string;
 
     try {
         const sa = JSON.parse(saJson)
-        const authClient = new google.auth.JWT(
-            sa.client_email,
-            undefined,
-            sa.private_key,
-            ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        )
+        const authClient = new google.auth.JWT({
+            email: sa.client_email,
+            key: sa.private_key,
+            scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        })
         const sheets = google.sheets({ version: "v4", auth: authClient })
 
         const metaRes = await sheets.spreadsheets.get({
