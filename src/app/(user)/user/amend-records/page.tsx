@@ -109,6 +109,7 @@ export default function AmendRecordsPage() {
     const [selectedDateOption, setSelectedDateOption] = useState(format(new Date(), 'yyyy-MM-dd'))
     const [recordType, setRecordType] = useState("CLOCK_IN")
     const [time, setTime] = useState("")
+    const [existingEntryTimeISO, setExistingEntryTimeISO] = useState<string | null>(null)
     const [reason, setReason] = useState("")
     const [workMode, setWorkMode] = useState("OFFICE")
     const [locationDetails, setLocationDetails] = useState("")
@@ -243,24 +244,39 @@ export default function AmendRecordsPage() {
                 } catch { return '+00:00' }
             })()
 
-            // Construct DateTime for the "time"
-            // We need to combine targetDate (YYYY-MM-DD) with time (HH:MM)
-            const dateTimeStr = `${dateStr}T${time}:00${offset}`
-            const requestDate = new Date(dateTimeStr)
-
-            if (requestDate > new Date()) {
-                toast.error("Cannot set attendance time in the future", {
-                    description: "Please select a time that has already passed."
-                })
-                setIsSubmitting(false)
-                return
+            // Determine the time to submit
+            // If time field is blank, reuse the existing entry's time (metadata-only change → auto-approved)
+            let resolvedTimeISO: string
+            if (!time) {
+                if (selectedEntryId === 'new') {
+                    toast.error("Please enter a time for the new entry.")
+                    setIsSubmitting(false)
+                    return
+                }
+                if (!existingEntryTimeISO) {
+                    toast.error("Could not determine the existing time. Please enter a corrected time.")
+                    setIsSubmitting(false)
+                    return
+                }
+                resolvedTimeISO = existingEntryTimeISO
+            } else {
+                const dateTimeStr = `${dateStr}T${time}:00${offset}`
+                const requestDate = new Date(dateTimeStr)
+                if (requestDate > new Date()) {
+                    toast.error("Cannot set attendance time in the future", {
+                        description: "Please select a time that has already passed."
+                    })
+                    setIsSubmitting(false)
+                    return
+                }
+                resolvedTimeISO = new Date(dateTimeStr).toISOString()
             }
 
             const payload = {
                 userId: session.user.id,
                 date: new Date(`${dateStr}T00:00:00Z`).toISOString(),
                 type: recordType,
-                time: new Date(dateTimeStr).toISOString(),
+                time: resolvedTimeISO,
                 reason,
                 workMode: ['CLOCK_IN', 'CLOCK_OUT'].includes(recordType) ? workMode : undefined,
                 locationDetails: ['CLOCK_IN', 'CLOCK_OUT'].includes(recordType) ? locationDetails : undefined,
@@ -382,6 +398,7 @@ export default function AmendRecordsPage() {
         setSelectedDateOption(format(new Date(), 'yyyy-MM-dd'))
         setRecordType("CLOCK_IN")
         setTime("")
+        setExistingEntryTimeISO(null)
         setReason("")
         setWorkMode("OFFICE")
         setLocationDetails("")
@@ -492,6 +509,7 @@ export default function AmendRecordsPage() {
                                                         key={e.id}
                                                         onClick={() => {
                                                             setSelectedEntryId(e.id)
+                                                            setExistingEntryTimeISO(e.time || null)
                                                             if (e.time) {
                                                                 try {
                                                                     setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(e.time)))
@@ -537,6 +555,7 @@ export default function AmendRecordsPage() {
                                                     onClick={() => {
                                                         setSelectedEntryId('new')
                                                         setTime("")
+                                                        setExistingEntryTimeISO(null)
                                                     }}
                                                     className={cn(
                                                         "flex items-center justify-between p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer group",
@@ -575,14 +594,13 @@ export default function AmendRecordsPage() {
                                         value={time}
                                         onChange={e => setTime(e.target.value)}
                                         className="h-11 pl-4 bg-white border-border/50 text-base"
-                                        required
                                     />
                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 pointer-events-none">
                                         <Clock className="w-5 h-5" />
                                     </div>
                                 </div>
                                 <p className="text-[10px] text-muted-foreground italic px-1">
-                                    Enter the time that should have been recorded.
+                                    Leave blank to keep the existing time and only update other fields.
                                 </p>
                             </div>
 
@@ -747,6 +765,7 @@ export default function AmendRecordsPage() {
                                                                         setSelectedDateOption(dateStr);
                                                                         setRecordType("CLOCK_IN");
                                                                         setSelectedEntryId(record.id);
+                                                                        setExistingEntryTimeISO(record.clockIn || null);
                                                                         try {
                                                                             setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.clockIn)));
                                                                         } catch {
@@ -775,6 +794,7 @@ export default function AmendRecordsPage() {
                                                                         setSelectedDateOption(dateStr);
                                                                         setRecordType("CLOCK_OUT");
                                                                         setSelectedEntryId(record.id);
+                                                                        setExistingEntryTimeISO(record.clockOut || null);
                                                                         try {
                                                                             setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.clockOut)));
                                                                         } catch {
@@ -809,6 +829,7 @@ export default function AmendRecordsPage() {
                                                                                     setSelectedDateOption(dateStr);
                                                                                     setRecordType("BREAK_START");
                                                                                     setSelectedEntryId(b.id);
+                                                                                    setExistingEntryTimeISO(b.startTime || null);
                                                                                     try {
                                                                                         setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(b.startTime)));
                                                                                     } catch {
@@ -832,6 +853,7 @@ export default function AmendRecordsPage() {
                                                                                         setSelectedDateOption(dateStr);
                                                                                         setRecordType("BREAK_END");
                                                                                         setSelectedEntryId(b.id);
+                                                                                        setExistingEntryTimeISO(b.endTime || null);
                                                                                         try {
                                                                                             setTime(new Intl.DateTimeFormat('en-GB', { timeZone: userTimeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(b.endTime)));
                                                                                         } catch {
