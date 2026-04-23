@@ -327,6 +327,18 @@ export async function GET(request: Request) {
             // Only consider sessions that started on the user's local today
             if (session.date < userStartOfDay) continue;
 
+            // Second guard: check notification table to prevent concurrent-run duplicates
+            // (the overdueDepartureSent flag alone has a race window between read and update)
+            const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+            const alreadyOverdueNotified = await prisma.notification.findFirst({
+                where: {
+                    userId: user.id,
+                    type: 'OVERDUE_REMINDER',
+                    createdAt: { gte: twelveHoursAgo }
+                }
+            });
+            if (alreadyOverdueNotified) continue;
+
             const nowTimeStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour12: false });
             const [nowH, nowM] = nowTimeStr.split(':').map(Number);
             const nowTotalMins = nowH * 60 + nowM;
