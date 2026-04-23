@@ -2607,10 +2607,13 @@ export default function UserPortal() {
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         {(() => {
-                                                                            const pendingReq = pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
-                                                                            // For missed-entry amendments show requested time even if no recorded clockIn
-                                                                            const displayTime = staff.lastActive ||
-                                                                                (pendingReq?.type === 'CLOCK_IN' && pendingReq?.time ? pendingReq.time : null)
+                                                                            const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
+                                                                            const pendingReq = isManagerOrAdmin
+                                                                                ? pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
+                                                                                : undefined
+                                                                            // Prefer pending CLOCK_IN time over recorded lastActive so manager sees the requested time
+                                                                            const pendingTime = pendingReq?.type === 'CLOCK_IN' && pendingReq?.time ? pendingReq.time : null
+                                                                            const displayTime = pendingTime || staff.lastActive
                                                                             return displayTime ? (
                                                                                 <div className="flex items-start gap-1.5">
                                                                                     <div className="flex flex-col items-start">
