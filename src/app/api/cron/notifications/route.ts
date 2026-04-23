@@ -234,8 +234,8 @@ export async function GET(request: Request) {
             const [startH, startM] = shiftStartStr.split(':').map(Number);
             const startTotalMins = startH * 60 + startM;
 
-            // Trigger if past 5-min grace period and less than 12 hours late
-            if (nowTotalMins >= startTotalMins + 5 && nowTotalMins < startTotalMins + 720) {
+            // Trigger if 30+ minutes past scheduled start and less than 12 hours late
+            if (nowTotalMins >= startTotalMins + 30 && nowTotalMins < startTotalMins + 720) {
                 const account = user.accounts.find(a => a.provider === 'google');
                 if (account?.access_token) {
                     const magicLink = generateMagicLink(user.id, 'clock-in');
