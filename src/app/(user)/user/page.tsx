@@ -540,7 +540,11 @@ export default function UserPortal() {
 
                     // Intelligent Refresh based on event type
                     if (payload.type === 'attendance') {
-                        fetchAttendance();
+                        fetchAttendance();    // refreshes /api/user/dashboard
+                        mutateStaff();       // refreshes /api/user/dashboard/staff (staff overview)
+                    }
+                    else if (payload.type === 'staff') {
+                        mutateStaff();       // status/availability changes — staff overview only
                     }
                     else if (payload.type === 'leaves') {
                         fetchMyLeaveRequests();

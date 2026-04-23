@@ -897,6 +897,7 @@ export async function POST(req: Request) {
         })
 
         broadcastUpdate('attendance', attendance)
+        broadcastUpdate('staff')
         return NextResponse.json(attendance)
     } catch (error) {
         console.error("Attendance POST error:", error)
@@ -1055,6 +1056,7 @@ export async function PATCH(req: Request) {
         })
 
         broadcastUpdate('attendance', updated)
+        broadcastUpdate('staff')
         return NextResponse.json(updated)
     } catch (error) {
         console.error("Attendance PATCH error:", error)
