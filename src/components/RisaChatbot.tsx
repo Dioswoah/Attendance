@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Bot, Send, X, MessageSquare, Loader2, User, Maximize2, Minimize2, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 export function RisaChatbot() {
     const [isOpen, setIsOpen] = useState(false)
@@ -170,7 +172,26 @@ export function RisaChatbot() {
                                                 : "bg-white text-slate-800 border border-slate-100 rounded-bl-none"
                                         )}
                                     >
-                                        {msg.content}
+                                        {msg.role === 'user' ? msg.content : (
+                                            <ReactMarkdown
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    p: ({ children }) => <p className="mb-1.5 last:mb-0 leading-relaxed">{children}</p>,
+                                                    ul: ({ children }) => <ul className="list-disc pl-4 mb-1.5 space-y-0.5">{children}</ul>,
+                                                    ol: ({ children }) => <ol className="list-decimal pl-4 mb-1.5 space-y-0.5">{children}</ol>,
+                                                    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                                                    strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
+                                                    em: ({ children }) => <em className="italic">{children}</em>,
+                                                    h1: ({ children }) => <p className="font-bold text-base mb-1">{children}</p>,
+                                                    h2: ({ children }) => <p className="font-bold text-sm mb-1">{children}</p>,
+                                                    h3: ({ children }) => <p className="font-semibold text-sm mb-0.5">{children}</p>,
+                                                    code: ({ children }) => <code className="bg-slate-100 text-slate-700 rounded px-1 py-0.5 text-[11px] font-mono">{children}</code>,
+                                                    blockquote: ({ children }) => <blockquote className="border-l-2 border-slate-300 pl-3 text-slate-600 italic my-1">{children}</blockquote>,
+                                                }}
+                                            >
+                                                {msg.content}
+                                            </ReactMarkdown>
+                                        )}
                                     </div>
                                 </div>
                             ))}
