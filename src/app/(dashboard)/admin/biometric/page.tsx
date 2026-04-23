@@ -91,40 +91,55 @@ function bioToUtcMs(t: string, refDate: string): number | null {
     return Date.UTC(y, mo - 1, d, h - 8, min)
 }
 
-function toMinPHT(t: string | null): number | null {
+function toSecPHT(t: string | null): number | null {
     if (!t || t === "--") return null
     try {
         if (t.includes("T")) {
             const d = new Date(t)
             if (isNaN(d.getTime())) return null
-            return ((d.getUTCHours() + 8) % 24) * 60 + d.getUTCMinutes()
+            return ((d.getUTCHours() + 8) % 24) * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds()
         }
-        const ampm = t.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)/i)
+        const ampm = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)/i)
         if (ampm) {
             let h = parseInt(ampm[1])
             const m = parseInt(ampm[2])
-            if (ampm[3].toUpperCase() === "PM" && h !== 12) h += 12
-            if (ampm[3].toUpperCase() === "AM" && h === 12) h = 0
-            return h * 60 + m
+            const s = ampm[3] ? parseInt(ampm[3]) : 0
+            if (ampm[4].toUpperCase() === "PM" && h !== 12) h += 12
+            if (ampm[4].toUpperCase() === "AM" && h === 12) h = 0
+            return h * 3600 + m * 60 + s
         }
         const parts = t.split(":")
-        if (parts.length >= 2) return parseInt(parts[0]) * 60 + parseInt(parts[1])
+        if (parts.length >= 2) {
+            const s = parts.length >= 3 ? parseInt(parts[2]) : 0
+            return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + s
+        }
         return null
     } catch { return null }
 }
 
+function timeDiffSeconds(a: string | null, b: string | null): number | null {
+    const sa = toSecPHT(a)
+    const sb = toSecPHT(b)
+    if (sa === null || sb === null) return null
+    return sb - sa
+}
+
 function timeDiffMinutes(a: string | null, b: string | null): number | null {
-    const ma = toMinPHT(a)
-    const mb = toMinPHT(b)
-    if (ma === null || mb === null) return null
-    return mb - ma
+    const diff = timeDiffSeconds(a, b)
+    return diff === null ? null : Math.floor(diff / 60)
+}
+
+function fmtSecDiff(totalSec: number): string {
+    const mins = Math.floor(Math.abs(totalSec) / 60)
+    const secs = Math.abs(totalSec) % 60
+    return secs > 0 ? `${mins}m ${secs}s` : `${mins} min`
 }
 
 function formatInTz(t: string | null, refDate: string, tz: string): string {
     if (!t || t === "--") return "—"
     try {
         const fmt = (ms: number) => new Intl.DateTimeFormat("en-US", {
-            timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: true
+            timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true
         }).format(new Date(ms))
         if (t.includes("T")) return fmt(new Date(t).getTime())
         const utcMs = bioToUtcMs(t, refDate)
@@ -144,13 +159,12 @@ function toMilitaryTime(t: string): string | null {
 }
 
 function DiffBadge({ bioTime, appTime }: { bioTime: string | null; appTime: string | null }) {
-    const diff = timeDiffMinutes(bioTime, appTime)
+    const diff = timeDiffSeconds(bioTime, appTime)
     if (diff === null) return <span className="text-muted-foreground text-xs">—</span>
-    const absDiff = Math.abs(diff)
     const sign = diff > 0 ? "+" : diff < 0 ? "−" : ""
     return (
         <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-mono font-normal">
-            {sign}{absDiff} min
+            {sign}{fmtSecDiff(diff)}
         </Badge>
     )
 }
@@ -160,26 +174,26 @@ function PunctualityBadge({ firstIn, expectedStart }: { firstIn: string | null; 
         return <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-[10px]">Absent</Badge>
     if (!expectedStart || expectedStart === "--")
         return <span className="text-muted-foreground text-xs">—</span>
-    const diff = timeDiffMinutes(expectedStart, firstIn)
+    const diff = timeDiffSeconds(expectedStart, firstIn)
     if (diff === null) return <span className="text-muted-foreground text-xs">—</span>
-    if (diff <= 5)
+    if (diff <= 5 * 60)
         return <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] font-bold">On Time</Badge>
-    return <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] font-bold">Late +{diff} min</Badge>
+    return <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] font-bold">Late +{fmtSecDiff(diff)}</Badge>
 }
 
 function punctualityStr(firstIn: string | null, expectedStart: string | null): string {
     if (!firstIn || firstIn === "--") return "Absent"
     if (!expectedStart || expectedStart === "--") return "—"
-    const diff = timeDiffMinutes(expectedStart, firstIn)
+    const diff = timeDiffSeconds(expectedStart, firstIn)
     if (diff === null) return "—"
-    return diff <= 5 ? "On Time" : `Late +${diff} min`
+    return diff <= 5 * 60 ? "On Time" : `Late +${fmtSecDiff(diff)}`
 }
 
 function diffStr(a: string | null, b: string | null): string {
-    const diff = timeDiffMinutes(a, b)
+    const diff = timeDiffSeconds(a, b)
     if (diff === null) return "—"
     const sign = diff > 0 ? "+" : diff < 0 ? "−" : ""
-    return `${sign}${Math.abs(diff)} min`
+    return `${sign}${fmtSecDiff(diff)}`
 }
 
 // ── Multi-select dropdown ─────────────────────────────────────────────────────
@@ -363,16 +377,16 @@ export default function BiometricPage() {
         const expected = e.biometric.expectedStart
         if (!firstIn || firstIn === "--") return false
         if (!expected || expected === "--") return false
-        const diff = timeDiffMinutes(expected, firstIn)
-        return diff !== null && diff <= 5
+        const diff = timeDiffSeconds(expected, firstIn)
+        return diff !== null && diff <= 5 * 60
     })
     const late = filtered.filter(e => {
         const firstIn = e.biometric.firstIn
         const expected = e.biometric.expectedStart
         if (!firstIn || firstIn === "--") return false
         if (!expected || expected === "--") return false
-        const diff = timeDiffMinutes(expected, firstIn)
-        return diff !== null && diff > 5
+        const diff = timeDiffSeconds(expected, firstIn)
+        return diff !== null && diff > 5 * 60
     })
     const absent = filtered.filter(e => !e.biometric.firstIn || e.biometric.firstIn === "--")
 
@@ -598,9 +612,9 @@ export default function BiometricPage() {
                                         </TableRow>
                                     ) : (
                                         filtered.map((entry, i) => {
-                                            const inDiff = timeDiffMinutes(entry.biometric.firstIn, entry.app?.clockIn ?? null)
-                                            const outDiff = timeDiffMinutes(entry.biometric.lastOut, entry.app?.clockOut ?? null)
-                                            const hasDiscrepancy = (inDiff !== null && Math.abs(inDiff) >= 5) || (outDiff !== null && Math.abs(outDiff) >= 5)
+                                            const inDiff = timeDiffSeconds(entry.biometric.firstIn, entry.app?.clockIn ?? null)
+                                            const outDiff = timeDiffSeconds(entry.biometric.lastOut, entry.app?.clockOut ?? null)
+                                            const hasDiscrepancy = (inDiff !== null && Math.abs(inDiff) >= 5 * 60) || (outDiff !== null && Math.abs(outDiff) >= 5 * 60)
 
                                             return (
                                                 <TableRow key={i} className={cn(
