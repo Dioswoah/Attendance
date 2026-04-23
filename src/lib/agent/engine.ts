@@ -27,7 +27,7 @@ export async function runAgent(
 
         // 3. Initialize Generative Model
         const ragCorpusName = process.env.RAG_CORPUS_NAME
-        const generativeModel = vertexAI.getGenerativeModel({
+        const baseModelConfig = {
             model: AGENT_CONFIG.modelName,
             generationConfig: {
                 maxOutputTokens: AGENT_CONFIG.maxOutputTokens,
@@ -37,6 +37,9 @@ export async function runAgent(
                 role: 'system',
                 parts: [{ text: systemInstruction }]
             },
+        };
+        const generativeModel = vertexAI.getGenerativeModel({
+            ...baseModelConfig,
             ...(ragCorpusName && {
                 tools: [{
                     retrieval: {
@@ -93,8 +96,16 @@ export async function runAgent(
             history: chatHistory,
         });
 
-        // 5. Send Message and Get Response
-        const result = await chat.sendMessage(userMessage);
+        // 5. Send Message and Get Response (fallback to no-RAG if cross-region corpus fails)
+        let result;
+        try {
+            result = await chat.sendMessage(userMessage);
+        } catch (ragErr: any) {
+            console.warn("RAG-enabled call failed, retrying without RAG:", ragErr?.message);
+            const fallbackModel = vertexAI.getGenerativeModel(baseModelConfig);
+            const fallbackChat = fallbackModel.startChat({ history: chatHistory });
+            result = await fallbackChat.sendMessage(userMessage);
+        }
         const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response.";
 
         return { text: responseText };
