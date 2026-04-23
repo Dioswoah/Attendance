@@ -19,7 +19,8 @@ export async function GET() {
             allAttendanceToday,
             employees,
             teamLeavesApproved,
-            latestAttendanceRaw
+            latestAttendanceRaw,
+            pendingAttendanceRequests
         ] = await Promise.all([
             // 1. All Attendance for today (Staff Table)
             prisma.attendanceSummary.findMany({
@@ -62,11 +63,16 @@ export async function GET() {
             }),
             // 4. RAW SQL for Latest Attendance (Near Instant)
             prisma.$queryRaw`
-                SELECT DISTINCT ON ("userId") "userId", "clockIn", "mode", "locationDetails" 
-                FROM "Attendance" 
-                WHERE "deletedAt" IS NULL 
+                SELECT DISTINCT ON ("userId") "userId", "clockIn", "mode", "locationDetails"
+                FROM "Attendance"
+                WHERE "deletedAt" IS NULL
                 ORDER BY "userId", "clockIn" DESC
-            `
+            `,
+            // 5. Pending attendance amendment requests (any date)
+            prisma.attendanceRequest.findMany({
+                where: { status: 'PENDING', deletedAt: null },
+                select: { id: true, userId: true, type: true, time: true, date: true }
+            })
         ])
 
         // Safely transform from Summary back to granular records so frontend feeds/timers don't break
@@ -120,7 +126,14 @@ export async function GET() {
         return NextResponse.json({
             allToday: transformStaff(allAttendanceToday),
             staff: detailedEmployees,
-            teamLeaves: teamLeavesApproved
+            teamLeaves: teamLeavesApproved,
+            pendingAttendanceToday: pendingAttendanceRequests.map((r: any) => ({
+                id: r.id,
+                userId: r.userId,
+                type: r.type,
+                time: r.time?.toISOString() ?? null,
+                date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date).split('T')[0]
+            }))
         })
 
     } catch (error) {

@@ -76,6 +76,7 @@ export default function UserPortal() {
     const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([])
     const [teamApprovedLeaves, setTeamApprovedLeaves] = useState<any[]>([])
     const [todayTeamLeaves, setTodayTeamLeaves] = useState<any[]>([])
+    const [pendingAttendanceToday, setPendingAttendanceToday] = useState<any[]>([])
     const [selectedDayDetail, setSelectedDayDetail] = useState<Date | null>(null)
     const [leaveType, setLeaveType] = useState('SICK')
     const [leaveDurationType, setLeaveDurationType] = useState('Full Day')
@@ -275,6 +276,7 @@ export default function UserPortal() {
             setAllAttendance(staffData.allToday || [])
             setEmployees(staffData.staff || [])
             setTodayTeamLeaves(staffData.teamLeaves || [])
+            setPendingAttendanceToday(staffData.pendingAttendanceToday || [])
         }
     }, [staffData])
 
@@ -2600,23 +2602,38 @@ export default function UserPortal() {
                                                                         </div>
                                                                     </TableCell>
                                                                     <TableCell>
-                                                                        {staff.lastActive ? (
-                                                                            <div className="flex flex-col items-start">
-                                                                                {/* Version: GMT removed */}
-                                                                                <span className="text-xs font-bold text-slate-600 font-mono">
-                                                                                    {new Date(staff.lastActive).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
-                                                                                </span>
-                                                                                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                                                                                    {new Date(staff.lastActive)
-                                                                                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: userTimeZone })
-                                                                                        .replace(/GMT.*$/, '')
-                                                                                        .trim()}
-                                                                                    {/* v0.1.3 */}
-                                                                                </span>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
-                                                                        )}
+                                                                        {(() => {
+                                                                            const pendingReq = pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
+                                                                            // For missed-entry amendments show requested time even if no recorded clockIn
+                                                                            const displayTime = staff.lastActive ||
+                                                                                (pendingReq?.type === 'CLOCK_IN' && pendingReq?.time ? pendingReq.time : null)
+                                                                            return displayTime ? (
+                                                                                <div className="flex items-start gap-1.5">
+                                                                                    <div className="flex flex-col items-start">
+                                                                                        <span className="text-xs font-bold text-slate-600 font-mono">
+                                                                                            {new Date(displayTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                                                        </span>
+                                                                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                                                                                            {new Date(displayTime)
+                                                                                                .toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: userTimeZone })
+                                                                                                .replace(/GMT.*$/, '')
+                                                                                                .trim()}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    {pendingReq && (
+                                                                                        <div className="relative group/pending mt-0.5 cursor-help">
+                                                                                            <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />
+                                                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded whitespace-nowrap opacity-0 group-hover/pending:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                                                                                                Amend Record Pending
+                                                                                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ) : (
+                                                                                <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
+                                                                            )
+                                                                        })()}
                                                                     </TableCell>
                                                                 </TableRow>
                                                             )
