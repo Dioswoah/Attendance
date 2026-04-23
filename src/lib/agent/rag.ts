@@ -96,8 +96,21 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
                     take: 1
                 },
                 leaveRequests: {
-                    where: { status: 'PENDING', deletedAt: null },
-                    take: 2
+                    where: {
+                        status: { in: ['PENDING', 'APPROVED'] },
+                        endDate: { gte: new Date() },
+                        deletedAt: null
+                    },
+                    orderBy: { startDate: 'asc' as const },
+                    take: 5,
+                    select: {
+                        type: true,
+                        startDate: true,
+                        endDate: true,
+                        status: true,
+                        duration: true,
+                        reason: true
+                    }
                 }
             },
             take: 50 // Limit to prevent massive token inflation
@@ -108,7 +121,14 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
             department: e.department?.name || "N/A",
             currentStatus: e.attendanceSummaries[0]?.status || e.availabilityStatus,
             clockInToday: e.attendanceSummaries[0]?.clockIn?.toLocaleTimeString() || "Not Clocked In",
-            pendingLeaves: e.leaveRequests.length
+            upcomingAndPendingLeaves: e.leaveRequests.map((lr: any) => ({
+                type: lr.type,
+                startDate: lr.startDate.toDateString(),
+                endDate: lr.endDate.toDateString(),
+                status: lr.status,
+                duration: lr.duration,
+                reason: lr.reason || null
+            }))
         }));
     }
 

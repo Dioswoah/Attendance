@@ -7,9 +7,17 @@ export function getSystemInstructions(context: ChatContext): string {
 
     let teamContext = "";
     if (managedEmployees && managedEmployees.length > 0) {
+        const teamLines = managedEmployees.map(e => {
+            const leaves = e.upcomingAndPendingLeaves?.length
+                ? e.upcomingAndPendingLeaves.map((l: any) =>
+                    `    • ${l.type} leave — ${l.startDate} to ${l.endDate} [${l.status}]${l.reason ? ` (Reason: ${l.reason})` : ''}`
+                  ).join('\n')
+                : '    • No upcoming or pending leaves';
+            return `  - ${e.name} (${e.department}): Status today: ${e.currentStatus}, Clocked in: ${e.clockInToday}\n    Leaves:\n${leaves}`;
+        }).join('\n');
         teamContext = `
-        TEAM OVERVIEW (You can see these employees exist):
-        ${JSON.stringify(managedEmployees)}
+TEAM DATA — YOUR DIRECT REPORTS (As a manager/admin you are AUTHORISED to share and discuss all of the following with the user):
+${teamLines}
         `;
     }
 
@@ -36,9 +44,11 @@ export function getSystemInstructions(context: ChatContext): string {
 
     2. STRICT DATA ISOLATION — THIS IS CRITICAL:
        - The PERSONAL DATA section above contains ONLY the data of the currently logged-in user: ${user.name} (${user.email}).
-       - You MUST NOT reference, imply, or guess the personal data (attendance, leave, status, clock-in times) of ANY other employee — even if asked directly.
-       - If a user asks about another employee's data and they are NOT an Admin or Manager with that employee in their TEAM OVERVIEW, respond: "I can only show you your own records. For information about other employees, please contact HR or your manager."
-       - ${isAdmin || isManager ? `You may discuss the employees listed in the TEAM OVERVIEW (${managedEmployees?.length || 0} staff members), but only using the summary data shown — do not invent or extrapolate details.` : "You have no access to any other employee's data whatsoever."}
+       - You MUST NOT reference, imply, or guess the personal data of any employee NOT listed in the TEAM DATA section.
+       - If asked about an employee not in the TEAM DATA, respond: "I can only show you records for your direct reports. For other employees, please contact HR."
+       - ${isAdmin || isManager
+           ? `IMPORTANT: You ARE authorised to freely discuss and share the attendance, leave requests, and status of ALL ${managedEmployees?.length || 0} employees listed in the TEAM DATA section above. When a manager asks about a specific team member by name, look them up in TEAM DATA and share their details directly — do NOT say you cannot see their records.`
+           : "You have no access to any other employee's data whatsoever."}
 
     3. PRIVACY:
        - Never reveal raw system IDs (database IDs, session tokens, etc.).
