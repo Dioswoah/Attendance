@@ -81,14 +81,15 @@ interface BiometricData {
 }
 
 function bioToUtcMs(t: string, refDate: string): number | null {
-    const m = t.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)/i)
+    const m = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)/i)
     if (!m) return null
     let h = parseInt(m[1])
     const min = parseInt(m[2])
-    if (m[3].toUpperCase() === "PM" && h !== 12) h += 12
-    if (m[3].toUpperCase() === "AM" && h === 12) h = 0
+    const sec = m[3] ? parseInt(m[3]) : 0
+    if (m[4].toUpperCase() === "PM" && h !== 12) h += 12
+    if (m[4].toUpperCase() === "AM" && h === 12) h = 0
     const [y, mo, d] = refDate.split("-").map(Number)
-    return Date.UTC(y, mo - 1, d, h - 8, min)
+    return Date.UTC(y, mo - 1, d, h - 8, min, sec)
 }
 
 function toSecPHT(t: string | null): number | null {
