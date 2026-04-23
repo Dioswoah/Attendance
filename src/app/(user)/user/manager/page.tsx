@@ -1021,9 +1021,15 @@ export default function ManagerControlPage() {
                                                                                 <h3 className="font-bold text-lg text-foreground">{request.userName}</h3>
                                                                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{request.department || 'Team Member'}</p>
                                                                             </div>
-                                                                            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200 self-start sm:self-auto">
-                                                                                Needs Review
-                                                                            </Badge>
+                                                                            <div className="flex flex-col items-end gap-1 self-start sm:self-auto">
+                                                                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Request Type</p>
+                                                                                <Badge variant="outline" className={currentTime
+                                                                                    ? "border-orange-300 text-orange-700 bg-orange-50 font-bold text-[10px]"
+                                                                                    : "border-violet-300 text-violet-700 bg-violet-50 font-bold text-[10px]"
+                                                                                }>
+                                                                                    {currentTime ? "Amend Record" : "Missed Entry"}
+                                                                                </Badge>
+                                                                            </div>
                                                                         </div>
 
                                                                         {/* Amendment type + date */}
@@ -1113,9 +1119,6 @@ export default function ManagerControlPage() {
                                                                             <h3 className="font-bold text-lg text-foreground">{request.userName}</h3>
                                                                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{request.department || 'Team Member'}</p>
                                                                         </div>
-                                                                        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200 self-start sm:self-auto">
-                                                                            Needs Review
-                                                                        </Badge>
                                                                     </div>
                                                                     <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                                                         <div className="bg-muted/30 p-3 rounded-lg">
