@@ -1813,10 +1813,10 @@ export default function UserPortal() {
         const dateStr = format(date, 'yyyy-MM-dd')
         const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
 
-        // 1. Leaves (Approved & Pending)
-        const leaves = teamApprovedLeaves.filter((leave: any) => {
+        // 1a. Approved Leaves (sick excluded — privacy)
+        const approvedLeavesForDay = teamApprovedLeaves.filter((leave: any) => {
+            if (leave.status !== 'APPROVED') return false
             if (leave.type === 'SICK') return false
-            if (leave.status === 'PENDING' && !isManagerOrAdmin) return false
 
             const isMatch = isWithinInterval(date, {
                 start: parseISO(leave.startDate.slice(0, 10)),
@@ -1824,7 +1824,6 @@ export default function UserPortal() {
             })
             if (!isMatch) return false
 
-            // Dept Filter
             if (calendarFilterDepartment !== 'all') {
                 const staff = employees.find((e: any) => e.id === leave.userId)
                 const primaryDept = staff?.department?.name || staff?.department || "Unassigned"
@@ -1832,7 +1831,24 @@ export default function UserPortal() {
                 if (primaryDept !== calendarFilterDepartment && !secondaryDepts.includes(calendarFilterDepartment)) return false
             }
             return true
-        }).map((l: any) => ({ type: l.status === 'APPROVED' ? 'leave-approved' : 'leave-pending', data: l }))
+        }).map((l: any) => ({ type: 'leave-approved', data: l }))
+
+        // 1b. Pending Leaves — managers/admins only (SICK included so they can approve/deny)
+        const pendingLeavesForDay = !isManagerOrAdmin ? [] : pendingLeaves.filter((leave: any) => {
+            const isMatch = isWithinInterval(date, {
+                start: parseISO(leave.startDate.slice(0, 10)),
+                end: parseISO(leave.endDate.slice(0, 10))
+            })
+            if (!isMatch) return false
+
+            if (calendarFilterDepartment !== 'all') {
+                const dept = leave.department || leave.user?.department?.name || "Unassigned"
+                if (dept !== calendarFilterDepartment) return false
+            }
+            return true
+        }).map((l: any) => ({ type: 'leave-pending', data: l }))
+
+        const leaves = [...approvedLeavesForDay, ...pendingLeavesForDay]
 
         // 2. Attendance (Present)
         const attendance = monthlyAttendance.filter((a: any) => {
@@ -2797,12 +2813,11 @@ export default function UserPortal() {
                                                         {calendarDays.map((day, i) => {
                                                             const dateStr = format(day, 'yyyy-MM-dd')
 
-                                                            // 1. Approved Leaves, Filter Dept (sick leave excluded)
+                                                            // 1. Approved Leaves (sick excluded — privacy)
                                                             const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
                                                                 if (leave.status !== 'APPROVED') return false
                                                                 if (leave.type === 'SICK') return false
 
-                                                                // Dept Filter
                                                                 if (calendarFilterDepartment !== 'all') {
                                                                     const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
                                                                     const primaryDept = staff?.department?.name || staff?.department || "Unassigned"
@@ -2816,18 +2831,12 @@ export default function UserPortal() {
                                                                 })
                                                             }).map((l: any) => ({ type: 'leave-approved', data: l }))
 
-                                                            // 2. Pending Leaves — managers/admins only, sick leave excluded
+                                                            // 2. Pending Leaves — managers/admins only, SICK included (needs approval)
                                                             const calIsManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
-                                                            const pendingLeaves = !calIsManagerOrAdmin ? [] : teamApprovedLeaves.filter((leave: any) => {
-                                                                if (leave.status !== 'PENDING') return false
-                                                                if (leave.type === 'SICK') return false
-
-                                                                // Dept Filter
+                                                            const pendingLeavesOnDay = !calIsManagerOrAdmin ? [] : pendingLeaves.filter((leave: any) => {
                                                                 if (calendarFilterDepartment !== 'all') {
-                                                                    const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
-                                                                    const primaryDept = staff?.department?.name || staff?.department || "Unassigned"
-                                                                    const secondaryDepts = (staff?.secondaryDepartments || []).map((d: any) => d.name)
-                                                                    if (primaryDept !== calendarFilterDepartment && !secondaryDepts.includes(calendarFilterDepartment)) return false
+                                                                    const dept = leave.department || leave.user?.department?.name || "Unassigned"
+                                                                    if (dept !== calendarFilterDepartment) return false
                                                                 }
 
                                                                 return isWithinInterval(day, {
@@ -2838,7 +2847,7 @@ export default function UserPortal() {
 
                                                             // 3. Attendance (Present/On Break) - REMOVED
 
-                                                            const events: any[] = [...approvedLeaves, ...pendingLeaves]
+                                                            const events: any[] = [...approvedLeaves, ...pendingLeavesOnDay]
 
                                                             // Holidays
                                                             if (NSW_HOLIDAYS_2026[dateStr]) {
