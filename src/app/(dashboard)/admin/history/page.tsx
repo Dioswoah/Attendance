@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -68,6 +68,14 @@ export default function HistoryPage() {
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [includeArchived, setIncludeArchived] = useState(false)
     const [viewingStaff, setViewingStaff] = useState<any | null>(null)
+
+    // Refs so SSE handler always reads current filter values (avoids stale closure)
+    const startDateRef = useRef(startDate)
+    const endDateRef = useRef(endDate)
+    const selectedDeptRef = useRef(selectedDept)
+    useEffect(() => { startDateRef.current = startDate }, [startDate])
+    useEffect(() => { endDateRef.current = endDate }, [endDate])
+    useEffect(() => { selectedDeptRef.current = selectedDept }, [selectedDept])
 
     // Duration Helpers
     const calculateDurations = (recs: any[]) => {
@@ -157,12 +165,15 @@ export default function HistoryPage() {
         }
     }
 
-    const refreshData = async () => {
+    const refreshData = async (overrideStart?: string, overrideEnd?: string, overrideDept?: string) => {
+        const sd = overrideStart ?? startDateRef.current
+        const ed = overrideEnd ?? endDateRef.current
+        const dept = overrideDept ?? selectedDeptRef.current
         setRefreshing(true)
         try {
             const [attRes, leavesRes] = await Promise.all([
-                fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}`),
-                fetch(`/api/leaves?startDate=${startDate}&endDate=${endDate}&status=APPROVED`)
+                fetch(`/api/attendance?startDate=${sd}&endDate=${ed}&departmentId=${dept}`),
+                fetch(`/api/leaves?startDate=${sd}&endDate=${ed}&status=APPROVED`)
             ])
             if (attRes.ok) setHistory(await attRes.json())
             if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
@@ -215,18 +226,20 @@ export default function HistoryPage() {
         else if (range === '30days') start.setDate(end.getDate() - 30)
         else if (range === 'month') start.setDate(1)
         else if (range === 'cutoff1') {
-            // 26th of last month to 10th of current month
             start.setMonth(start.getMonth() - 1)
             start.setDate(26)
             end.setDate(10)
         } else if (range === 'cutoff2') {
-            // 11th to 25th of current month
             start.setDate(11)
             end.setDate(25)
         }
 
-        setStartDate(format(start, "yyyy-MM-dd"))
-        setEndDate(format(end, "yyyy-MM-dd"))
+        const startStr = format(start, "yyyy-MM-dd")
+        const endStr = format(end, "yyyy-MM-dd")
+        setStartDate(startStr)
+        setEndDate(endStr)
+        // Fetch immediately with the new dates — don't wait for state to settle
+        refreshData(startStr, endStr)
     }
 
     // Matrix Transformation
@@ -550,7 +563,7 @@ export default function HistoryPage() {
                             )}
                         </div>
                         <div className="flex gap-2">
-                            <Button onClick={refreshData} disabled={refreshing} variant="outline" size="sm" className="h-9">
+                            <Button onClick={() => refreshData()} disabled={refreshing} variant="outline" size="sm" className="h-9">
                                 <RefreshCcw className={cn("h-3.5 w-3.5 mr-2", refreshing && "animate-spin")} />
                                 Refresh
                             </Button>
@@ -648,17 +661,29 @@ export default function HistoryPage() {
                                                         dateStr >= l.startDate.slice(0, 10) &&
                                                         dateStr <= l.endDate.slice(0, 10)
                                                     )
+
+                                                    // Break duration from breaks array
+                                                    const totalBreakMs = (record?.breaks || []).reduce((acc: number, b: any) => {
+                                                        if (!b.startTime) return acc
+                                                        const s = new Date(b.startTime).getTime()
+                                                        const e = b.endTime ? new Date(b.endTime).getTime() : Date.now()
+                                                        return acc + Math.max(0, e - s)
+                                                    }, 0)
+                                                    const hasPendingRequest = (record?.pendingRequests || []).length > 0
+
+                                                    const dotColor = !record ? '' :
+                                                        hasPendingRequest ? "bg-amber-500" :
+                                                        record.status === 'on-leave' ? "bg-blue-500" :
+                                                        record.status === 'on-break' ? (totalBreakMs > 3600000 ? "bg-red-500" : "bg-yellow-500") :
+                                                        record.clockIn && totalBreakMs > 3600000 ? "bg-red-500" :
+                                                        record.clockIn ? "bg-green-500" :
+                                                        "bg-slate-300"
+
                                                     return (
                                                         <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
                                                             {record ? (
                                                                 <div className="flex flex-col items-center justify-center h-full w-full py-2 group/mark">
-                                                                    <div className={cn(
-                                                                        "h-2 w-2 rounded-full mb-1",
-                                                                        record.status === 'clocked-in' ? "bg-green-500" :
-                                                                            record.status === 'on-break' ? "bg-yellow-500" :
-                                                                                record.status === 'on-leave' ? "bg-blue-500" :
-                                                                                    "bg-slate-300"
-                                                                    )} />
+                                                                    <div className={cn("h-2 w-2 rounded-full mb-1", dotColor)} />
                                                                     <span className="text-[10px] text-muted-foreground font-medium opacity-0 group-hover/mark:opacity-100 transition-opacity absolute -mt-6 bg-popover px-1.5 py-0.5 rounded shadow-sm border border-border">
                                                                         {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '--'}
                                                                     </span>
@@ -918,12 +943,13 @@ export default function HistoryPage() {
             </Dialog>
 
             {/* Legend / Metrics Info */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
                 {[
                     { label: 'Work Hours', color: 'bg-green-500' },
                     { label: 'Break Hours', color: 'bg-yellow-500' },
                     { label: 'Break > 1h', color: 'bg-red-500' },
                     { label: 'Leave', color: 'bg-blue-500' },
+                    { label: 'Pending Request', color: 'bg-amber-500' },
                     { label: 'Office/WFH', color: 'bg-slate-500' },
                     { label: 'No Log', color: 'bg-muted border border-border' },
                 ].map(item => (
