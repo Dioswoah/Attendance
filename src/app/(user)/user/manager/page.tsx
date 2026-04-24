@@ -1021,58 +1021,61 @@ export default function ManagerControlPage() {
                                                                                 <h3 className="font-bold text-lg text-foreground">{request.userName}</h3>
                                                                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{request.department || 'Team Member'}</p>
                                                                             </div>
-                                                                            <div className="flex flex-col items-end gap-1 self-start sm:self-auto">
-                                                                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Request Type</p>
-                                                                                <Badge variant="outline" className={currentTime
-                                                                                    ? "border-orange-300 text-orange-700 bg-orange-50 font-bold text-[10px]"
-                                                                                    : "border-violet-300 text-violet-700 bg-violet-50 font-bold text-[10px]"
-                                                                                }>
-                                                                                    {currentTime ? "Amend Record" : "Missed Entry"}
-                                                                                </Badge>
+                                                                        </div>
+
+                                                                        {/* Record comparison */}
+                                                                        <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
+                                                                            <div className="px-4 py-2.5 border-b border-slate-200">
+                                                                                <p className="text-xs font-bold text-slate-600">
+                                                                                    Record to be Amended: <span className="text-orange-600">{request.type.split('_').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}</span>
+                                                                                </p>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-3 p-4">
+                                                                                <div className="flex-1 bg-white border border-slate-200 rounded-lg p-3">
+                                                                                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Current Record</p>
+                                                                                    {currentTime ? (
+                                                                                        <div>
+                                                                                            <p className="font-bold text-slate-700 text-sm">{formatWithTimezone(new Date(currentTime), viewerTimeZone, 'time')}</p>
+                                                                                            <p className="text-xs text-slate-500 mt-0.5">{format(parseISO(request.startDate), 'MMM dd, yyyy')}</p>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <p className="text-xs text-slate-400 italic">No Record</p>
+                                                                                    )}
+                                                                                </div>
+                                                                                <ArrowRight className="w-5 h-5 text-slate-300 shrink-0" />
+                                                                                <div className="flex-1 bg-white border border-orange-200 rounded-lg p-3">
+                                                                                    <p className="text-[10px] font-black uppercase tracking-wider text-orange-500 mb-1.5">Requested Change</p>
+                                                                                    {request.time && (
+                                                                                        <div>
+                                                                                            <p className="font-bold text-orange-700 text-sm">{formatWithTimezone(new Date(request.time), viewerTimeZone, 'time')}</p>
+                                                                                            <p className="text-xs text-orange-500 mt-0.5">{format(parseISO(request.startDate), 'MMM dd, yyyy')}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* Amendment type + date */}
-                                                                        <div className="flex flex-wrap items-center gap-3 text-sm">
-                                                                            <Badge variant="outline" className="font-bold uppercase text-xs tracking-wider border-orange-200 text-orange-700 bg-orange-50">
-                                                                                {request.type.replace(/_/g, ' ')}
-                                                                            </Badge>
-                                                                            <div className="flex items-center gap-1.5 text-slate-500">
-                                                                                <CalendarIcon className="w-3.5 h-3.5 text-primary" />
-                                                                                <span className="font-medium text-xs">{format(parseISO(request.startDate), 'MMM dd, yyyy')}</span>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {/* Current → Requested comparison */}
-                                                                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-                                                                            <div>
-                                                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Currently Recorded</p>
-                                                                                {currentTime ? (
-                                                                                    <div>
-                                                                                        <p className="font-bold text-slate-700 text-sm">{formatWithTimezone(new Date(currentTime), viewerTimeZone, 'time')}</p>
-                                                                                        <p className="text-[9px] text-slate-400 mt-0.5">Staff: {formatWithTimezone(new Date(currentTime), (request as any).userTimeZone || 'UTC', 'time')}</p>
-                                                                                    </div>
-                                                                                ) : (
-                                                                                    <p className="text-xs text-slate-400 italic">Not recorded</p>
-                                                                                )}
-                                                                            </div>
-                                                                            <ArrowRight className="w-5 h-5 text-slate-300" />
-                                                                            <div className="text-right">
-                                                                                <p className="text-[10px] font-black uppercase tracking-wider text-orange-500 mb-1.5">Requested Change</p>
-                                                                                {request.time && (
-                                                                                    <div>
-                                                                                        <p className="font-bold text-orange-700 text-sm">{formatWithTimezone(new Date(request.time), viewerTimeZone, 'time')}</p>
-                                                                                        <p className="text-[9px] text-orange-400 mt-0.5">Staff: {formatWithTimezone(new Date(request.time), (request as any).userTimeZone || 'UTC', 'time')}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {request.reason && (
-                                                                            <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl">
-                                                                                <p className="text-sm italic text-slate-600">"{request.reason}"</p>
-                                                                            </div>
-                                                                        )}
+                                                                        {request.reason && (() => {
+                                                                            let displayReason = request.reason
+                                                                            let workMode: string | null = null
+                                                                            let locationDetails: string | null = null
+                                                                            try {
+                                                                                const parsed = JSON.parse(request.reason)
+                                                                                if (parsed && typeof parsed === 'object') {
+                                                                                    displayReason = parsed.reason || request.reason
+                                                                                    workMode = parsed.workMode || null
+                                                                                    locationDetails = parsed.locationDetails || null
+                                                                                }
+                                                                            } catch {}
+                                                                            return (
+                                                                                <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl space-y-1">
+                                                                                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Reason</p>
+                                                                                    <p className="text-sm italic text-slate-600">"{displayReason}"</p>
+                                                                                    {workMode && <p className="text-xs text-slate-500 mt-1">Work Mode: <span className="font-medium">{workMode}</span></p>}
+                                                                                    {locationDetails && <p className="text-xs text-slate-500">Location: <span className="font-medium">{locationDetails}</span></p>}
+                                                                                </div>
+                                                                            )
+                                                                        })()}
                                                                     </div>
                                                                     <div className="flex lg:flex-col gap-2 pt-2 lg:pt-0">
                                                                         <Button onClick={() => handleAction(request, "approve")} className="bg-green-600 hover:bg-green-700 text-white shadow-sm w-full sm:w-auto">
