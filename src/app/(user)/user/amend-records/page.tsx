@@ -547,7 +547,7 @@ export default function AmendRecordsPage() {
                                                             <div className="flex flex-col">
                                                                 <span className="text-sm font-bold capitalize">{e.label}</span>
                                                                 <span className="text-xs font-mono text-muted-foreground">
-                                                                    {e.time ? `Recorded at ${format(new Date(e.time), 'hh:mm a')}` : 'Not recorded yet'}
+                                                                    {e.time ? `Recorded at ${new Date(e.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })}` : 'Not recorded yet'}
                                                                 </span>
                                                             </div>
                                                         </div>
