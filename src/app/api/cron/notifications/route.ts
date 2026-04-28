@@ -73,7 +73,7 @@ export async function GET(request: Request) {
 
             if (accessToken) {
                 // Check Limit (60m)
-                if (totalMinutes >= LIMIT_MINUTES && !att.breakLimitExceededSent) {
+                if (totalMinutes > LIMIT_MINUTES && !att.breakLimitExceededSent) {
                     const claimed = await prisma.attendance.updateMany({
                         where: { id: att.id, breakLimitExceededSent: false },
                         data: { breakLimitExceededSent: true }

@@ -763,7 +763,7 @@ export default function AmendRecordsPage() {
                                                 <div className="flex flex-col gap-1.5 items-center justify-center">
                                                     {dayRecords.map((record, ri) => (
                                                         <div key={record.id || ri} className="flex items-center justify-center gap-1.5 group/in">
-                                                            <span>{record?.clockIn ? format(parseISO(record.clockIn), 'hh:mm a') : '---'}</span>
+                                                            <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '---'}</span>
                                                             {record?.clockIn && (
                                                                 <button
                                                                     onClick={() => {
@@ -792,7 +792,7 @@ export default function AmendRecordsPage() {
                                                 <div className="flex flex-col gap-1.5 items-center justify-center">
                                                     {dayRecords.map((record, ri) => (
                                                         <div key={record.id || ri} className="flex items-center justify-center gap-1.5 group/out">
-                                                            <span>{record?.clockOut ? format(parseISO(record.clockOut), 'hh:mm a') : '---'}</span>
+                                                            <span>{record?.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '---'}</span>
                                                             {record?.clockOut && (
                                                                 <button
                                                                     onClick={() => {
@@ -827,7 +827,7 @@ export default function AmendRecordsPage() {
                                                                         <div className="flex items-center gap-2 group/bstart w-full justify-between">
                                                                             <div className="flex items-center gap-1">
                                                                                 <span className="font-bold opacity-60">S:</span>
-                                                                                <span>{format(parseISO(b.startTime), 'hh:mm a')}</span>
+                                                                                <span>{new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone })}</span>
                                                                             </div>
                                                                             <button
                                                                                 onClick={() => {
@@ -850,7 +850,7 @@ export default function AmendRecordsPage() {
                                                                         <div className="flex items-center gap-2 group/bend w-full justify-between">
                                                                             <div className="flex items-center gap-1">
                                                                                 <span className="font-bold opacity-60">E:</span>
-                                                                                <span>{b.endTime ? format(parseISO(b.endTime), 'hh:mm a') : '--:--'}</span>
+                                                                                <span>{b.endTime ? new Date(b.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '--:--'}</span>
                                                                             </div>
                                                                             {b.endTime && (
                                                                                 <button
@@ -908,7 +908,7 @@ export default function AmendRecordsPage() {
                                                                     setTime(format(parseISO(latestRecord.clockIn), 'HH:mm'))
                                                                 }
                                                             }
-                                                            setReferenceTime(`Clocked in at ${latestRecord.clockIn ? format(parseISO(latestRecord.clockIn), 'hh:mm a') : '?'}. Switch dropdown to Clock Out to add a missing clock-out.`)
+                                                            setReferenceTime(`Clocked in at ${latestRecord.clockIn ? new Date(latestRecord.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: userTimeZone }) : '?'}. Switch dropdown to Clock Out to add a missing clock-out.`)
                                                         } else {
                                                             setRecordType("CLOCK_IN")
                                                             setReferenceTime("Multiple records or completed shift found. Use the icons in the table rows to amend a specific time.")

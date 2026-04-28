@@ -10,15 +10,17 @@ export interface ChatContext {
         department: string;
         manager: string | null;
         currentStatus: string;
+        timezone: string;
     };
     attendance: any[];
+    todayAttendance: any | null;
     leaves: any[];
-    managedEmployees?: any[]; // For managers/admins to hold their team's today status
+    managedEmployees?: any[];
 }
 
 export async function getAgentContext(userId: string, roles: UserRole[]): Promise<ChatContext> {
     const todayStr = new Date().toISOString().split('T')[0];
-    
+
     const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
@@ -33,7 +35,17 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
 
     if (!user) throw new Error("User not found");
 
-    // Fetch personal data (Always retrieved)
+    // Resolve user's local timezone from their profile
+    const userTz = user.selectedTimezone ||
+        (user.employmentLocation === 'Philippines' ? 'Asia/Manila' : 'Australia/Sydney')
+
+    const fmtTime = (dt: Date | null | undefined) =>
+        dt ? dt.toLocaleTimeString('en-US', { timeZone: userTz, hour: '2-digit', minute: '2-digit', hour12: true }) : null
+
+    const fmtDate = (dt: Date) =>
+        dt.toLocaleDateString('en-US', { timeZone: userTz, weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
+
+    // Fetch personal data
     const [attendance, leaves] = await Promise.all([
         prisma.attendance.findMany({
             where: { userId },
@@ -48,6 +60,28 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
         })
     ]);
 
+    // Find today's live attendance record (more reliable than summary for current-day data)
+    const todayLocalDate = new Date().toLocaleDateString('en-CA', { timeZone: userTz }) // YYYY-MM-DD
+    const todayRecord = attendance.find(a => {
+        const aDate = new Date(a.date).toLocaleDateString('en-CA', { timeZone: userTz })
+        return aDate === todayLocalDate
+    })
+
+    const todayAttendance = todayRecord ? {
+        date: fmtDate(todayRecord.date),
+        status: todayRecord.status,
+        clockIn: fmtTime(todayRecord.clockIn) || 'Not clocked in yet',
+        clockOut: fmtTime(todayRecord.clockOut) || 'Not clocked out yet',
+        breaks: todayRecord.breaks.map((b: any) => ({
+            start: fmtTime(b.startTime),
+            end: fmtTime(b.endTime) || 'Active'
+        })),
+        duration: todayRecord.duration ? `${Math.floor(todayRecord.duration / 60)}h ${todayRecord.duration % 60}m` : 'Ongoing'
+    } : null
+
+    // Determine live current status — prefer today's actual record over summary
+    const liveStatus = todayRecord?.status || user.attendanceSummaries?.[0]?.status || user.availabilityStatus || 'Available'
+
     const context: ChatContext = {
         user: {
             id: user.id,
@@ -56,15 +90,21 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
             role: roles,
             department: user.department?.name || "Unassigned",
             manager: user.manager?.name || null,
-            currentStatus: user.attendanceSummaries?.[0]?.status || user.availabilityStatus || "Available"
+            currentStatus: liveStatus,
+            timezone: userTz
         },
         attendance: attendance.map(a => ({
-            date: a.date.toDateString(),
+            date: fmtDate(a.date),
             status: a.status,
-            clockIn: a.clockIn?.toLocaleTimeString(),
-            clockOut: a.clockOut?.toLocaleTimeString(),
+            clockIn: fmtTime(a.clockIn),
+            clockOut: fmtTime(a.clockOut),
+            breaks: a.breaks.map((b: any) => ({
+                start: fmtTime(b.startTime),
+                end: fmtTime(b.endTime) || 'Active'
+            })),
             duration: a.duration ? `${Math.floor(a.duration / 60)}h ${a.duration % 60}m` : "0m"
         })),
+        todayAttendance,
         leaves: leaves.map(l => ({
             type: l.type,
             startDate: l.startDate.toDateString(),
@@ -73,15 +113,13 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
         }))
     };
 
-    // If Manager or Admin, fetch some aggregated team data (Safe summary)
+    // If Manager or Admin, fetch aggregated team data
     if (roles.includes('ADMIN') || roles.includes('MANAGER')) {
-        const todayStr = new Date().toISOString().split('T')[0];
-
         const managedEmployees = await prisma.user.findMany({
             where: {
                 OR: [
                     { managerId: userId },
-                    roles.includes('ADMIN') ? {} : { id: 'nothing' } // Admin sees all
+                    roles.includes('ADMIN') ? {} : { id: 'nothing' }
                 ],
                 deletedAt: null
             },
@@ -91,6 +129,8 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
                 department: { select: { name: true } },
                 roles: true,
                 availabilityStatus: true,
+                selectedTimezone: true,
+                employmentLocation: true,
                 attendanceSummaries: {
                     where: { date: new Date(`${todayStr}T00:00:00.000Z`) },
                     take: 1
@@ -113,23 +153,31 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
                     }
                 }
             },
-            take: 50 // Limit to prevent massive token inflation
+            take: 50
         });
 
-        context.managedEmployees = managedEmployees.map(e => ({
-            name: e.name || "Unknown",
-            department: e.department?.name || "N/A",
-            currentStatus: e.attendanceSummaries[0]?.status || e.availabilityStatus,
-            clockInToday: e.attendanceSummaries[0]?.clockIn?.toLocaleTimeString() || "Not Clocked In",
-            upcomingAndPendingLeaves: e.leaveRequests.map((lr: any) => ({
-                type: lr.type,
-                startDate: lr.startDate.toDateString(),
-                endDate: lr.endDate.toDateString(),
-                status: lr.status,
-                duration: lr.duration,
-                reason: lr.reason || null
-            }))
-        }));
+        context.managedEmployees = managedEmployees.map(e => {
+            const eTz = e.selectedTimezone ||
+                (e.employmentLocation === 'Philippines' ? 'Asia/Manila' : 'Australia/Sydney')
+            const clockInRaw = e.attendanceSummaries[0]?.clockIn
+            const clockInFormatted = clockInRaw
+                ? clockInRaw.toLocaleTimeString('en-US', { timeZone: eTz, hour: '2-digit', minute: '2-digit', hour12: true }) + ` (${eTz})`
+                : 'Not Clocked In'
+            return {
+                name: e.name || "Unknown",
+                department: e.department?.name || "N/A",
+                currentStatus: e.attendanceSummaries[0]?.status || e.availabilityStatus,
+                clockInToday: clockInFormatted,
+                upcomingAndPendingLeaves: e.leaveRequests.map((lr: any) => ({
+                    type: lr.type,
+                    startDate: lr.startDate.toDateString(),
+                    endDate: lr.endDate.toDateString(),
+                    status: lr.status,
+                    duration: lr.duration,
+                    reason: lr.reason || null
+                }))
+            }
+        });
     }
 
     return context;

@@ -888,13 +888,23 @@ export async function POST(req: Request) {
         await updateAttendanceSummary(userId, targetDate)
 
         // Log Activity
+        const actorName = session?.user?.id !== userId ? (session?.user?.name || 'Admin') : undefined
         await logActivity({
             userId,
             action: 'CLOCK_IN',
             entityType: 'ATTENDANCE',
             entityId: attendance.id,
-            details: { mode: mode || 'OFFICE', date: targetDate }
+            details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockIn?.toISOString() || new Date().toISOString(), ...(actorName && { actor: actorName }) }
         })
+        if (attendance.clockOut) {
+            await logActivity({
+                userId,
+                action: 'CLOCK_OUT',
+                entityType: 'ATTENDANCE',
+                entityId: attendance.id,
+                details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockOut.toISOString(), ...(actorName && { actor: actorName }) }
+            })
+        }
 
         broadcastUpdate('attendance', attendance)
         broadcastUpdate('staff')

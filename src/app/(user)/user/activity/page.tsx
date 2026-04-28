@@ -76,7 +76,7 @@ export default function ActivityLogsPage() {
         return logs.filter((log: any) => {
             let matchesDate = true
             if (startDate && endDate) {
-                const logDate = new Date(log.createdAt)
+                const logDate = new Date(log.details?.time || log.createdAt)
                 matchesDate = logDate >= startOfDay(new Date(startDate)) && logDate <= endOfDay(new Date(endDate))
             }
             if (!matchesDate) return false
@@ -97,7 +97,7 @@ export default function ActivityLogsPage() {
 
     const groupedLogs = useMemo(() => {
         return filteredLogs.reduce((acc: any, log: any) => {
-            const dateStr = format(new Date(log.createdAt), "yyyy-MM-dd")
+            const dateStr = format(new Date(log.details?.time || log.createdAt), "yyyy-MM-dd")
             if (!acc[dateStr]) acc[dateStr] = []
             acc[dateStr].push(log)
             return acc
@@ -291,7 +291,7 @@ export default function ActivityLogsPage() {
                                                             <div className="text-right flex flex-col items-end gap-0.5 text-slate-300 group-hover:text-slate-400">
                                                                 <div className="flex items-center gap-1.5 text-xs font-black text-slate-900">
                                                                     <Clock className="w-3.5 h-3.5 text-slate-300" />
-                                                                    {format(new Date(log.createdAt), "h:mm a")}
+                                                                    {format(new Date(log.details?.time || log.createdAt), "h:mm a")}
                                                                 </div>
                                                                 <div className="text-[9px] font-black text-slate-300 uppercase tracking-widest pl-5">
                                                                     {userTimeZone.split('/').pop()}

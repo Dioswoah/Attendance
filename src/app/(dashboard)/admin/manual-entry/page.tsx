@@ -53,6 +53,12 @@ export default function ManualEntryPage() {
         ? getBrowserTimezone()
         : (session?.user as any)?.selectedTimezone || "Asia/Manila"
 
+    // Returns the target employee's timezone for time parsing
+    const getEmployeeTz = (empId: string) => {
+        const emp = employees.find(e => e.id === empId)
+        return emp?.selectedTimezone || 'Asia/Manila'
+    }
+
     // Core Data
     const [employees, setEmployees] = useState<any[]>([])
     const [departments, setDepartments] = useState<any[]>([])
@@ -194,9 +200,10 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            // Parse time using the exact timezone the user is viewing
-            const clockIn = parseTimeInTimezone(attDate, attIn, userTimeZone)
-            const clockOut = attOut ? parseTimeInTimezone(attDate, attOut, userTimeZone) : null
+            // Parse time in the target employee's timezone, not the admin's
+            const empTz = getEmployeeTz(attEmpId)
+            const clockIn = parseTimeInTimezone(attDate, attIn, empTz)
+            const clockOut = attOut ? parseTimeInTimezone(attDate, attOut, empTz) : null
             const dateObj = new Date(attDate)
 
             const res = await fetch('/api/attendance', {
@@ -300,9 +307,10 @@ export default function ManualEntryPage() {
 
         setProcessing(true)
         try {
-            // Parse time using the exact timezone the user is viewing
-            const startTime = parseTimeInTimezone(brDate, brIn, userTimeZone)
-            const endTime = brOut ? parseTimeInTimezone(brDate, brOut, userTimeZone) : null
+            // Parse time in the target employee's timezone, not the admin's
+            const empTz = getEmployeeTz(brEmpId)
+            const startTime = parseTimeInTimezone(brDate, brIn, empTz)
+            const endTime = brOut ? parseTimeInTimezone(brDate, brOut, empTz) : null
 
             const res = await fetch('/api/breaks', {
                 method: 'POST',
@@ -819,6 +827,11 @@ export default function ManualEntryPage() {
                                             }} />
                                         </div>
                                     </div>
+                                    {attEmpId && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Times are interpreted in <span className="font-semibold">{getEmployeeTz(attEmpId)}</span> (employee&apos;s timezone)
+                                        </p>
+                                    )}
                                 </div>
                                 <Button type="submit" disabled={processing} className="w-full">
                                     {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
@@ -973,6 +986,11 @@ export default function ManualEntryPage() {
                                             setBrOut(val)
                                         }} />
                                     </div>
+                                    {brEmpId && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Times are interpreted in <span className="font-semibold">{getEmployeeTz(brEmpId)}</span> (employee&apos;s timezone)
+                                        </p>
+                                    )}
                                 </div>
                                 <Button type="submit" disabled={processing} className="w-full">
                                     {processing ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}

@@ -21,18 +21,32 @@ ${teamLines}
         `;
     }
 
+    const todaySection = context.todayAttendance
+        ? `TODAY'S LIVE ATTENDANCE (most accurate — use this for any questions about today):
+${JSON.stringify(context.todayAttendance, null, 2)}`
+        : `TODAY'S ATTENDANCE: No record found for today yet.`
+
     return `
     You are RISA (Redadair Intelligent Staff Assistant), a secure and helpful HR assistant.
-    Current Date/Time: ${new Date().toLocaleString()}
+    Current Date/Time: ${new Date().toLocaleString('en-US', { timeZone: user.timezone })} (${user.timezone})
+
+    IMPORTANT — TIMEZONE RULE:
+    ALL times and dates in this prompt have already been converted to the user's local timezone: ${user.timezone}.
+    When you quote any time to the user, quote it exactly as provided — do NOT convert, adjust, or label it as UTC.
+    Always append the timezone abbreviation when quoting times (e.g. "8:00 AM PHT" or "8:00 AM AEST").
+
     USER PROFILE:
     - Name: ${user.name}
     - Email: ${user.email}
     - Role: ${user.role.join(', ')}
     - Department: ${user.department}
+    - Timezone: ${user.timezone}
     - Current Status: ${user.currentStatus}
-    
-    PERSONAL DATA:
-    - Recent Attendance: ${JSON.stringify(attendance)}
+
+    ${todaySection}
+
+    PERSONAL DATA (last 10 records, all times in ${user.timezone}):
+    - Attendance History: ${JSON.stringify(attendance)}
     - Recent Leave: ${JSON.stringify(leaves)}
     ${teamContext}
 

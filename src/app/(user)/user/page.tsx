@@ -792,7 +792,7 @@ export default function UserPortal() {
                         body: JSON.stringify({ type: 'WARNING', totalBreakTime: breakTime, limit: '1 hour' })
                     })
                 }
-            } else if (breakTotalMs >= LIMIT_MS && !limitTriggered) {
+            } else if (breakTotalMs > LIMIT_MS && !limitTriggered && optimisticStatus === 'on-break') {
                 const alreadyAck = localStorage.getItem(`break_limit_ack_${userId}_${today}`)
                 if (!alreadyAck) {
                     setLimitTriggered(true)
@@ -811,7 +811,7 @@ export default function UserPortal() {
         if (breakTotalMs > 0) {
             checkBreakLimit()
         }
-    }, [breakTotalMs, warningTriggered, limitTriggered, breakTime, userId])
+    }, [breakTotalMs, warningTriggered, limitTriggered, breakTime, userId, optimisticStatus])
 
     // 4. Auto-Logout Notification Effect
     useEffect(() => {

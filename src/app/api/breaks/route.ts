@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { sendAdminActionEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
+import { logActivity } from "@/lib/db-utils"
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -174,6 +175,25 @@ export async function POST(req: Request) {
                     })
                 }
             }
+        }
+
+        // Log Activity
+        const actorName = session && session.user.id !== userId ? (session.user.name || 'Admin') : undefined
+        await logActivity({
+            userId,
+            action: 'START_BREAK',
+            entityType: 'BREAK',
+            entityId: breakRecord.id,
+            details: { date, time: new Date(startTime).toISOString(), ...(actorName && { actor: actorName }) }
+        })
+        if (endTime) {
+            await logActivity({
+                userId,
+                action: 'END_BREAK',
+                entityType: 'BREAK',
+                entityId: breakRecord.id,
+                details: { date, time: new Date(endTime).toISOString(), ...(actorName && { actor: actorName }) }
+            })
         }
 
         return NextResponse.json(breakRecord)

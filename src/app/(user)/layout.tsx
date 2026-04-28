@@ -23,7 +23,6 @@ import { UserOnboardingTour } from "@/components/UserOnboardingTour"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
 import { Breadcrumbs } from "@/components/Breadcrumbs"
-import { WorkHoursSettings } from "@/components/WorkHoursSettings"
 import { ManagerNotificationSettings } from "@/components/ManagerNotificationSettings"
 import { ProfileSettings } from "@/components/ProfileSettings"
 
@@ -414,7 +413,6 @@ function UserLayoutInner({
                                     </div>
 
                                     <ProfileSettings />
-                                    <WorkHoursSettings />
                                     <ManagerNotificationSettings />
 
                                     <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
@@ -625,7 +623,6 @@ function UserLayoutInner({
                                             </div>
 
                                             <ProfileSettings />
-                                            <WorkHoursSettings />
                                             <ManagerNotificationSettings />
 
                                             <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
