@@ -91,7 +91,10 @@ export async function sendLeaveRequestEmail({ managerName, managerEmail, userNam
         </div>
       `
         });
-        await transporter.sendMail({ from: SENDER_EMAIL, to: managerEmail, replyTo: userEmail, subject: `[RSA] Leave Request: ${userName} - ${leaveType}`, html });
+        const subject = customTitle
+            ? `[RSA] ${customTitle}: ${userName} - ${leaveType}`
+            : `[RSA] Leave Request: ${userName} - ${leaveType}`;
+        await transporter.sendMail({ from: SENDER_EMAIL, to: managerEmail, replyTo: userEmail, subject, html });
     } catch (error) {
         console.error("[ZeptoMail] Failed to send leave request email:", error);
     }
@@ -336,7 +339,7 @@ export async function sendManagerLateReportEmail({ managerName, managerEmail, la
             buttonLink: process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app',
             greetingName: managerName,
             bodyHtml: `
-        <p>This is your daily report for staff members who haven't clocked in yet today (30+ minutes past their scheduled start):</p>
+        <p>This is your daily report for staff members who haven't clocked in yet today:</p>
         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin: 20px 0;">
             ${staffListHtml}
         </div>

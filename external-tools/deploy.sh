@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Load environment variables
 if [ -f .env ]; then
     echo -e "${YELLOW}Loading configuration from .env...${NC}"
-    export $(cat .env | grep -v '^#' | xargs)
+    set -a; source .env; set +a
 else
     echo -e "${RED}Error: .env file not found!${NC}"
     exit 1
@@ -56,6 +56,8 @@ gcloud run deploy ${SERVICE_NAME} \
   --set-env-vars ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
   --set-env-vars GOOGLE_GENERATIVE_AI_API_KEY="${GOOGLE_GENERATIVE_AI_API_KEY}" \
   --set-env-vars PROJECT_ID="${PROJECT_ID}" \
+  --set-env-vars ZEPTOMAIL_PASSWORD="${ZEPTOMAIL_PASSWORD}" \
+  --set-env-vars BIOMETRIC_APPS_SCRIPT_URL="${BIOMETRIC_APPS_SCRIPT_URL}" \
   --memory 512Mi \
   --cpu 1 \
   --min-instances 0 \

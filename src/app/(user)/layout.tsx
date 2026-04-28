@@ -25,6 +25,7 @@ import { ScrollIndicator } from "@/components/ScrollIndicator"
 import { Breadcrumbs } from "@/components/Breadcrumbs"
 import { WorkHoursSettings } from "@/components/WorkHoursSettings"
 import { ManagerNotificationSettings } from "@/components/ManagerNotificationSettings"
+import { ProfileSettings } from "@/components/ProfileSettings"
 
 export default function UserLayout({
     children,
@@ -412,6 +413,7 @@ function UserLayoutInner({
                                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Settings & Preferences</p>
                                     </div>
 
+                                    <ProfileSettings />
                                     <WorkHoursSettings />
                                     <ManagerNotificationSettings />
 
@@ -622,6 +624,7 @@ function UserLayoutInner({
                                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Settings & Preferences</p>
                                             </div>
 
+                                            <ProfileSettings />
                                             <WorkHoursSettings />
                                             <ManagerNotificationSettings />
 

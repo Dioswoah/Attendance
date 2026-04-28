@@ -10,7 +10,7 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
         where: { id: session.user.id },
-        include: { manager: true }
+        include: { manager: true, department: true, secondaryDepartments: true }
     })
     return NextResponse.json(user, {
         headers: {

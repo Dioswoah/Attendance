@@ -248,30 +248,16 @@ export default function HistoryPage() {
         end: parseISO(endDate)
     })
 
-    const employees = (selectedStaffIds.length > 0 || selectedDept !== 'all'
-        ? allStaff
-            .filter(s => !s.isArchived || selectedStaffIds.includes(s.id))
-            .filter(s => (selectedStaffIds.length === 0 || selectedStaffIds.includes(s.id)))
-            .filter(s => (selectedDept === 'all' || s.departmentId === selectedDept))
-            .map(s => ({
-                id: s.id,
-                name: s.name,
-                dept: s.department?.name || 'Unassigned'
-            }))
-        : Array.from(new Set(history.map(h => h.userId))).map(id => {
-            // When falling back to history history, we also need to respect archive status unless toggled
-            const record = history.find(h => h.userId === id)
-            // We need to check if this user is archived. Find in allStaff.
-            const staffInfo = allStaff.find(s => s.id === id)
-            if (!includeArchived && staffInfo?.isArchived) return null
-
-            return {
-                id,
-                name: record.userName,
-                dept: record.department
-            }
-        }).filter(Boolean) as any[]
-    ).filter(emp => {
+    const employees = allStaff
+        .filter(s => includeArchived || !s.isArchived)
+        .filter(s => selectedStaffIds.length === 0 || selectedStaffIds.includes(s.id))
+        .filter(s => selectedDept === 'all' || s.departmentId === selectedDept)
+        .map(s => ({
+            id: s.id,
+            name: s.name,
+            dept: s.department?.name || 'Unassigned'
+        }))
+        .filter(emp => {
         const matchesSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             emp.dept.toLowerCase().includes(searchTerm.toLowerCase())
         return matchesSearch
@@ -670,26 +656,23 @@ export default function HistoryPage() {
                                                         return acc + Math.max(0, e - s)
                                                     }, 0)
                                                     const hasPendingRequest = (record?.pendingRequests || []).length > 0
-
-                                                    const dotColor = !record ? '' :
-                                                        hasPendingRequest ? "bg-amber-500" :
-                                                        record.status === 'on-leave' ? "bg-blue-500" :
-                                                        record.status === 'on-break' ? (totalBreakMs > 3600000 ? "bg-red-500" : "bg-yellow-500") :
-                                                        record.clockIn && totalBreakMs > 3600000 ? "bg-red-500" :
-                                                        record.clockIn ? "bg-green-500" :
-                                                        "bg-slate-300"
+                                                    const isLeaveRecord = record && (record.status === 'on-leave' || record.mode === 'LEAVE')
+                                                    const hasWork = record && record.clockIn && !isLeaveRecord
+                                                    const hasOverBreak = hasWork && totalBreakMs > 3600000
 
                                                     return (
                                                         <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
-                                                            {record ? (
-                                                                <div className="flex flex-col items-center justify-center h-full w-full py-2 group/mark">
-                                                                    <div className={cn("h-2 w-2 rounded-full mb-1", dotColor)} />
+                                                            {isLeaveRecord || isOnLeave ? (
+                                                                <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
+                                                            ) : hasWork ? (
+                                                                <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark">
+                                                                    {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+                                                                    <div className="h-2 w-2 rounded-full bg-green-500" />
+                                                                    {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
                                                                     <span className="text-[10px] text-muted-foreground font-medium opacity-0 group-hover/mark:opacity-100 transition-opacity absolute -mt-6 bg-popover px-1.5 py-0.5 rounded shadow-sm border border-border">
-                                                                        {record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '--'}
+                                                                        {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}
                                                                     </span>
                                                                 </div>
-                                                            ) : isOnLeave ? (
-                                                                <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                             ) : (
                                                                 <div className="h-1.5 w-1.5 bg-muted rounded-full mx-auto" />
                                                             )}
@@ -697,10 +680,7 @@ export default function HistoryPage() {
                                                     )
                                                 })}
                                                 <TableCell className="py-3 px-6 text-right">
-                                                    <div className="flex flex-col items-end gap-0.5">
-                                                        <span className="text-[10px] font-bold text-green-600">W: {stats.workLabel}</span>
-                                                        <span className="text-[10px] font-bold text-yellow-600">B: {stats.breakLabel}</span>
-                                                    </div>
+                                                    <span className="text-[10px] font-bold text-green-600">W: {stats.workLabel}</span>
                                                 </TableCell>
                                             </TableRow>
                                         )
@@ -943,14 +923,12 @@ export default function HistoryPage() {
             </Dialog>
 
             {/* Legend / Metrics Info */}
-            <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {[
                     { label: 'Work Hours', color: 'bg-green-500' },
-                    { label: 'Break Hours', color: 'bg-yellow-500' },
                     { label: 'Break > 1h', color: 'bg-red-500' },
                     { label: 'Leave', color: 'bg-blue-500' },
                     { label: 'Pending Request', color: 'bg-amber-500' },
-                    { label: 'Office/WFH', color: 'bg-slate-500' },
                     { label: 'No Log', color: 'bg-muted border border-border' },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">

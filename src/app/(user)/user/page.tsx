@@ -124,6 +124,7 @@ export default function UserPortal() {
 
     // Ref to track if we are in the initial data loading phase
     const isFirstTimezoneSync = useRef(true)
+    const onboardingInitialized = useRef(false)
 
     // --- CONSOLIDATED QUICK LOAD ---
     // --- CONSOLIDATED QUICK LOAD (SWR) ---
@@ -230,14 +231,15 @@ export default function UserPortal() {
 
                 // Check Onboarding - Show for fresh accounts to allow verification
                 const isFreshAccount = data.user.createdAt ? (new Date().getTime() - new Date(data.user.createdAt).getTime() < 24 * 60 * 60 * 1000) : true
-                if (isFreshAccount && !localStorage.getItem('onboardingSkipped')) {
-                    // Pre-fill state with existing data from admin setup
+                if (isFreshAccount && !localStorage.getItem('onboardingSkipped') && !onboardingInitialized.current) {
+                    // Pre-fill state with existing data from admin setup (only once — subsequent SWR refreshes must not overwrite user edits)
+                    onboardingInitialized.current = true
                     setOnboardingLocation(data.user.employmentLocation || "")
                     setOnboardingDepartment(data.user.departmentId || "")
                     setOnboardingManager(data.user.managerId || "")
                     setOnboardingShiftStart(data.user.shiftStartTime || "09:00")
                     setOnboardingShiftEnd(data.user.shiftEndTime || "17:00")
-                    
+
                     setIsOnboardingOpen(true)
                     const loadOnboarding = async () => {
                         const [mRes, dRes] = await Promise.all([
@@ -2521,7 +2523,6 @@ export default function UserPortal() {
                                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
                                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
                                                         <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employment Location</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Last Active</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
@@ -2537,6 +2538,11 @@ export default function UserPortal() {
                                                             // Ensure we check availabilityStatus existence, default to AVAILABLE if online
                                                             const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
                                                             const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+
+                                                            const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
+                                                            const pendingReq = isManagerOrAdmin
+                                                                ? pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
+                                                                : undefined
 
                                                             return (
                                                                 <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
@@ -2571,7 +2577,18 @@ export default function UserPortal() {
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         <div className="flex flex-col gap-1 min-w-[100px]">
-                                                                            {getStaffStatusBadge(staff.status)}
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                {getStaffStatusBadge(staff.status)}
+                                                                                {pendingReq && (
+                                                                                    <div className="relative group/pending cursor-help">
+                                                                                        <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                                                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded whitespace-nowrap opacity-0 group-hover/pending:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                                                                                            Amend Record Pending
+                                                                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
                                                                             {staff.status === 'on-break' && staff.expectedReturnTime && (
                                                                                 <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1 break-words">
                                                                                     Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
@@ -2620,43 +2637,6 @@ export default function UserPortal() {
                                                                         <div className="flex items-center gap-2">
                                                                             <span className="text-[10px] font-bold text-slate-600">{staff.employmentLocation || "N/A"}</span>
                                                                         </div>
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {(() => {
-                                                                            const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
-                                                                            const pendingReq = isManagerOrAdmin
-                                                                                ? pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
-                                                                                : undefined
-                                                                            // Prefer pending CLOCK_IN time over recorded lastActive so manager sees the requested time
-                                                                            const pendingTime = pendingReq?.type === 'CLOCK_IN' && pendingReq?.time ? pendingReq.time : null
-                                                                            const displayTime = pendingTime || staff.lastActive
-                                                                            return displayTime ? (
-                                                                                <div className="flex items-start gap-1.5">
-                                                                                    <div className="flex flex-col items-start">
-                                                                                        <span className="text-xs font-bold text-slate-600 font-mono">
-                                                                                            {new Date(displayTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
-                                                                                        </span>
-                                                                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                                                                                            {new Date(displayTime)
-                                                                                                .toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: userTimeZone })
-                                                                                                .replace(/GMT.*$/, '')
-                                                                                                .trim()}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    {pendingReq && (
-                                                                                        <div className="relative group/pending mt-0.5 cursor-help">
-                                                                                            <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />
-                                                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded whitespace-nowrap opacity-0 group-hover/pending:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-                                                                                                Amend Record Pending
-                                                                                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            ) : (
-                                                                                <span className="text-xs font-mono font-medium text-slate-400">--:--</span>
-                                                                            )
-                                                                        })()}
                                                                     </TableCell>
                                                                 </TableRow>
                                                             )

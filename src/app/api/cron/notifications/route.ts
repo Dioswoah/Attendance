@@ -74,10 +74,14 @@ export async function GET(request: Request) {
             if (accessToken) {
                 // Check Limit (60m)
                 if (totalMinutes >= LIMIT_MINUTES && !att.breakLimitExceededSent) {
-                    // Use Magic Link for instant action
-                    const actionLink = generateMagicLink(att.userId, 'end-break');
+                    const claimed = await prisma.attendance.updateMany({
+                        where: { id: att.id, breakLimitExceededSent: false },
+                        data: { breakLimitExceededSent: true }
+                    });
+                    if (claimed.count === 0) continue;
 
-                    const sent = await sendBreakLimitEmail({
+                    const actionLink = generateMagicLink(att.userId, 'end-break');
+                    await sendBreakLimitEmail({
                         userName: att.user.name || "Employee",
                         userEmail: att.user.email,
                         userAccessToken: accessToken,
@@ -86,22 +90,18 @@ export async function GET(request: Request) {
                         actionLink,
                         refreshToken
                     });
-
-                    if (sent) {
-                        // Update flag
-                        await prisma.attendance.update({
-                            where: { id: att.id },
-                            data: { breakLimitExceededSent: true }
-                        });
-                        console.log(`[Break Check] Sent Limit Email to ${att.user.email}`);
-                    }
+                    console.log(`[Break Check] Sent Limit Email to ${att.user.email}`);
                 }
                 // Check Warning (45m)
                 else if (totalMinutes >= WARNING_MINUTES && !att.breakLimitExceededSent && !att.breakWarningSent) {
-                    // Use Dashboard Link for warning (user decides)
-                    const actionLink = `${nextAuthUrl}/user`;
+                    const claimed = await prisma.attendance.updateMany({
+                        where: { id: att.id, breakWarningSent: false },
+                        data: { breakWarningSent: true }
+                    });
+                    if (claimed.count === 0) continue;
 
-                    const sent = await sendBreakLimitEmail({
+                    const actionLink = `${nextAuthUrl}/user`;
+                    await sendBreakLimitEmail({
                         userName: att.user.name || "Employee",
                         userEmail: att.user.email,
                         userAccessToken: accessToken,
@@ -110,15 +110,7 @@ export async function GET(request: Request) {
                         actionLink,
                         refreshToken
                     });
-
-                    if (sent) {
-                        // Update flag
-                        await prisma.attendance.update({
-                            where: { id: att.id },
-                            data: { breakWarningSent: true }
-                        });
-                        console.log(`[Break Check] Sent Warning Email to ${att.user.email}`);
-                    }
+                    console.log(`[Break Check] Sent Warning Email to ${att.user.email}`);
                 }
             }
 
@@ -234,11 +226,29 @@ export async function GET(request: Request) {
             const [startH, startM] = shiftStartStr.split(':').map(Number);
             const startTotalMins = startH * 60 + startM;
 
-            // Trigger if 30+ minutes past scheduled start and less than 12 hours late
-            if (nowTotalMins >= startTotalMins + 30 && nowTotalMins < startTotalMins + 720) {
+            // Trigger if 10+ minutes past scheduled start and less than 12 hours late
+            if (nowTotalMins >= startTotalMins + 10 && nowTotalMins < startTotalMins + 720) {
                 const account = user.accounts.find(a => a.provider === 'google');
                 if (account?.access_token) {
                     const magicLink = generateMagicLink(user.id, 'clock-in');
+
+                    // Write notification first as the atomic lock — if another concurrent run
+                    // already inserted one, this will succeed but alreadyNotified check above
+                    // will block it. We use a try/catch in case a unique constraint is added later.
+                    let notification;
+                    try {
+                        notification = await prisma.notification.create({
+                            data: {
+                                userId: user.id,
+                                title: "Late Arrival Reminder",
+                                message: "You haven't clocked in yet today. Click here to clock in.",
+                                type: "LATE_REMINDER",
+                                link: magicLink
+                            }
+                        });
+                    } catch {
+                        continue; // Another run already claimed this
+                    }
 
                     const sent = await sendLateArrivalEmail({
                         userName: user.name || "Employee",
@@ -250,15 +260,6 @@ export async function GET(request: Request) {
                     });
 
                     if (sent) {
-                        await prisma.notification.create({
-                            data: {
-                                userId: user.id,
-                                title: "Late Arrival Reminder",
-                                message: "You haven't clocked in yet today. Click here to clock in.",
-                                type: "LATE_REMINDER",
-                                link: magicLink
-                            }
-                        });
                         broadcastUpdate('notification', { userId: user.id });
                         console.log(`[Late Check] Sent email to ${user.email}`);
 
@@ -277,6 +278,9 @@ export async function GET(request: Request) {
                                 scheduledStart: shiftStartStr
                             });
                         }
+                    } else {
+                        // Email failed — remove the notification so it retries next cron run
+                        await prisma.notification.delete({ where: { id: notification.id } });
                     }
                 }
             }
@@ -351,11 +355,12 @@ export async function GET(request: Request) {
             if (nowTotalMins >= endTotalMins + 30) {
                 const account = user.accounts.find(a => a.provider === 'google');
                 if (account?.access_token) {
-                    // Mark flag first to block concurrent cron runs from also sending
-                    await prisma.attendance.update({
-                        where: { id: session.id },
+                    // Atomic conditional update — only this cron instance proceeds if it wins the write
+                    const claimed = await prisma.attendance.updateMany({
+                        where: { id: session.id, overdueDepartureSent: false },
                         data: { overdueDepartureSent: true }
                     });
+                    if (claimed.count === 0) continue; // Another concurrent run already claimed this
 
                     seenUserIds.add(user.id);
 
