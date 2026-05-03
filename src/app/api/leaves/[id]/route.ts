@@ -40,6 +40,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             const isManager = isAdmin || isTargetManager
             const isUserEditing = session.user.id === leaveRequest.userId && !isManager
 
+            // Capture old values for history before update
+            const oldStartDate = leaveRequest.startDate
+            const oldEndDate = leaveRequest.endDate
+
             // Update Request
             const updatedRequest = await prisma.leaveRequest.update({
                 where: { id },
@@ -72,6 +76,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     data: { deletedAt: new Date() }
                 })
             }
+
+            // Create history entry
+            const fmtDate = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
+            let historyActivity: string
+            let historyDescription: string
+            if (isUserEditing) {
+                historyActivity = 'Amend'
+                historyDescription = `Current Record: Start Date ${fmtDate(oldStartDate)} End Date ${fmtDate(oldEndDate)}`
+            } else if (body.status === 'APPROVED') {
+                historyActivity = 'Approve'
+                historyDescription = 'Leave Approved'
+            } else if (body.status === 'DECLINED') {
+                historyActivity = 'Decline'
+                historyDescription = body.declineReason || 'Leave Declined'
+            } else {
+                historyActivity = 'Amend'
+                historyDescription = `Current Record: Start Date ${fmtDate(oldStartDate)} End Date ${fmtDate(oldEndDate)}`
+            }
+            await (prisma as any).leaveRequestHistory.create({
+                data: {
+                    leaveRequestId: id,
+                    activity: historyActivity,
+                    description: historyDescription,
+                    actorId: session.user.id
+                }
+            })
 
             // If Manager Approved, Create OFFICIAL LEAVE record
             if (!isUserEditing && body.status === 'APPROVED' && leaveRequest.status !== 'APPROVED') {

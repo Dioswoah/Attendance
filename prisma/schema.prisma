@@ -50,6 +50,7 @@ model User {
   activityLogs         ActivityLog[]
   overriddenSummaries  AttendanceSummary[] @relation("OverrideManager")
   secondaryDepartments Department[]        @relation("UserSecondaryDepartments")
+  leaveHistoryActed    LeaveRequestHistory[] @relation("LeaveHistoryActor")
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
@@ -192,8 +193,22 @@ model LeaveRequest {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history       LeaveRequestHistory[]
   @@index([userId, status])
   @@index([startTime, endTime])
+}
+
+model LeaveRequestHistory {
+  id             String       @id @default(cuid())
+  leaveRequestId String
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id])
+  activity       String
+  description    String
+  actorId        String?
+  actor          User?        @relation("LeaveHistoryActor", fields: [actorId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([leaveRequestId])
 }
 
 model Break {

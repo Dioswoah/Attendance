@@ -82,7 +82,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 } else if (hostedDomain) {
                     console.warn(`[Auth] REJECTED: User from unauthorized Workspace. HD: ${hostedDomain}, Expected: ${envAllowed}`);
                 } else {
-                    console.warn(`[Auth] REJECTED: User has no Workspace (hd) claim. Likely personal Gmail.`);
+                    // hd claim absent — Google Workspace sometimes omits it for alias domains or on certain
+                    // OAuth flows. Fall back to checking the email domain directly.
+                    const emailDomain = user.email.split('@')[1];
+                    if (emailDomain && allowedDomains.includes(emailDomain)) {
+                        isAllowed = true;
+                        console.log(`[Auth] User ${user.email} verified via email domain fallback (no hd claim). Domain: ${emailDomain}`);
+                    } else {
+                        console.warn(`[Auth] REJECTED: No Workspace (hd) claim and email domain '${emailDomain}' not in allowed list.`);
+                    }
                 }
             } else {
                 // Fallback for non-google providers (if any)

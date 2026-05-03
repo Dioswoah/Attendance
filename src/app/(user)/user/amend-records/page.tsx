@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSession } from "next-auth/react"
 import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Clock, FileText, Loader2, Calendar, UserMinus, Pencil, Trash2, Archive, ArchiveRestore, Coffee, Edit3 } from "lucide-react"
+import { Plus, Clock, FileText, Loader2, Calendar, UserMinus, Pencil, Trash2, Archive, ArchiveRestore, Coffee, Edit3, AlertTriangle } from "lucide-react"
 import { format, subDays, isSameDay, parseISO, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
@@ -32,6 +32,79 @@ interface AttendanceRequest {
     declineReason?: string
     isArchived?: boolean
     targetId?: string
+}
+
+// ── Reasonableness checker ────────────────────────────────────────────────────
+// Returns a warning message when the requested time creates logically impossible
+// sequences (e.g. break before clock-in, clock-out before clock-in).
+// Accepts both actual attendance records and any *pending* amendment requests for
+// the same day so the cascade scenario (pending clock-in → pending break) is also caught.
+function checkTimeReasonableness(
+    type: string,
+    requestTimeMs: number,
+    dayRecords: any[],               // actual Attendance rows for that date
+    pendingForDay: AttendanceRequest[] // pending requests for that date (excluding self)
+): { isUnreasonable: boolean; message: string } {
+    const fmt = (ms: number) =>
+        new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+    // Merge actual records + pending requests into unified timelines
+    const clockInMs = [
+        ...dayRecords.map(r => r.clockIn).filter(Boolean).map((t: string) => new Date(t).getTime()),
+        ...pendingForDay.filter(r => r.type === 'CLOCK_IN').map(r => new Date(r.time).getTime())
+    ].sort((a, b) => a - b)
+
+    const clockOutMs = [
+        ...dayRecords.map(r => r.clockOut).filter(Boolean).map((t: string) => new Date(t).getTime()),
+        ...pendingForDay.filter(r => r.type === 'CLOCK_OUT').map(r => new Date(r.time).getTime())
+    ].sort((a, b) => a - b)
+
+    const breakStartMs = [
+        ...dayRecords.flatMap((r: any) =>
+            (r.breaks || []).map((b: any) => b.startTime).filter(Boolean).map((t: string) => new Date(t).getTime())
+        ),
+        ...pendingForDay.filter(r => r.type === 'BREAK_START').map(r => new Date(r.time).getTime())
+    ].sort((a, b) => a - b)
+
+    switch (type) {
+        case 'CLOCK_OUT': {
+            if (clockInMs.length === 0)
+                return { isUnreasonable: true, message: 'No clock-in exists for this day — clocking out without clocking in' }
+            const latestIn = Math.max(...clockInMs)
+            if (requestTimeMs <= latestIn)
+                return { isUnreasonable: true, message: `Clock-out (${fmt(requestTimeMs)}) is at or before clock-in (${fmt(latestIn)})` }
+            break
+        }
+        case 'BREAK_START': {
+            if (clockInMs.length === 0)
+                return { isUnreasonable: true, message: 'No clock-in exists — break cannot start before clocking in' }
+            const earliestIn = Math.min(...clockInMs)
+            if (requestTimeMs < earliestIn)
+                return { isUnreasonable: true, message: `Break start (${fmt(requestTimeMs)}) is before clock-in (${fmt(earliestIn)})` }
+            // Ensure break falls within at least one active session window
+            if (clockOutMs.length > 0) {
+                const withinSession = clockInMs.some(ci => {
+                    const nextOut = clockOutMs.find(co => co > ci)
+                    return requestTimeMs >= ci && (nextOut ? requestTimeMs <= nextOut : true)
+                })
+                if (!withinSession)
+                    return { isUnreasonable: true, message: 'Break start falls outside any clock-in / clock-out window' }
+            }
+            break
+        }
+        case 'BREAK_END': {
+            if (breakStartMs.length === 0)
+                return { isUnreasonable: true, message: "No break start found — can't end a break that hasn't started" }
+            const latestStart = Math.max(...breakStartMs)
+            if (requestTimeMs <= latestStart)
+                return { isUnreasonable: true, message: `Break end (${fmt(requestTimeMs)}) is at or before break start (${fmt(latestStart)})` }
+            if (clockOutMs.length > 0 && requestTimeMs > Math.max(...clockOutMs))
+                return { isUnreasonable: true, message: `Break end (${fmt(requestTimeMs)}) is after clock-out (${fmt(Math.max(...clockOutMs))})` }
+            break
+        }
+    }
+
+    return { isUnreasonable: false, message: '' }
 }
 
 export default function AmendRecordsPage() {
@@ -366,7 +439,14 @@ export default function AmendRecordsPage() {
             // Fallback that shouldn't error
             setTime(new Date(req.time).toISOString().substring(11, 16))
         }
-        setReason(req.reason)
+        try {
+            const parsed = JSON.parse(req.reason || '{}')
+            setReason(parsed.reason || req.reason || '')
+            if (parsed.workMode) setWorkMode(parsed.workMode)
+            if (parsed.locationDetails !== undefined) setLocationDetails(parsed.locationDetails)
+        } catch {
+            setReason(req.reason || '')
+        }
         setDialogOpen(true)
     }
 
@@ -408,6 +488,33 @@ export default function AmendRecordsPage() {
         setWorkMode("OFFICE")
         setLocationDetails("")
     }
+
+    // Live form warning — recalculates whenever the user changes date, type, or time
+    const formTimeWarning = useMemo(() => {
+        if (!time) return null
+        const [h, m] = time.split(':').map(Number)
+        if (isNaN(h) || isNaN(m)) return null
+
+        // Build a Date for the entered time on the selected date
+        const requestDate = new Date(`${selectedDateOption}T${time}:00`)
+        if (isNaN(requestDate.getTime())) return null
+
+        const requestTimeMs = requestDate.getTime()
+
+        // Get actual records for the selected date
+        let dayRecords = actualRecords.filter(a => a.date === selectedDateOption)
+        if (dayRecords.length === 0) dayRecords = attendanceHistory.filter(a => a.date === selectedDateOption)
+
+        // Get pending requests for the same day (excluding the one being edited)
+        const dayDateStr = selectedDateOption
+        const pendingForDay = requests.filter(r =>
+            r.status === 'PENDING' &&
+            r.date.startsWith(dayDateStr) &&
+            r.id !== editingId
+        )
+
+        return checkTimeReasonableness(recordType, requestTimeMs, dayRecords, pendingForDay)
+    }, [time, recordType, selectedDateOption, actualRecords, attendanceHistory, requests, editingId])
 
     const getStatusBadge = (status: RequestStatus) => {
         switch (status) {
@@ -607,6 +714,14 @@ export default function AmendRecordsPage() {
                                 <p className="text-[10px] text-muted-foreground italic px-1">
                                     Leave blank to keep the existing time and only update other fields.
                                 </p>
+                                {formTimeWarning?.isUnreasonable && (
+                                    <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 mt-1">
+                                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                        <p className="text-[11px] text-amber-700 font-medium leading-snug">
+                                            <span className="font-bold">Unreasonable time: </span>{formTimeWarning.message}. You can still submit — the manager will see this flag.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             {['CLOCK_IN', 'CLOCK_OUT'].includes(recordType) && (
@@ -1040,6 +1155,25 @@ export default function AmendRecordsPage() {
                                                 {req.declineReason && (
                                                     <p className="text-xs text-red-600 font-semibold mt-1">Declined: {req.declineReason}</p>
                                                 )}
+                                                {(() => {
+                                                    if (req.status !== 'PENDING') return null
+                                                    const reqDateStr = req.date.split('T')[0]
+                                                    let dayRecords = actualRecords.filter(a => a.date === reqDateStr)
+                                                    if (dayRecords.length === 0) dayRecords = attendanceHistory.filter(a => a.date === reqDateStr)
+                                                    const pendingForDay = requests.filter(r =>
+                                                        r.status === 'PENDING' &&
+                                                        r.date.startsWith(reqDateStr) &&
+                                                        r.id !== req.id
+                                                    )
+                                                    const warn = checkTimeReasonableness(req.type, new Date(req.time).getTime(), dayRecords, pendingForDay)
+                                                    if (!warn.isUnreasonable) return null
+                                                    return (
+                                                        <div className="flex items-start gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 mt-1">
+                                                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                                            <p className="text-[10px] text-amber-700 font-semibold leading-snug">{warn.message}</p>
+                                                        </div>
+                                                    )
+                                                })()}
                                             </div>
                                         </TableCell>
                                         <TableCell className="align-top py-4">

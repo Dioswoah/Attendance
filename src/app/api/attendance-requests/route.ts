@@ -136,7 +136,8 @@ export async function POST(req: Request) {
                         date: normalizedDate,
                         clockIn: eventTime,
                         status: 'PRESENT',
-                        mode: 'OFFICE',
+                        mode: (workMode as any) || 'OFFICE',
+                        locationDetails: locationDetails || null,
                         notes: `PROVISIONAL_REQUEST:${request.id}`
                     }
                 })

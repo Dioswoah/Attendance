@@ -21,7 +21,8 @@ import {
     Flame,
     Zap,
     Clock,
-    User
+    User,
+    MapPin
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -46,6 +47,7 @@ export default function ExportPage() {
     const [selectedDept, setSelectedDept] = useState("all")
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
+    const [selectedLocation, setSelectedLocation] = useState("all")
     const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
     const { data: session } = useSession()
 
@@ -88,8 +90,9 @@ export default function ExportPage() {
                     s.departmentName?.toLowerCase().trim() === normalizedSelectedName
                 ))
 
+            const matchesLocation = selectedLocation === 'all' || s.employmentLocation === selectedLocation
             const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
-            return matchesDept && matchesQuery
+            return matchesDept && matchesLocation && matchesQuery
         })
 
     const toggleAllStaff = () => {
@@ -164,114 +167,156 @@ export default function ExportPage() {
         setGenerating(true)
         try {
             const res = await fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}`)
-            if (res.ok) {
-                const rawData = await res.json()
+            if (!res.ok) throw new Error("Failed to fetch attendance data")
+            const rawData = await res.json()
 
-                // Filter data based on selected staff
-                const data = rawData.filter((record: any) => {
-                    // Check if user is in selected list (if selection is active)
-                    if (selectedStaffIds.length > 0) {
-                        return selectedStaffIds.includes(record.userId)
-                    }
+            // 1. Determine the target staff scope based on all active filters
+            let targetStaff = allStaff.filter(s => !s.isArchived)
 
-                    // Otherwise, only show active staff by default
-                    const user = allStaff.find(s => s.id === record.userId)
-                    return !user?.isArchived
-                })
+            if (selectedStaffIds.length > 0) {
+                // Individual selection overrides all other filters
+                targetStaff = allStaff.filter(s => selectedStaffIds.includes(s.id))
+            } else {
+                if (selectedDept !== 'all') {
+                    const deptData = departments.find(d => d.id === selectedDept)
+                    const normalizedName = deptData?.name?.toLowerCase().trim()
+                    targetStaff = targetStaff.filter(s =>
+                        s.departmentId === selectedDept ||
+                        (normalizedName && s.department?.name?.toLowerCase().trim() === normalizedName)
+                    )
+                }
+                if (selectedLocation !== 'all') {
+                    targetStaff = targetStaff.filter(s => s.employmentLocation === selectedLocation)
+                }
+            }
 
-                // Sheet 1: Logs (Sorted)
-                const sortedData = [...data].sort((a, b) => {
-                    if (a.userName < b.userName) return -1
-                    if (a.userName > b.userName) return 1
-                    return a.date.localeCompare(b.date)
-                })
+            const targetIds = new Set(targetStaff.map(s => s.id))
 
-                const logData = sortedData.map((record: any) => {
-                    const stats = calculateDurations([record])
+            // 2. Keep only attendance records belonging to target staff
+            const data = rawData.filter((r: any) => targetIds.has(r.userId))
 
-                    // Prepare timezone data for clock in/out
-                    const clockInData = record.clockIn ? prepareTimeForExport(record.clockIn, reportTimezone) : null
-                    const clockOutData = record.clockOut ? prepareTimeForExport(record.clockOut, reportTimezone) : null
+            // 3. Generate every date in the selected range
+            const allDates: string[] = []
+            const cur = new Date(startDate + 'T12:00:00Z')
+            const rangeEnd = new Date(endDate + 'T12:00:00Z')
+            while (cur <= rangeEnd) {
+                allDates.push(cur.toISOString().split('T')[0])
+                cur.setUTCDate(cur.getUTCDate() + 1)
+            }
 
-                    // Generate Comments for Data Integrity
-                    const comments: string[] = []
-
-                    // 1. Check for Pending Requests
-                    if (record.pendingRequests && record.pendingRequests.length > 0) {
-                        record.pendingRequests.forEach((pr: any) => {
-                            comments.push(`PENDING: ${pr.type.replace('_', ' ')}`)
+            // 4. Build absent placeholder rows for staff × dates with no record
+            const presentKeys = new Set(data.map((r: any) => `${r.userId}|${r.date}`))
+            const absentRows: any[] = []
+            for (const staff of targetStaff) {
+                for (const date of allDates) {
+                    if (!presentKeys.has(`${staff.id}|${date}`)) {
+                        absentRows.push({
+                            userId: staff.id,
+                            userName: staff.name,
+                            department: staff.department?.name || staff.departmentName || 'Unassigned',
+                            date,
+                            clockIn: null,
+                            clockOut: null,
+                            breaks: [],
+                            status: 'ABSENT',
+                            mode: null,
+                            pendingRequests: [],
+                            notes: null
                         })
                     }
+                }
+            }
 
-                    // 2. Check for missing data (Blank data as requested)
-                    if (!record.clockIn && record.clockOut) {
-                        comments.push("MISSING CLOCK IN")
+            const allRecords = [...data, ...absentRows]
+
+            // Sheet 1: Master Ledger — sorted by name then date
+            const sortedData = [...allRecords].sort((a, b) => {
+                if (a.userName < b.userName) return -1
+                if (a.userName > b.userName) return 1
+                return a.date.localeCompare(b.date)
+            })
+
+            const logData = sortedData.map((record: any) => {
+                const isAbsent = record.status === 'ABSENT'
+                const stats = isAbsent ? { workMs: 0, breakMs: 0, leaveMs: 0 } : calculateDurations([record])
+                const clockInData = record.clockIn ? prepareTimeForExport(record.clockIn, reportTimezone) : null
+                const clockOutData = record.clockOut ? prepareTimeForExport(record.clockOut, reportTimezone) : null
+
+                const comments: string[] = []
+                if (isAbsent) {
+                    comments.push('ABSENT')
+                } else {
+                    if (record.pendingRequests?.length > 0) {
+                        record.pendingRequests.forEach((pr: any) => comments.push(`PENDING: ${pr.type.replace('_', ' ')}`))
                     }
+                    if (!record.clockIn && record.clockOut) comments.push('MISSING CLOCK IN')
                     if (record.clockIn && !record.clockOut) {
-                        // Only flag as missing if it's not today or if it's an old record
                         const today = new Date().toISOString().split('T')[0]
-                        if (record.date < today) {
-                            comments.push("MISSING CLOCK OUT")
-                        }
+                        if (record.date < today) comments.push('MISSING CLOCK OUT')
                     }
-
-                    // 3. Include notes if they are not the provisional tag
                     if (record.notes && !record.notes.startsWith('PROVISIONAL_REQUEST:')) {
                         comments.push(`NOTE: ${record.notes}`)
                     }
+                }
 
-                    return {
-                        'Employee': record.userName,
-                        'Department': record.department,
-                        'Date': record.date,
-                        'Clock In (UTC)': clockInData?.utcTime || '-',
-                        'Clock In (TZ Offset)': clockInData?.timezoneOffset || '-',
-                        'Clock In (Adjusted)': record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { timeZone: reportTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-',
-                        'Clock Out (UTC)': clockOutData?.utcTime || '-',
-                        'Clock Out (TZ Offset)': clockOutData?.timezoneOffset || '-',
-                        'Clock Out (Adjusted)': record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { timeZone: reportTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-',
-                        'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
-                        'Actual Hours': Math.floor(stats.workMs / (1000 * 60 * 60)),
-                        'Actual Minutes': Math.floor((stats.workMs % (1000 * 60 * 60)) / (1000 * 60)),
-                        'Leave Hours': Math.floor(stats.leaveMs / (1000 * 60 * 60)),
-                        'Work Location': record.mode,
-                        'Comments': comments.join('; '),
-                        'Report Timezone': reportTimezone
-                    }
-                })
+                return {
+                    'Employee': record.userName,
+                    'Department': record.department,
+                    'Date': record.date,
+                    'Attendance Status': isAbsent ? 'ABSENT' : (record.status === 'on-leave' || record.mode === 'LEAVE' ? 'LEAVE' : 'PRESENT'),
+                    'Clock In (UTC)': clockInData?.utcTime || '-',
+                    'Clock In (TZ Offset)': clockInData?.timezoneOffset || '-',
+                    'Clock In (Adjusted)': record.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { timeZone: reportTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-',
+                    'Clock Out (UTC)': clockOutData?.utcTime || '-',
+                    'Clock Out (TZ Offset)': clockOutData?.timezoneOffset || '-',
+                    'Clock Out (Adjusted)': record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { timeZone: reportTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-',
+                    'Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
+                    'Actual Hours': Math.floor(stats.workMs / (1000 * 60 * 60)),
+                    'Actual Minutes': Math.floor((stats.workMs % (1000 * 60 * 60)) / (1000 * 60)),
+                    'Leave Hours': Math.floor(stats.leaveMs / (1000 * 60 * 60)),
+                    'Work Location': record.mode || '-',
+                    'Comments': comments.join('; '),
+                    'Report Timezone': reportTimezone
+                }
+            })
 
-                // Sheet 2: Summary (Derive from data)
-                const uniqueEmployees = Array.from(new Set(data.map((r: any) => r.userId)))
-                const summaryData = uniqueEmployees.map(id => {
-                    const empRecs = data.filter((r: any) => r.userId === id)
-                    const stats = calculateDurations(empRecs)
-                    const firstRec = empRecs[0]
-                    return {
-                        'Employee': firstRec.userName,
-                        'Department': firstRec.department,
-                        'Days Worked': empRecs.filter((r: any) => r.clockIn).length,
-                        'Total Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
-                        'Actual Hours': Math.floor(stats.workMs / (1000 * 60 * 60)),
-                        'Actual Minutes': Math.floor((stats.workMs % (1000 * 60 * 60)) / (1000 * 60)),
-                        'Days Leave': empRecs.filter((r: any) => r.status === 'on-leave' || r.mode === 'LEAVE' || r.status === 'LEAVE').length,
-                        'Total Leave Hours': Math.floor(stats.leaveMs / (1000 * 60 * 60))
-                    }
-                }).sort((a, b) => a.Employee.localeCompare(b.Employee))
+            // Sheet 2: Finance Summary — ALL target staff, including those fully absent
+            const summaryData = targetStaff.map(staff => {
+                const empRecs = data.filter((r: any) => r.userId === staff.id)
+                const stats = calculateDurations(empRecs)
+                const totalDays = allDates.length
+                const daysWorked = empRecs.filter((r: any) => r.clockIn).length
+                const daysLeave = empRecs.filter((r: any) => r.status === 'on-leave' || r.mode === 'LEAVE' || r.status === 'LEAVE').length
+                const daysAbsent = totalDays - daysWorked - daysLeave
+                return {
+                    'Employee': staff.name,
+                    'Department': staff.department?.name || staff.departmentName || 'Unassigned',
+                    'Employment Location': staff.employmentLocation || '-',
+                    'Total Days in Range': totalDays,
+                    'Days Worked': daysWorked,
+                    'Days Absent': Math.max(0, daysAbsent),
+                    'Days Leave': daysLeave,
+                    'Total Work Hours': Number((stats.workMs / (1000 * 60 * 60)).toFixed(2)),
+                    'Actual Hours': Math.floor(stats.workMs / (1000 * 60 * 60)),
+                    'Actual Minutes': Math.floor((stats.workMs % (1000 * 60 * 60)) / (1000 * 60)),
+                    'Total Leave Hours': Math.floor(stats.leaveMs / (1000 * 60 * 60))
+                }
+            }).sort((a, b) => a.Employee.localeCompare(b.Employee))
 
-                const wb = XLSX.utils.book_new()
+            const wb = XLSX.utils.book_new()
 
-                const wsLogs = XLSX.utils.json_to_sheet(logData)
-                wsLogs['!cols'] = Object.keys(logData[0] || {}).map(key => ({ wch: Math.max(key.length, 15) }))
-                XLSX.utils.book_append_sheet(wb, wsLogs, "Master Ledger")
+            const wsLogs = XLSX.utils.json_to_sheet(logData)
+            wsLogs['!cols'] = Object.keys(logData[0] || {}).map(key => ({ wch: Math.max(key.length, 15) }))
+            XLSX.utils.book_append_sheet(wb, wsLogs, "Master Ledger")
 
-                const wsSummary = XLSX.utils.json_to_sheet(summaryData)
-                wsSummary['!cols'] = Object.keys(summaryData[0] || {}).map(key => ({ wch: Math.max(key.length, 15) }))
-                XLSX.utils.book_append_sheet(wb, wsSummary, "Finance Summary")
+            const wsSummary = XLSX.utils.json_to_sheet(summaryData)
+            wsSummary['!cols'] = Object.keys(summaryData[0] || {}).map(key => ({ wch: Math.max(key.length, 18) }))
+            XLSX.utils.book_append_sheet(wb, wsSummary, "Finance Summary")
 
-                XLSX.writeFile(wb, `REDADAIR_MASTER_PAYROLL_${startDate}_${endDate}.xlsx`)
-            }
+            XLSX.writeFile(wb, `REDADAIR_MASTER_PAYROLL_${startDate}_${endDate}.xlsx`)
         } catch (error) {
             console.error("Export failed:", error)
+            toast.error("Export failed. Please try again.")
         } finally {
             setGenerating(false)
         }
@@ -338,6 +383,25 @@ export default function ExportPage() {
                                             {dept.name}
                                         </SelectItem>
                                     ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Employment Location</Label>
+                            <Select value={selectedLocation} onValueChange={(val) => {
+                                setSelectedLocation(val)
+                                setSelectedStaffIds([])
+                            }}>
+                                <SelectTrigger className="h-10">
+                                    <div className="flex items-center gap-2">
+                                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                                        <SelectValue placeholder="All Locations" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Locations</SelectItem>
+                                    <SelectItem value="Philippines">Philippines</SelectItem>
+                                    <SelectItem value="Australia">Australia</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

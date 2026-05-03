@@ -65,7 +65,7 @@ function getPHTToday() {
  * Helper to automatically "seal" open sessions from previous days.
  * If someone forgot to clock out or end a break, we close them at 11:59:59 PM of that day.
  */
-async function cleanupOldSessions() {
+export async function cleanupOldSessions() {
     const unclosed = await prisma.attendance.findMany({
         where: {
             clockOut: null,
@@ -81,13 +81,6 @@ async function cleanupOldSessions() {
                     employmentLocation: true,
                     shiftStartTime: true,
                     shiftEndTime: true,
-                    accounts: {
-                        select: {
-                            access_token: true,
-                            refresh_token: true,
-                            provider: true
-                        }
-                    }
                 }
             }
         }
@@ -110,9 +103,6 @@ async function cleanupOldSessions() {
         const sessionDateStr = session.date.toISOString().split('T')[0]
 
         if (!session.clockIn) continue
-
-        // Get user's current local time in HH:mm format
-        const localTimeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone })
 
         const is14HoursPast = (now.getTime() - session.clockIn.getTime()) >= (14 * 60 * 60 * 1000);
 
@@ -162,8 +152,9 @@ async function cleanupOldSessions() {
             reason = "reached the standard 9-hour limit";
         }
 
-        // Trigger condition: 5 mins after their shift end time, or next day
-        const autoClockOutTriggerTime = new Date(targetTime.getTime() + 5 * 60 * 1000);
+        // Reminder at 5 mins past shift end; auto clock-out at 30 mins past shift end
+        const reminderTriggerTime = new Date(targetTime.getTime() + 5 * 60 * 1000);
+        const autoClockOutTriggerTime = new Date(targetTime.getTime() + 30 * 60 * 1000);
 
         // 1. Calculate End of Day Barrier (Local 23:59 -> UTC)
         const isoString = `${sessionDateStr}T23:59:59.999${offsetStr}`;
@@ -177,6 +168,8 @@ async function cleanupOldSessions() {
         } else if (sessionDateStr === userTodayStr && is14HoursPast) {
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && now >= autoClockOutTriggerTime) {
+            shouldAutoClockOut = true;
+        } else if (sessionDateStr === userTodayStr && now >= reminderTriggerTime) {
             shouldSendReminder = true;
         }
 
@@ -269,7 +262,7 @@ async function cleanupOldSessions() {
                     type: 'SYSTEM',
                     title: 'System Auto-Clock Out',
                     createdAt: {
-                        gte: new Date(new Date().setHours(0, 0, 0, 0))
+                        gte: new Date(Date.now() - 12 * 60 * 60 * 1000)
                     }
                 }
             })
@@ -286,54 +279,37 @@ async function cleanupOldSessions() {
                 })
                 broadcastUpdate('notification', { userId })
 
-                // 2. Email Notification
-                // IMPORTANT: Always use the AFFECTED USER's OWN OAuth tokens (not the session of
-                // whoever triggered the cleanup). This ensures the email is sent self-to-self,
-                // i.e. the employee receives an email that appears to come from their own account.
                 if (session.user.email) {
-                    // Find the user's own Google OAuth tokens stored in the Account table
-                    const googleAccount = session.user.accounts?.find(
-                        (acc: any) => acc.provider === 'google' && acc.access_token
-                    );
-
-                    if (googleAccount?.access_token) {
-                        try {
-                            await sendForgottenClockOutEmail({
-                                userName: session.user.name || "Employee",
-                                userEmail: session.user.email,
-                                userAccessToken: googleAccount.access_token,
-                                date: dateStr,
-                                clockOutTime: formattedClockOutTime,
-                                reason: reason,
-                                refreshToken: googleAccount.refresh_token || undefined
-                            });
-                        } catch (emailErr) {
-                            console.error(`Failed to send forgotten clock out email for ${session.user.email}:`, emailErr);
-                        }
-                    } else {
-                        console.warn(`[Auto Clock-Out Email] Skipped for ${session.user.email}: no Google OAuth token found in their Account record.`);
+                    try {
+                        await sendForgottenClockOutEmail({
+                            userName: session.user.name || "Employee",
+                            userEmail: session.user.email,
+                            date: dateStr,
+                            clockOutTime: formattedClockOutTime,
+                            reason: reason,
+                        });
+                    } catch (emailErr) {
+                        console.error(`Failed to send forgotten clock out email for ${session.user.email}:`, emailErr);
                     }
                 }
             }
         } else if (shouldSendReminder) {
-            // Send overdue reminder if not already sent
-            const existingNotification = await prisma.notification.findFirst({
+            const existingReminder = await prisma.notification.findFirst({
                 where: {
                     userId: session.user.id,
                     type: 'OVERDUE_REMINDER',
                     createdAt: {
-                        gte: new Date(new Date().setHours(0, 0, 0, 0))
+                        gte: new Date(Date.now() - 12 * 60 * 60 * 1000)
                     }
                 }
             });
 
-            if (!existingNotification) {
-                const message = "Just a friendly reminder to check if your shift has ended, but you're still clocked in. If you're all done for the day, please remember to clock out. If you're working a little late, no problem at all!";
+            if (!existingReminder) {
                 await prisma.notification.create({
                     data: {
                         userId: session.user.id,
                         title: "Shift Wrap-Up",
-                        message: message,
+                        message: "Just a friendly reminder to check if your shift has ended, but you're still clocked in. If you're all done for the day, please remember to clock out. If you're working a little late, no problem at all!",
                         type: "OVERDUE_REMINDER",
                         link: "/user"
                     }
@@ -341,26 +317,17 @@ async function cleanupOldSessions() {
                 broadcastUpdate('notification', { userId: session.user.id });
 
                 if (session.user.email) {
-                    const googleAccount = session.user.accounts?.find(
-                        (acc: any) => acc.provider === 'google' && acc.access_token
-                    );
-                    if (googleAccount?.access_token) {
-                        const formattedEndTime = targetTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: timeZone });
-                        try {
-                            const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
-                            await sendOverdueDepartureEmail({
-                                userName: session.user.name || "Employee",
-                                userEmail: session.user.email,
-                                userAccessToken: googleAccount.access_token,
-                                scheduledEnd: formattedEndTime,
-                                actionLink: `${appUrl}/user`,
-                                refreshToken: googleAccount.refresh_token || undefined
-                            });
-                        } catch (e) {
-                            console.error(`Failed to send overdue email for ${session.user.email}:`, e);
-                        }
-                    } else {
-                        console.warn(`[Overdue Email] Skipped for ${session.user.email}: no Google OAuth token found.`);
+                    const formattedEndTime = targetTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: timeZone });
+                    const appUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
+                    try {
+                        await sendOverdueDepartureEmail({
+                            userName: session.user.name || "Employee",
+                            userEmail: session.user.email,
+                            scheduledEnd: formattedEndTime,
+                            actionLink: `${appUrl}/user`,
+                        });
+                    } catch (e) {
+                        console.error(`Failed to send overdue email for ${session.user.email}:`, e);
                     }
                 }
             }
@@ -372,7 +339,7 @@ async function cleanupOldSessions() {
  * Data integrity helper: ensure no session has multiple open breaks.
  * This fixes "ghost breaks" that cause inflated break time.
  */
-async function cleanupDuplicateBreaks() {
+export async function cleanupDuplicateBreaks() {
     const today = getPHTToday()
     const sessionsWithOpenBreaks = await prisma.attendance.findMany({
         where: { date: today, deletedAt: null },
@@ -431,14 +398,20 @@ async function syncAvailabilityWithAttendance() {
     }
 }
 
+// Debounce cleanup so it runs at most once every 5 minutes per instance (non-blocking in GET)
+let lastCleanupTs = 0
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000
+
 export async function GET(req: Request) {
     const session = await auth() as any
-    try {
-        await cleanupOldSessions()
-        await cleanupDuplicateBreaks()
-        await syncAvailabilityWithAttendance()
-    } catch (e) {
-        console.error("Cleanup failed:", e)
+
+    // Fire cleanup in background — non-blocking, throttled to once per 5 min per instance
+    const nowTs = Date.now()
+    if (nowTs - lastCleanupTs > CLEANUP_INTERVAL_MS) {
+        lastCleanupTs = nowTs
+        cleanupOldSessions().catch(e => console.error("Cleanup failed:", e))
+        cleanupDuplicateBreaks().catch(e => console.error("Cleanup failed:", e))
+        syncAvailabilityWithAttendance().catch(e => console.error("Sync failed:", e))
     }
 
     const { searchParams } = new URL(req.url)
@@ -741,14 +714,22 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-    // Run cleanup immediately to ensure any pending auto clock-outs are handled 
-    // before we mistakenly tell the user "You are already clocked in."
+    // Only run cleanup when stale sessions from previous days actually exist.
+    // A fast findFirst check avoids the 1-3s cleanup penalty on normal clock-ins.
     try {
-        await cleanupOldSessions()
-        await cleanupDuplicateBreaks()
-        await syncAvailabilityWithAttendance()
+        const today = new Date()
+        today.setUTCHours(0, 0, 0, 0)
+        const stale = await prisma.attendance.findFirst({
+            where: { clockOut: null, deletedAt: null, date: { lt: today } },
+            select: { id: true }
+        })
+        if (stale) {
+            await cleanupOldSessions()
+            await cleanupDuplicateBreaks()
+        }
+        syncAvailabilityWithAttendance().catch(e => console.error("Sync failed:", e))
     } catch (e) {
-        console.error("Cleanup failed in POST:", e)
+        console.error("Cleanup check failed:", e)
     }
 
     try {
@@ -884,30 +865,29 @@ export async function POST(req: Request) {
         }
 
 
-        // Update Summary
-        await updateAttendanceSummary(userId, targetDate)
+        broadcastUpdate('attendance', attendance)
+        broadcastUpdate('staff')
 
-        // Log Activity
+        // Fire-and-forget tail work — responds to user immediately
         const actorName = session?.user?.id !== userId ? (session?.user?.name || 'Admin') : undefined
-        await logActivity({
+        updateAttendanceSummary(userId, targetDate).catch(e => console.error('[Clock-In] Summary failed:', e))
+        logActivity({
             userId,
             action: 'CLOCK_IN',
             entityType: 'ATTENDANCE',
             entityId: attendance.id,
             details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockIn?.toISOString() || new Date().toISOString(), ...(actorName && { actor: actorName }) }
-        })
+        }).catch(e => console.error('[Clock-In] Log failed:', e))
         if (attendance.clockOut) {
-            await logActivity({
+            logActivity({
                 userId,
                 action: 'CLOCK_OUT',
                 entityType: 'ATTENDANCE',
                 entityId: attendance.id,
                 details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockOut.toISOString(), ...(actorName && { actor: actorName }) }
-            })
+            }).catch(e => console.error('[Clock-In] Log clock-out failed:', e))
         }
 
-        broadcastUpdate('attendance', attendance)
-        broadcastUpdate('staff')
         return NextResponse.json(attendance)
     } catch (error) {
         console.error("Attendance POST error:", error)
@@ -1053,20 +1033,19 @@ export async function PATCH(req: Request) {
             data: updateData
         })
 
-        // Update Summary
-        await updateAttendanceSummary(userId, existing.date)
+        broadcastUpdate('attendance', updated)
+        broadcastUpdate('staff')
 
-        // Log Activity
-        await logActivity({
+        // Fire-and-forget tail work — responds to user immediately
+        updateAttendanceSummary(userId, existing.date).catch(e => console.error('[Action] Summary failed:', e))
+        logActivity({
             userId,
             action: action ? action.toUpperCase().replace('-', '_') : 'UPDATE',
             entityType: 'ATTENDANCE',
             entityId: existing.id,
             details: { action, date: existing.date }
-        })
+        }).catch(e => console.error('[Action] Log failed:', e))
 
-        broadcastUpdate('attendance', updated)
-        broadcastUpdate('staff')
         return NextResponse.json(updated)
     } catch (error) {
         console.error("Attendance PATCH error:", error)

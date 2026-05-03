@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from "@/lib/prisma";
-import { sendBreakLimitEmail, sendLateArrivalEmail, sendOverdueDepartureEmail, sendBreakExpectedReturnEmail, sendManagerLateReportEmail } from "@/lib/email";
+import { sendBreakLimitEmail, sendLateArrivalEmail, sendBreakExpectedReturnEmail, sendManagerLateReportEmail } from "@/lib/email";
 import { generateMagicLink } from "@/lib/magic-link";
 import { broadcastUpdate } from "@/lib/eventBus";
+import { isNSWPublicHoliday, isAustralianTimezone } from "@/lib/holidays";
+import { cleanupOldSessions, cleanupDuplicateBreaks } from "@/app/api/attendance/route";
 
 export const dynamic = 'force-dynamic'; // Prevent static caching
 
@@ -20,17 +22,18 @@ export async function GET(request: Request) {
 
         console.log("[Attendance Monitor] CRON Job Triggered manually or by Scheduler");
 
-        // Server-side UTC midnight (used for break checks which don't need timezone awareness)
-        const startOfDayUTC = new Date();
-        startOfDayUTC.setUTCHours(0, 0, 0, 0);
-        const startOfDay = startOfDayUTC;
+        // Attendance dates are stored using Philippine midnight (Asia/Manila) via getPHTToday().
+        // Use the same timezone to avoid picking up yesterday's records during the UTC midnight → PHT midnight window.
+        const phtDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+        const [phtYear, phtMonth, phtDay] = phtDateStr.split('-').map(Number);
+        const startOfDay = new Date(Date.UTC(phtYear, phtMonth - 1, phtDay));
 
         // ============================================================
         // 1. Break Limits Check
         // ============================================================
         const attendances = await prisma.attendance.findMany({
             where: {
-                date: { gte: startOfDay },
+                date: startOfDay, // Exact match: only today's Philippine-date records
                 clockOut: null, // Active day
                 deletedAt: null,
                 OR: [
@@ -39,7 +42,7 @@ export async function GET(request: Request) {
                 ]
             },
             include: {
-                breaks: true,
+                breaks: { where: { deletedAt: null } }, // Exclude soft-deleted breaks
                 user: {
                     include: {
                         accounts: true
@@ -71,47 +74,61 @@ export async function GET(request: Request) {
             const refreshToken = googleAccount?.refresh_token || undefined;
             const nextAuthUrl = process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app';
 
-            if (accessToken) {
-                // Check Limit (60m)
-                if (totalMinutes > LIMIT_MINUTES && !att.breakLimitExceededSent) {
-                    const claimed = await prisma.attendance.updateMany({
-                        where: { id: att.id, breakLimitExceededSent: false },
-                        data: { breakLimitExceededSent: true }
-                    });
-                    if (claimed.count === 0) continue;
+            // Check Limit (60m)
+            if (totalMinutes > LIMIT_MINUTES && !att.breakLimitExceededSent) {
+                const claimed = await prisma.attendance.updateMany({
+                    where: { id: att.id, breakLimitExceededSent: false },
+                    data: { breakLimitExceededSent: true }
+                });
+                if (claimed.count === 0) continue;
 
-                    const actionLink = generateMagicLink(att.userId, 'end-break');
-                    await sendBreakLimitEmail({
-                        userName: att.user.name || "Employee",
-                        userEmail: att.user.email,
-                        userAccessToken: accessToken,
-                        totalBreakTime: `${Math.floor(totalMinutes)} mins`,
-                        limit: "60 mins",
-                        actionLink,
-                        refreshToken
-                    });
-                    console.log(`[Break Check] Sent Limit Email to ${att.user.email}`);
-                }
-                // Check Warning (45m)
-                else if (totalMinutes >= WARNING_MINUTES && !att.breakLimitExceededSent && !att.breakWarningSent) {
-                    const claimed = await prisma.attendance.updateMany({
-                        where: { id: att.id, breakWarningSent: false },
-                        data: { breakWarningSent: true }
-                    });
-                    if (claimed.count === 0) continue;
+                const actionLink = generateMagicLink(att.userId, 'end-break');
+                await prisma.notification.create({
+                    data: {
+                        userId: att.userId,
+                        title: "Break Limit Exceeded",
+                        message: "You have been on break for over 1 hour. Please return to work.",
+                        type: "BREAK_LIMIT",
+                        link: actionLink
+                    }
+                });
+                broadcastUpdate('notification', { userId: att.userId });
+                await sendBreakLimitEmail({
+                    userName: att.user.name || "Employee",
+                    userEmail: att.user.email,
+                    totalBreakTime: `${Math.floor(totalMinutes)} mins`,
+                    limit: "60 mins",
+                    actionLink,
+                });
+                console.log(`[Break Check] Sent Limit Email to ${att.user.email}`);
+            }
+            // Check Warning (45m)
+            else if (totalMinutes >= WARNING_MINUTES && !att.breakLimitExceededSent && !att.breakWarningSent) {
+                const claimed = await prisma.attendance.updateMany({
+                    where: { id: att.id, breakWarningSent: false },
+                    data: { breakWarningSent: true }
+                });
+                if (claimed.count === 0) continue;
 
-                    const actionLink = `${nextAuthUrl}/user`;
-                    await sendBreakLimitEmail({
-                        userName: att.user.name || "Employee",
-                        userEmail: att.user.email,
-                        userAccessToken: accessToken,
-                        totalBreakTime: `${Math.floor(totalMinutes)} mins`,
-                        limit: "60 mins",
-                        actionLink,
-                        refreshToken
-                    });
-                    console.log(`[Break Check] Sent Warning Email to ${att.user.email}`);
-                }
+                const actionLink = `${nextAuthUrl}/user`;
+                await prisma.notification.create({
+                    data: {
+                        userId: att.userId,
+                        title: "Break Warning",
+                        message: "You have been on break for 45 minutes. Your limit is 1 hour.",
+                        type: "BREAK_LIMIT",
+                        link: actionLink
+                    }
+                });
+                broadcastUpdate('notification', { userId: att.userId });
+                await sendBreakLimitEmail({
+                    userName: att.user.name || "Employee",
+                    userEmail: att.user.email,
+                    totalBreakTime: `${Math.floor(totalMinutes)} mins`,
+                    limit: "60 mins",
+                    actionLink,
+                });
+                console.log(`[Break Check] Sent Warning Email to ${att.user.email}`);
             }
 
             // ============================================================
@@ -125,38 +142,30 @@ export async function GET(request: Request) {
 
                     // If past expected return time (with a 2-minute grace period)
                     if (now.getTime() > expected.getTime() + (2 * 60000)) {
-                        if (accessToken) {
-                            const actionLink = generateMagicLink(att.userId, 'end-break');
-                            const sent = await sendBreakExpectedReturnEmail({
-                                userName: att.user.name || "Employee",
-                                userEmail: att.user.email,
-                                userAccessToken: accessToken,
-                                expectedReturnTime: expected.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                                actionLink,
-                                refreshToken
-                            });
-
-                            if (sent) {
-                                await prisma.break.update({
-                                    where: { id: activeBreak.id },
-                                    data: { breakExpectedReturnEmailSent: true }
-                                });
-                                // 2. Broadcast for real-time bell
-                                await prisma.notification.create({
-                                    data: {
-                                        userId: att.userId,
-                                        title: "Break Status Check",
-                                        message: "Your break was expected to end. Please update your status.",
-                                        type: "BREAK_LIMIT",
-                                        link: actionLink
-                                    }
-                                });
-
-                                broadcastUpdate('notification', { userId: att.userId });
-
-                                console.log(`[Break Check] Sent Expected Return Reminder to ${att.user.email}`);
+                        const actionLink = generateMagicLink(att.userId, 'end-break');
+                        // Mark as sent first to prevent re-triggering on next cron run
+                        await prisma.break.update({
+                            where: { id: activeBreak.id },
+                            data: { breakExpectedReturnEmailSent: true }
+                        });
+                        // Always create in-app notification
+                        await prisma.notification.create({
+                            data: {
+                                userId: att.userId,
+                                title: "Break Status Check",
+                                message: "Your break was expected to end. Please update your status.",
+                                type: "BREAK_LIMIT",
+                                link: actionLink
                             }
-                        }
+                        });
+                        broadcastUpdate('notification', { userId: att.userId });
+                        await sendBreakExpectedReturnEmail({
+                            userName: att.user.name || "Employee",
+                            userEmail: att.user.email,
+                            expectedReturnTime: expected.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: att.user.selectedTimezone || 'Asia/Manila' }),
+                            actionLink,
+                        });
+                        console.log(`[Break Check] Sent Expected Return Reminder to ${att.user.email}`);
                     }
                 }
             }
@@ -174,7 +183,7 @@ export async function GET(request: Request) {
         });
 
         // Track late arrivals by manager for summary emails
-        const managerLateStaffMap = new Map<string, { managerName: string, managerEmail: string, lateStaff: { name: string, scheduledStart: string }[] }>();
+        const managerLateStaffMap = new Map<string, { managerId: string, managerName: string, managerEmail: string, managerTimezone: string, lateStaff: { name: string, scheduledStart: string }[] }>();
 
         for (const user of allActiveUsers) {
             const tz = user.selectedTimezone || 'Asia/Manila';
@@ -185,6 +194,9 @@ export async function GET(request: Request) {
             // Exclude Weekends
             const todayInUserTz = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday: 'short' });
             if (todayInUserTz === 'Sat' || todayInUserTz === 'Sun') continue;
+
+            // Exclude NSW public holidays for Australian-timezone users
+            if (isAustralianTimezone(tz) && isNSWPublicHoliday(userLocalDateStr)) continue;
 
             // Check if already clocked in today
             const todayAttendance = await prisma.attendance.findFirst({
@@ -229,58 +241,51 @@ export async function GET(request: Request) {
             // Trigger if 10+ minutes past scheduled start and less than 12 hours late
             if (nowTotalMins >= startTotalMins + 10 && nowTotalMins < startTotalMins + 720) {
                 const account = user.accounts.find(a => a.provider === 'google');
-                if (account?.access_token) {
-                    const magicLink = generateMagicLink(user.id, 'clock-in');
+                const magicLink = generateMagicLink(user.id, 'clock-in');
 
-                    // Write notification first as the atomic lock — if another concurrent run
-                    // already inserted one, this will succeed but alreadyNotified check above
-                    // will block it. We use a try/catch in case a unique constraint is added later.
-                    let notification;
-                    try {
-                        notification = await prisma.notification.create({
-                            data: {
-                                userId: user.id,
-                                title: "Late Arrival Reminder",
-                                message: "You haven't clocked in yet today. Click here to clock in.",
-                                type: "LATE_REMINDER",
-                                link: magicLink
-                            }
-                        });
-                    } catch {
-                        continue; // Another run already claimed this
-                    }
-
-                    const sent = await sendLateArrivalEmail({
-                        userName: user.name || "Employee",
-                        userEmail: user.email,
-                        userAccessToken: account.access_token,
-                        scheduledStart: shiftStartStr,
-                        actionLink: magicLink,
-                        refreshToken: account.refresh_token || undefined
+                // Always create in-app notification (atomic lock against concurrent runs)
+                try {
+                    await prisma.notification.create({
+                        data: {
+                            userId: user.id,
+                            title: "Late Arrival Reminder",
+                            message: "You haven't clocked in yet today. Click here to clock in.",
+                            type: "LATE_REMINDER",
+                            link: magicLink
+                        }
                     });
+                } catch {
+                    continue; // Another run already claimed this
+                }
 
-                    if (sent) {
-                        broadcastUpdate('notification', { userId: user.id });
-                        console.log(`[Late Check] Sent email to ${user.email}`);
+                broadcastUpdate('notification', { userId: user.id });
 
-                        // Add to manager's daily report (if enabled in their settings)
-                        if (user.manager?.email && user.manager.managerNotificationsEnabled !== false) {
-                            const mgrId = user.manager.id;
-                            if (!managerLateStaffMap.has(mgrId)) {
-                                managerLateStaffMap.set(mgrId, {
-                                    managerName: user.manager.name || "Manager",
-                                    managerEmail: user.manager.email,
-                                    lateStaff: []
-                                });
-                            }
-                            managerLateStaffMap.get(mgrId)?.lateStaff.push({
-                                name: user.name || "Employee",
-                                scheduledStart: shiftStartStr
+                const sent = await sendLateArrivalEmail({
+                    userName: user.name || "Employee",
+                    userEmail: user.email,
+                    scheduledStart: shiftStartStr,
+                    actionLink: magicLink,
+                });
+
+                if (sent) {
+                    console.log(`[Late Check] Sent email to ${user.email}`);
+
+                    // Add to manager's daily report (if enabled in their settings)
+                    if (user.manager?.email && user.manager.managerNotificationsEnabled !== false) {
+                        const mgrId = user.manager.id;
+                        if (!managerLateStaffMap.has(mgrId)) {
+                            managerLateStaffMap.set(mgrId, {
+                                managerId: mgrId,
+                                managerName: user.manager.name || "Manager",
+                                managerEmail: user.manager.email,
+                                managerTimezone: user.manager.selectedTimezone || 'Asia/Manila',
+                                lateStaff: []
                             });
                         }
-                    } else {
-                        // Email failed — remove the notification so it retries next cron run
-                        await prisma.notification.delete({ where: { id: notification.id } });
+                        managerLateStaffMap.get(mgrId)?.lateStaff.push({
+                            name: user.name || "Employee",
+                            scheduledStart: shiftStartStr
+                        });
                     }
                 }
             }
@@ -290,6 +295,29 @@ export async function GET(request: Request) {
         // 2b. Send Manager Daily Reports
         // ============================================================
         for (const [_, report] of managerLateStaffMap) {
+            const mgrTz = report.managerTimezone;
+            const mgrLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: mgrTz });
+
+            // Skip if it's a weekend in the manager's timezone
+            const mgrDayOfWeek = new Date().toLocaleDateString('en-US', { timeZone: mgrTz, weekday: 'short' });
+            if (mgrDayOfWeek === 'Sat' || mgrDayOfWeek === 'Sun') continue;
+
+            // Skip if it's a NSW public holiday for the manager
+            if (isAustralianTimezone(mgrTz) && isNSWPublicHoliday(mgrLocalDateStr)) continue;
+
+            // Skip if manager is on approved leave today
+            const mgrStartOfDay = new Date(`${mgrLocalDateStr}T00:00:00Z`);
+            const managerOnLeave = await prisma.leave.findFirst({
+                where: {
+                    userId: report.managerId,
+                    status: 'APPROVED',
+                    startDate: { lte: mgrStartOfDay },
+                    endDate: { gte: mgrStartOfDay },
+                    deletedAt: null
+                }
+            });
+            if (managerOnLeave) continue;
+
             try {
                 await sendManagerLateReportEmail({
                     managerName: report.managerName,
@@ -302,95 +330,11 @@ export async function GET(request: Request) {
             }
         }
 
-        // ============================================================
-        // 3. Overdue Departure Check
-        // ============================================================
-        const activeSessions = await prisma.attendance.findMany({
-            where: {
-                clockOut: null,
-                deletedAt: null,
-                overdueDepartureSent: false,
-            },
-            include: { user: { include: { accounts: true } } }
-        });
-
-        // Deduplicate by userId — only process one session per user per cron run
-        const seenUserIds = new Set<string>();
-
-        for (const session of activeSessions) {
-            const user = session.user;
-
-            // Skip if we already processed this user in this cron run
-            if (seenUserIds.has(user.id)) continue;
-
-            const tz = user.selectedTimezone || 'Asia/Manila';
-
-            const userLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
-            const userStartOfDay = new Date(`${userLocalDateStr}T00:00:00Z`);
-
-            // Only consider sessions that started on the user's local today
-            if (session.date < userStartOfDay) continue;
-
-            // Second guard: check notification table to prevent concurrent-run duplicates
-            // (the overdueDepartureSent flag alone has a race window between read and update)
-            const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
-            const alreadyOverdueNotified = await prisma.notification.findFirst({
-                where: {
-                    userId: user.id,
-                    type: 'OVERDUE_REMINDER',
-                    createdAt: { gte: twelveHoursAgo }
-                }
-            });
-            if (alreadyOverdueNotified) continue;
-
-            const nowTimeStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour12: false });
-            const [nowH, nowM] = nowTimeStr.split(':').map(Number);
-            const nowTotalMins = nowH * 60 + nowM;
-
-            const shiftEndStr = user.shiftEndTime || "17:00";
-            const [endH, endM] = shiftEndStr.split(':').map(Number);
-            const endTotalMins = endH * 60 + endM;
-
-            // Trigger if 30 mins past end time
-            if (nowTotalMins >= endTotalMins + 30) {
-                const account = user.accounts.find(a => a.provider === 'google');
-                if (account?.access_token) {
-                    // Atomic conditional update — only this cron instance proceeds if it wins the write
-                    const claimed = await prisma.attendance.updateMany({
-                        where: { id: session.id, overdueDepartureSent: false },
-                        data: { overdueDepartureSent: true }
-                    });
-                    if (claimed.count === 0) continue; // Another concurrent run already claimed this
-
-                    seenUserIds.add(user.id);
-
-                    const magicLink = generateMagicLink(user.id, 'clock-out');
-
-                    const sent = await sendOverdueDepartureEmail({
-                        userName: user.name || "Employee",
-                        userEmail: user.email,
-                        userAccessToken: account.access_token,
-                        scheduledEnd: shiftEndStr,
-                        actionLink: magicLink,
-                        refreshToken: account.refresh_token || undefined
-                    });
-
-                    if (sent) {
-                        await prisma.notification.create({
-                            data: {
-                                userId: user.id,
-                                title: "Overdue Departure Reminder",
-                                message: "Your shift has ended. Click here to clock out.",
-                                type: "OVERDUE_REMINDER",
-                                link: magicLink
-                            }
-                        });
-                        broadcastUpdate('notification', { userId: user.id });
-                        console.log(`[Overdue Check] Sent email to ${user.email}`);
-                    }
-                }
-            }
-        }
+        // Auto clock-out + overdue reminders: handled entirely by cleanupOldSessions().
+        // It fires the 5-min reminder email and 30-min auto clock-out email per user,
+        // with per-user timezone awareness and 12-hour dedup windows to prevent spam.
+        await cleanupOldSessions();
+        await cleanupDuplicateBreaks();
 
         return NextResponse.json({ success: true, message: "Cron jobs executed successfully." });
 

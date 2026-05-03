@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
+import { updateAttendanceSummary } from '@/lib/db-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,7 @@ export async function GET() {
         // Fetch only core/personal data for immediate dashboard load
         const [
             user,
-            myAttendance,
+            rawMyAttendance,
             myLeaves,
             myAttendanceRequests
         ] = await Promise.all([
@@ -66,7 +67,30 @@ export async function GET() {
             })
         ])
 
-        // Transform summary records to include UI-friendly status strings 
+        // Self-heal: if an active session exists but has no summaryId, the fire-and-forget
+        // updateAttendanceSummary call on clock-in failed silently. Repair it now so the
+        // dashboard can find it via the summary → rawRecords path.
+        let myAttendance = rawMyAttendance
+        const orphaned = await prisma.attendance.findFirst({
+            where: { userId, clockOut: null, deletedAt: null, summaryId: null }
+        })
+        if (orphaned) {
+            await updateAttendanceSummary(userId, orphaned.date)
+            myAttendance = await prisma.attendanceSummary.findMany({
+                where: { userId },
+                include: {
+                    rawRecords: {
+                        where: { deletedAt: null },
+                        include: { breaks: true },
+                        orderBy: { clockIn: 'asc' }
+                    }
+                },
+                orderBy: { date: 'desc' },
+                take: 20
+            })
+        }
+
+        // Transform summary records to include UI-friendly status strings
         const transformMine = (summaryList: any[]) => {
             return summaryList.flatMap((s: any) => {
                 if (!s.rawRecords || s.rawRecords.length === 0) return []
@@ -95,6 +119,15 @@ export async function GET() {
             }).sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime())
         }
 
+        // Combined pending leave count: Leave (PENDING) + LeaveRequest (PENDING)
+        let pendingLeaveCount = myLeaves.filter((l: any) => l.status === 'PENDING' && !l.isArchived).length
+        try {
+            const lr = (prisma as any).leaveRequest
+            if (lr) {
+                pendingLeaveCount += await lr.count({ where: { userId, status: 'PENDING', isArchived: false, deletedAt: null } })
+            }
+        } catch { /* LeaveRequest model may not exist in older migrations */ }
+
         return NextResponse.json({
             user,
             attendance: {
@@ -103,6 +136,7 @@ export async function GET() {
             },
             leaves: myLeaves,
             attendanceRequests: myAttendanceRequests,
+            pendingLeaveCount,
             staff: [], // Staff endpoint handles this now
             teamLeaves: [] // Staff endpoint handles this now
         }, {

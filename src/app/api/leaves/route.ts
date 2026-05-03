@@ -55,7 +55,7 @@ export async function GET(req: Request) {
                 }),
                 deletedAt: null
             },
-            include: { user: { include: { department: true } } },
+            include: { user: { include: { department: true } }, history: { orderBy: { createdAt: 'asc' } } },
             orderBy: { createdAt: 'desc' }
         }
 
@@ -88,7 +88,13 @@ export async function GET(req: Request) {
             declineReason: l.declineReason,
             createdAt: l.createdAt.toISOString(),
             userTimeZone: l.user.selectedTimezone,
-            isRequest // Flag to help frontend or API distinguish if needed
+            isRequest,
+            history: isRequest ? (l.history || []).map((h: any) => ({
+                id: h.id,
+                activity: h.activity,
+                description: h.description,
+                createdAt: h.createdAt.toISOString()
+            })) : []
         })
 
         const transformedLeaves = leaves.map(l => transform(l, false))

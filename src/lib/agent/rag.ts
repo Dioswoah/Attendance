@@ -15,11 +15,24 @@ export interface ChatContext {
     attendance: any[];
     todayAttendance: any | null;
     leaves: any[];
+    leaveSummary: { year: number; byType: Record<string, number>; totalApprovedDays: number };
+    punctuality: {
+        year: number;
+        shiftStart: string;
+        daysWorked: number;
+        presentDays: number;
+        lateDays: number;
+        absentDays: number;
+        punctualityRate: number;
+        avgMinutesLate: number;
+        recentLateInstances: Array<{ date: string; minutesLate: number }>;
+    };
     managedEmployees?: any[];
 }
 
 export async function getAgentContext(userId: string, roles: UserRole[]): Promise<ChatContext> {
     const todayStr = new Date().toISOString().split('T')[0];
+    const yearStart = new Date(`${new Date().getFullYear()}-01-01T00:00:00.000Z`);
 
     const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -45,8 +58,8 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
     const fmtDate = (dt: Date) =>
         dt.toLocaleDateString('en-US', { timeZone: userTz, weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
 
-    // Fetch personal data
-    const [attendance, leaves] = await Promise.all([
+    // Fetch personal data + yearly summaries for punctuality in parallel
+    const [attendance, leaves, yearlySummaries] = await Promise.all([
         prisma.attendance.findMany({
             where: { userId },
             orderBy: { date: 'desc' },
@@ -54,9 +67,17 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
             include: { breaks: true }
         }),
         prisma.leaveRequest.findMany({
-            where: { userId },
-            orderBy: { startDate: 'desc' },
-            take: 5
+            where: { userId, startDate: { gte: yearStart } },
+            orderBy: { startDate: 'desc' }
+        }),
+        prisma.attendanceSummary.findMany({
+            where: {
+                userId,
+                date: { gte: yearStart },
+                status: { in: ['PRESENT', 'LATE', 'ABSENT', 'HALF_DAY'] }
+            },
+            select: { date: true, clockIn: true, status: true },
+            orderBy: { date: 'desc' }
         })
     ]);
 
@@ -81,6 +102,39 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
 
     // Determine live current status — prefer today's actual record over summary
     const liveStatus = todayRecord?.status || user.attendanceSummaries?.[0]?.status || user.availabilityStatus || 'Available'
+
+    // --- Punctuality calculation ---
+    const shiftStart: string = (user as any).shiftStartTime || '09:00'
+    const [shiftH, shiftM] = shiftStart.split(':').map(Number)
+    const GRACE_MS = 5 * 60 * 1000
+
+    const presentDays = yearlySummaries.filter(s => s.status === 'PRESENT').length
+    const lateDays    = yearlySummaries.filter(s => s.status === 'LATE').length
+    const absentDays  = yearlySummaries.filter(s => s.status === 'ABSENT').length
+    const daysWorked  = yearlySummaries.filter(s => s.status !== 'ABSENT').length
+    const punctualityRate = (presentDays + lateDays) > 0
+        ? Math.round((presentDays / (presentDays + lateDays)) * 100)
+        : 100
+
+    // Calculate minutes late for each LATE day
+    const lateInstances = yearlySummaries
+        .filter(s => s.status === 'LATE' && s.clockIn)
+        .map(s => {
+            const ci = s.clockIn!
+            const expected = new Date(ci)
+            expected.setHours(shiftH, shiftM, 0, 0)
+            const minutesLate = Math.round((ci.getTime() - expected.getTime() - GRACE_MS) / 60000)
+            return {
+                date: fmtDate(s.date),
+                minutesLate: Math.max(0, minutesLate)
+            }
+        })
+
+    const avgMinutesLate = lateInstances.length > 0
+        ? Math.round(lateInstances.reduce((sum, i) => sum + i.minutesLate, 0) / lateInstances.length)
+        : 0
+
+    const recentLateInstances = lateInstances.slice(0, 5)
 
     const context: ChatContext = {
         user: {
@@ -109,8 +163,36 @@ export async function getAgentContext(userId: string, roles: UserRole[]): Promis
             type: l.type,
             startDate: l.startDate.toDateString(),
             endDate: l.endDate.toDateString(),
-            status: l.status
-        }))
+            status: l.status,
+            duration: l.duration ?? null,
+            reason: l.reason ?? null
+        })),
+        leaveSummary: (() => {
+            const approved = leaves.filter(l => l.status === 'APPROVED');
+            const byType: Record<string, number> = {};
+            let total = 0;
+            for (const l of approved) {
+                const raw = l.duration;
+                let days: number;
+                if (!raw) { days = 1; }
+                else if (raw === 'Half Day') { days = 0.5; }
+                else { const m = String(raw).match(/^(\d+(?:\.\d+)?)/); days = m ? parseFloat(m[1]) : 1; }
+                byType[l.type] = (byType[l.type] || 0) + days;
+                total += days;
+            }
+            return { year: new Date().getFullYear(), byType, totalApprovedDays: total };
+        })(),
+        punctuality: {
+            year: new Date().getFullYear(),
+            shiftStart,
+            daysWorked,
+            presentDays,
+            lateDays,
+            absentDays,
+            punctualityRate,
+            avgMinutesLate,
+            recentLateInstances
+        }
     };
 
     // If Manager or Admin, fetch aggregated team data

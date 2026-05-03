@@ -202,12 +202,7 @@ export default function LeaveRequestsPage() {
     }
 
     const handleEdit = (request: LeaveRequest) => {
-        // If Approved/Declined, treat as new request
-        if (['APPROVED', 'DECLINED'].includes(request.status)) {
-            setEditingId(null)
-        } else {
-            setEditingId(request.id)
-        }
+        setEditingId(request.id)
         setLeaveType(request.type)
         // Parse duration back to type? Simplification: if it contains "Days" it's Full Day, else it is what it matches
         if (request.duration === 'Half Day') setDuration('Half Day')

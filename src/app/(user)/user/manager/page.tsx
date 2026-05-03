@@ -35,6 +35,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell } from 'recharts'
 import { Skeleton } from "@/components/ui/skeleton"
 
+interface LeaveHistoryEntry {
+    id: string
+    activity: string
+    description: string
+    createdAt: string
+}
+
 interface Request {
     id: string
     userId: string
@@ -56,6 +63,7 @@ interface Request {
     userTimeZone?: string
     targetId?: string
     targetAttendance?: any
+    history?: LeaveHistoryEntry[]
 }
 
 export default function ManagerControlPage() {
@@ -1155,6 +1163,31 @@ export default function ManagerControlPage() {
                                                                     {request.reason && (
                                                                         <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
                                                                             <p className="text-sm italic text-slate-600">"{request.reason}"</p>
+                                                                        </div>
+                                                                    )}
+                                                                    {request.history && request.history.length > 0 && (
+                                                                        <div className="mt-1">
+                                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Change History</p>
+                                                                            <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                                                                <table className="w-full text-xs">
+                                                                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                                                                        <tr>
+                                                                                            <th className="text-left p-2 font-bold text-slate-500">Activity</th>
+                                                                                            <th className="text-left p-2 font-bold text-slate-500">Date</th>
+                                                                                            <th className="text-left p-2 font-bold text-slate-500">Description</th>
+                                                                                        </tr>
+                                                                                    </thead>
+                                                                                    <tbody className="divide-y divide-slate-100">
+                                                                                        {request.history.map((h) => (
+                                                                                            <tr key={h.id} className="hover:bg-slate-50/50">
+                                                                                                <td className="p-2 font-semibold text-slate-700">{h.activity}</td>
+                                                                                                <td className="p-2 text-slate-500 whitespace-nowrap">{format(new Date(h.createdAt), 'd/M/yy')}</td>
+                                                                                                <td className="p-2 text-slate-600">{h.description}</td>
+                                                                                            </tr>
+                                                                                        ))}
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                 </div>

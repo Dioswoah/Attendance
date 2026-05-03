@@ -1,7 +1,7 @@
 import { ChatContext } from "./rag";
 
 export function getSystemInstructions(context: ChatContext): string {
-    const { user, attendance, leaves, managedEmployees } = context;
+    const { user, attendance, leaves, leaveSummary, punctuality, managedEmployees } = context;
     const isAdmin = user.role.includes('ADMIN');
     const isManager = user.role.includes('MANAGER');
 
@@ -45,9 +45,25 @@ ${JSON.stringify(context.todayAttendance, null, 2)}`
 
     ${todaySection}
 
-    PERSONAL DATA (last 10 records, all times in ${user.timezone}):
+    LEAVE SUMMARY FOR ${leaveSummary.year} (pre-calculated, use this to answer leave-count questions):
+    - Total approved leave days used: ${leaveSummary.totalApprovedDays}
+    - Breakdown by type: ${Object.entries(leaveSummary.byType).map(([t, d]) => `${t}: ${d} day(s)`).join(', ') || 'None'}
+
+    PUNCTUALITY SELF-ASSESSMENT FOR ${punctuality.year}:
+    - Shift Start Time: ${punctuality.shiftStart} (5-minute grace period applies)
+    - Days Worked: ${punctuality.daysWorked}
+    - On Time: ${punctuality.presentDays} day(s)
+    - Late Arrivals: ${punctuality.lateDays} day(s)
+    - Absent: ${punctuality.absentDays} day(s)
+    - Punctuality Rate: ${punctuality.punctualityRate}%
+    - Average Minutes Late (on late days): ${punctuality.avgMinutesLate} min
+    ${punctuality.recentLateInstances.length > 0
+        ? `- Recent Late Instances:\n${punctuality.recentLateInstances.map(i => `      • ${i.date} — ${i.minutesLate} min late`).join('\n')}`
+        : '- No late arrivals recorded this year — great work!'}
+
+    PERSONAL DATA (last 10 attendance records + all ${leaveSummary.year} leave records, all times in ${user.timezone}):
     - Attendance History: ${JSON.stringify(attendance)}
-    - Recent Leave: ${JSON.stringify(leaves)}
+    - Leave Records (${leaveSummary.year}): ${JSON.stringify(leaves)}
     ${teamContext}
 
     GUARDRAILS & PERMISSIONS:
@@ -75,8 +91,13 @@ ${JSON.stringify(context.todayAttendance, null, 2)}`
        - If you don't know the answer from the context provided, say "I don't have that information in my records. Please contact HR for more details."
 
     5. SCOPE:
-       - Stick to HR, user-profile data (e.g. name, email, status), Attendance, and Leave topics.
+       - Stick to HR, user-profile data (e.g. name, email, status), Attendance, Leave, and Punctuality topics.
        - For general world knowledge, be brief and steer back to company assistance.
+       - PUNCTUALITY SELF-ASSESSMENT: Use the PUNCTUALITY SELF-ASSESSMENT section to answer questions like
+         "am I punctual?", "how many times was I late?", "what is my punctuality rate?", "how late was I on average?".
+         Frame responses supportively — this is self-assessment, not disciplinary. Offer constructive observations
+         (e.g. "You've been on time X% of the time — great consistency!" or "You've had Y late arrivals averaging Z min —
+         consider aiming to arrive a few minutes earlier.").
 
     6. APP CAPABILITIES & GUIDANCE:
        - You cannot directly perform actions (e.g., you cannot submit leaves, clock in/out, or edit records for the user).

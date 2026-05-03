@@ -30,6 +30,55 @@ import { statusConfig } from "@/components/UserStatusDropdown"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 
+function patchStaffWithAttendance(staffCurrent: any, attData: any): any {
+    if (!staffCurrent || !attData) return staffCurrent
+    const allToday: any[] = staffCurrent.allToday || []
+    const staffList: any[] = staffCurrent.staff || []
+
+    const staffUser = staffList.find((s: any) => s.id === attData.userId)
+    const existingRecord = allToday.find((r: any) => r.id === attData.id)
+
+    let status: string
+    if (attData.clockOut) status = 'clocked-out'
+    else if ((attData.breakStart && !attData.breakEnd) || (attData.breaks?.some((b: any) => !b.endTime))) status = 'on-break'
+    else status = 'clocked-in'
+
+    const formatted = {
+        id: attData.id,
+        userId: attData.userId,
+        userName: staffUser?.name || existingRecord?.userName || 'Unknown',
+        userImage: staffUser?.image || existingRecord?.userImage || null,
+        department: staffUser?.department?.name || existingRecord?.department || 'Unassigned',
+        date: typeof attData.date === 'string' ? attData.date.split('T')[0] : new Date(attData.date || Date.now()).toISOString().split('T')[0],
+        clockIn: attData.clockIn || null,
+        clockOut: attData.clockOut || null,
+        mode: attData.mode || 'OFFICE',
+        locationDetails: attData.locationDetails || null,
+        status,
+        attendanceStatus: attData.status || 'PRESENT',
+        breakStart: attData.breakStart || null,
+        breakEnd: attData.breakEnd || null,
+        breaks: (attData.breaks || []).map((b: any) => ({
+            id: b.id,
+            startTime: b.startTime,
+            endTime: b.endTime || null,
+        })),
+        notes: attData.notes || null,
+        pendingRequests: existingRecord?.pendingRequests || [],
+        shiftStartTime: staffUser?.department?.shiftStartTime || existingRecord?.shiftStartTime || '09:00',
+        summaryWorkMs: existingRecord?.summaryWorkMs || 0,
+        summaryBreakMs: existingRecord?.summaryBreakMs || 0,
+        isManualOverride: existingRecord?.isManualOverride || false,
+        summaryStatus: existingRecord?.summaryStatus || 'PRESENT',
+    }
+
+    const existingIdx = allToday.findIndex((r: any) => r.id === attData.id)
+    const newAllToday = existingIdx >= 0
+        ? allToday.map((r: any, i: number) => i === existingIdx ? formatted : r)
+        : [formatted, ...allToday]
+
+    return { ...staffCurrent, allToday: newAllToday }
+}
 
 export default function UserPortal() {
     const { data: session, status, update } = useSession()
@@ -43,6 +92,8 @@ export default function UserPortal() {
     const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
+    const actionInFlightRef = useRef(false)
+    const [totalPendingLeaves, setTotalPendingLeaves] = useState(0)
     const [hasAutoSwitchedStatus, setHasAutoSwitchedStatus] = useState(false)
     const [hasAutoActionRun, setHasAutoActionRun] = useState(false)
     const searchParams = useSearchParams()
@@ -159,6 +210,21 @@ export default function UserPortal() {
         }
     )
 
+    // Fast current-state SWR — single DB query, primes the button state immediately
+    const { data: currentState, mutate: mutateCurrentState } = useSWR(
+        status === 'authenticated' && session?.user?.id ? '/api/attendance/current' : null,
+        fetcher,
+        {
+            revalidateOnFocus: false,
+            dedupingInterval: 30000,
+            refreshInterval: 0,
+            keepPreviousData: true
+        }
+    )
+
+    // Disabled until auth + fast endpoint have both resolved (replaces isLoading on buttons)
+    const isInitializing = status === 'loading' || (status === 'authenticated' && !currentState && !dashboardData)
+
     // Sync Main Dashboard SWR Data to Local State
     useEffect(() => {
         if (dashboardData && !dashboardError) {
@@ -263,6 +329,7 @@ export default function UserPortal() {
 
             setMyLeaveRequests(data.leaves || [])
             setMyAttendanceRequests(data.attendanceRequests || [])
+            setTotalPendingLeaves(data.pendingLeaveCount ?? 0)
 
             // Mark initial load complete immediately upon core data returning
             setIsLoading(false)
@@ -281,6 +348,13 @@ export default function UserPortal() {
             setPendingAttendanceToday(staffData.pendingAttendanceToday || [])
         }
     }, [staffData])
+
+    // Prime currentAttendance from the fast endpoint while full dashboard is still loading
+    useEffect(() => {
+        if (!currentState || dashboardData) return
+        setCurrentAttendance(currentState.active || null)
+        setIsLoading(false)
+    }, [currentState, dashboardData])
 
     // Alias for legacy interaction handlers
     const fetchDashboardData = async () => {
@@ -540,16 +614,25 @@ export default function UserPortal() {
                 try {
                     const payload = JSON.parse(event.data);
 
-                    // Intelligent Refresh based on event type
                     if (payload.type === 'attendance') {
-                        fetchAttendance();    // refreshes /api/user/dashboard
-                        mutateStaff();       // refreshes /api/user/dashboard/staff (staff overview)
+                        // Instantly patch the staff overview from the SSE payload — no re-fetch needed
+                        if (payload.data) {
+                            mutateStaff(
+                                (current: any) => patchStaffWithAttendance(current, payload.data),
+                                { revalidate: true }
+                            )
+                        }
+                        // Only re-fetch own dashboard if this event is about the current user
+                        // (e.g. admin clocked them in, or auto clock-out fired)
+                        if (payload.data?.userId === session?.user?.id) {
+                            mutateDashboard()
+                        }
                     }
                     else if (payload.type === 'staff') {
-                        mutateStaff();       // status/availability changes — staff overview only
+                        mutateStaff()
                     }
                     else if (payload.type === 'leaves') {
-                        fetchMyLeaveRequests();
+                        fetchMyLeaveRequests()
                     }
                 } catch (e) {
                     console.error("SSE Parse Error", e);
@@ -941,35 +1024,29 @@ export default function UserPortal() {
         setUserAttendanceList([optimisticRecord, ...userAttendanceList])
         setShowLocationDialog(false)
 
-        // We don't set isProcessing to true here to keep the UI interactive/responsive
-        // But we might want to disable the button to prevent double-clicks
-        setIsProcessing(true)
+        // Amendment path: no instant action, must wait for manager approval — block UI while submitting
+        if (customClockInTime && customClockInTime.trim() !== "") {
+            const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+            const offset = (() => {
+                try {
+                    const tempDate = new Date(`${todayStr}T12:00:00`);
+                    const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts(tempDate).find(p => p.type === 'timeZoneName')
+                    let tzOff = part?.value.replace('GMT', '') || '+00:00'
+                    if (tzOff === '') tzOff = 'Z'
+                    return tzOff
+                } catch { return '+00:00' }
+            })()
+            const customDateStr = `${todayStr}T${customClockInTime}:00${offset}`
 
-        try {
-            // Start Amendment Logic
-            if (customClockInTime && customClockInTime.trim() !== "") {
-                // ... (existing amendment logic) ...
-                const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
-                const offset = (() => {
-                    try {
-                        const tempDate = new Date(`${todayStr}T12:00:00`);
-                        const part = new Intl.DateTimeFormat('en-US', { timeZone: userTimeZone, timeZoneName: 'longOffset' }).formatToParts(tempDate).find(p => p.type === 'timeZoneName')
-                        let tzOff = part?.value.replace('GMT', '') || '+00:00'
-                        if (tzOff === '') tzOff = 'Z'
-                        return tzOff
-                    } catch { return '+00:00' }
-                })()
-                const customDateStr = `${todayStr}T${customClockInTime}:00${offset}`
+            if (!customReason.trim()) {
+                toast.error("Please kindly provide a reason for this time adjustment")
+                setCurrentAttendance(previousAttendance)
+                setUserAttendanceList(previousList)
+                return
+            }
 
-                if (!customReason.trim()) {
-                    toast.error("Please kindly provide a reason for this time adjustment")
-                    // Revert state
-                    setCurrentAttendance(previousAttendance)
-                    setUserAttendanceList(previousList)
-                    setIsProcessing(false)
-                    return
-                }
-
+            setIsProcessing(true)
+            try {
                 const res = await fetch('/api/attendance-requests', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -978,60 +1055,59 @@ export default function UserPortal() {
                         date: customDateStr,
                         time: customDateStr,
                         type: 'CLOCK_IN',
-                        reason: `[${mode}${locationDetails ? `: ${locationDetails}` : ''}] ${customReason}`
+                        reason: customReason,
+                        workMode: mode,
+                        locationDetails: locationDetails || null
                     })
                 })
-
                 if (res.ok) {
                     toast.success("Thank you! Your amendment request has been sent to your manager for review.")
                     setCustomClockInTime("")
                     setCustomReason("")
                     fetchMyLeaveRequests()
                     fetchAttendance()
+                    mutateStaff()
                 } else {
                     const data = await res.json()
                     toast.error(data.error || "We encountered a small issue submitting your request. Please try again.")
-                    // Revert on error
                     setCurrentAttendance(previousAttendance)
                     setUserAttendanceList(previousList)
                 }
+            } catch {
+                toast.error("We encountered a small issue. Please try again.")
+                setCurrentAttendance(previousAttendance)
+                setUserAttendanceList(previousList)
+            } finally {
                 setIsProcessing(false)
-                return
             }
-            // End Amendment Logic
+            return
+        }
 
-            // Normal Clock In API Call
-            const res = await fetch('/api/attendance', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: session.user.id,
-                    mode,
-                    locationDetails,
-                    clockIn: clockInISO
-                })
-            })
-
+        // Normal Clock In: optimistic update is already applied, fire API in background so buttons are instant
+        if (actionInFlightRef.current) return
+        actionInFlightRef.current = true
+        fetch('/api/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: session.user.id, mode, locationDetails, clockIn: clockInISO })
+        })
+        .then(async res => {
             if (res.ok) {
-                // Success! We can now fetch the real data to get the real ID, 
-                // but the user already sees the "Clocked In" state so it feels instant.
-                fetchAttendance()
+                mutateDashboard()
             } else {
                 const data = await res.json()
                 toast.error(data.error || "We couldn't clock you in just yet. Please try again.")
-                // Revert on error
                 setCurrentAttendance(previousAttendance)
                 setUserAttendanceList(previousList)
-                fetchAttendance()
+                mutateDashboard()
             }
-        } catch (error) {
+        })
+        .catch(() => {
             toast.error("We encountered a small issue. Please try again.")
-            // Revert on error
             setCurrentAttendance(previousAttendance)
             setUserAttendanceList(previousList)
-        } finally {
-            setIsProcessing(false)
-        }
+        })
+        .finally(() => { actionInFlightRef.current = false })
     }
     // --- ACTIONS ---
 
@@ -1117,66 +1193,26 @@ export default function UserPortal() {
             }
         }
 
-        setIsProcessing(true)
+        const pendingClockIn = myAttendanceRequests.find((req: any) => {
+            if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
+            const reqDate = new Date(req.time || req.date)
+            const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
+            return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
+        })
+        const isProvisionalFlow = !!pendingClockIn
 
-        try {
-            // Check if we are in a "Simulated" state (where our optimistic status differs from real server status)
-            // Or if we specifically have a pending Clock In (root of simulation)
-
-            // Special check: If we are trying to End Break, but real status is 'clocked-in' (meaning Break Start was pending),
-            // we must send a request.
-            // Simplified: If statuses don't match, we request.
-            // Also, if we have ANY pending clock-in, we force request mode to be safe.
-            const pendingClockIn = myAttendanceRequests.find((req: any) => {
-                if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
-                const reqDate = new Date(req.time || req.date)
-                const todayPHT = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
-                return reqDate.toLocaleDateString("en-CA", { timeZone: userTimeZone }) === todayPHT
-            })
-
-            // Domino Effect Prevention: 
-            // If we have a REAL session (even a provisional one) and the statuses match, 
-            // we should allow a direct PATCH instead of forcing another request.
-            if (isSimulated && currentAttendance?.clockIn && !currentAttendance.clockOut) {
-                // If it's just an amendment for an existing record, we can patch.
-                // But only if we are physically trying to transition from the current server state.
-                // example: server thinks I'm 'clocked-in', I want to 'start-break'.
-                // If I have a pending CLOCK_IN amendment, I can still start a break on the live session.
-                if (action === 'start-break' && realStatus === 'clocked-in') {
-                    // This is safe to patch
-                } else if (action === 'end-break' && realStatus === 'on-break') {
-                    // This is safe as well
-                } else if (action === 'clock-out' && (realStatus === 'clocked-in' || realStatus === 'on-break')) {
-                    // Safe to clock out
-                } else {
-                    // Still force simulation if the gap is too large (e.g. server thinks I'm clocked out but I want to start a break)
-                    // Continue with simulated request...
-                    // Revert optimistic update for simulated requests as they go into pending state
-                    if (shouldApplyOptimistic) {
-                        setCurrentAttendance(previousAttendance)
-                        setUserAttendanceList(previousList)
-                    }
-                }
+        // Amendment request path: no real session to patch, must wait for response
+        if (isSimulated && !(currentAttendance?.clockIn && !currentAttendance.clockOut) && !isProvisionalFlow) {
+            if (shouldApplyOptimistic) {
+                setCurrentAttendance(previousAttendance)
+                setUserAttendanceList(previousList)
             }
-
-            if (isSimulated && !(currentAttendance?.clockIn && !currentAttendance.clockOut) && action !== 'clock-out') {
-                // Revert if we are going into request mode (unless we handled above)
-                // Actually, for clock-out we might want to show it as "Pending Clock Out" in feed, 
-                // but main status might remain "Clocked In" until approved?
-                // For now, simpler to revert optimistic UI if it's a request, and let the request toaster handle it.
-                if (shouldApplyOptimistic) {
-                    setCurrentAttendance(previousAttendance)
-                    setUserAttendanceList(previousList)
-                }
-            }
-
-            if (isSimulated && !(currentAttendance?.clockIn && !currentAttendance.clockOut)) {
-                // Submit as Amendment Request
-                let reqType = ''
-                if (action === 'start-break') reqType = 'BREAK_START'
-                if (action === 'end-break') reqType = 'BREAK_END'
-                if (action === 'clock-out') reqType = 'CLOCK_OUT'
-
+            let reqType = ''
+            if (action === 'start-break') reqType = 'BREAK_START'
+            if (action === 'end-break') reqType = 'BREAK_END'
+            if (action === 'clock-out') reqType = 'CLOCK_OUT'
+            setIsProcessing(true)
+            try {
                 const res = await fetch('/api/attendance-requests', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1188,61 +1224,78 @@ export default function UserPortal() {
                         reason: "Action taken while pending previous requests"
                     })
                 })
-
                 if (res.ok) {
-                    fetchMyLeaveRequests() // Refresh pending list
+                    fetchMyLeaveRequests()
                     toast.success("Amendment request sent successfully.")
                 } else {
                     const data = await res.json()
                     toast.error(data.error || "We encountered a small issue submitting your request. Please try again.")
                 }
-            } else {
-                // Normal API Call
-                const body: any = { userId: session.user.id, action }
-                if (action === 'start-break') {
-                    let resolvedTime = null
-                    if (breakInputMode === "minutes" && breakMinutes) {
-                        const d = new Date()
-                        d.setMinutes(d.getMinutes() + parseInt(breakMinutes, 10))
-                        resolvedTime = d.toISOString()
-                    } else if (breakInputMode === "time" && breakReturnTime) {
-                        const [h, m] = breakReturnTime.split(':').map(Number)
-                        const d = new Date()
-                        d.setHours(h, m, 0, 0)
-                        resolvedTime = d.toISOString()
-                    }
-                    if (resolvedTime) {
-                        body.expectedReturnTime = resolvedTime
-                    }
-                }
-
-                const res = await fetch('/api/attendance', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                })
-                if (res.ok) {
-                    // Success! Fetch real data to sync up
-                    fetchAttendance()
-                } else {
-                    // Revert on error
-                    if (shouldApplyOptimistic) {
-                        setCurrentAttendance(previousAttendance)
-                        setUserAttendanceList(previousList)
-                    }
-                    toast.error("Action failed. Please try again.")
-                }
+            } catch {
+                toast.error("We encountered a small issue. Please try again.")
+            } finally {
+                setIsProcessing(false)
             }
-        } catch (error) {
-            // Revert on error
+            return
+        }
+
+        // Revert sim state that doesn't align for a direct patch
+        if (isSimulated && currentAttendance?.clockIn && !currentAttendance.clockOut && !isProvisionalFlow) {
+            const safeTransition =
+                (action === 'start-break' && realStatus === 'clocked-in') ||
+                (action === 'end-break' && realStatus === 'on-break') ||
+                (action === 'clock-out' && (realStatus === 'clocked-in' || realStatus === 'on-break'))
+            if (!safeTransition && shouldApplyOptimistic) {
+                setCurrentAttendance(previousAttendance)
+                setUserAttendanceList(previousList)
+                return
+            }
+        }
+
+        // Normal PATCH: optimistic update already applied, fire in background so buttons are instant
+        if (actionInFlightRef.current) return
+        actionInFlightRef.current = true
+
+        const body: any = { userId: session.user.id, action }
+        if (action === 'start-break') {
+            let resolvedTime = null
+            if (breakInputMode === "minutes" && breakMinutes) {
+                const d = new Date()
+                d.setMinutes(d.getMinutes() + parseInt(breakMinutes, 10))
+                resolvedTime = d.toISOString()
+            } else if (breakInputMode === "time" && breakReturnTime) {
+                const [h, m] = breakReturnTime.split(':').map(Number)
+                const d = new Date()
+                d.setHours(h, m, 0, 0)
+                resolvedTime = d.toISOString()
+            }
+            if (resolvedTime) body.expectedReturnTime = resolvedTime
+        }
+
+        fetch('/api/attendance', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        .then(async res => {
+            if (res.ok) {
+                mutateDashboard()
+            } else {
+                if (shouldApplyOptimistic) {
+                    setCurrentAttendance(previousAttendance)
+                    setUserAttendanceList(previousList)
+                }
+                toast.error("Action failed. Please try again.")
+            }
+        })
+        .catch(() => {
             if (shouldApplyOptimistic) {
                 setCurrentAttendance(previousAttendance)
                 setUserAttendanceList(previousList)
             }
             toast.error("We encountered a small issue. Please try again.")
-        } finally {
-            setIsProcessing(false)
-        }
+        })
+        .finally(() => { actionInFlightRef.current = false })
     }
 
     const requestLeave = async (e: React.FormEvent) => {
@@ -2070,13 +2123,13 @@ export default function UserPortal() {
                     <div id="tour-action-buttons" className="flex items-center gap-2">
                         {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
                             <div className="flex bg-green-600 rounded-2xl items-center shadow-md group p-1 z-20">
-                                <Button onClick={handleClockInClick} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-3 bg-transparent hover:bg-green-700/20 text-white font-black border-r border-white/20 rounded-r-none focus:ring-0 uppercase tracking-widest text-xs sm:text-sm transition-all active:scale-95 duration-200">
-                                    {isProcessing || isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+                                <Button onClick={handleClockInClick} disabled={isProcessing || isInitializing} className="h-12 sm:h-14 px-6 sm:px-8 gap-3 bg-transparent hover:bg-green-700/20 text-white font-black border-r border-white/20 rounded-r-none focus:ring-0 uppercase tracking-widest text-xs sm:text-sm transition-all active:scale-95 duration-200">
+                                    {isProcessing || isInitializing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
                                     Clock In
                                 </Button>
                                 <Popover>
                                     <PopoverTrigger asChild>
-                                        <Button disabled={isProcessing || isLoading} className="px-3 sm:px-4 h-12 sm:h-14 bg-transparent hover:bg-green-700/20 text-white rounded-l-none focus:ring-0 rounded-r-[0.9rem] transition-all active:scale-95 duration-200">
+                                        <Button disabled={isProcessing || isInitializing} className="px-3 sm:px-4 h-12 sm:h-14 bg-transparent hover:bg-green-700/20 text-white rounded-l-none focus:ring-0 rounded-r-[0.9rem] transition-all active:scale-95 duration-200">
                                             <ChevronDown className="h-5 w-5" />
                                         </Button>
                                     </PopoverTrigger>
@@ -2221,10 +2274,7 @@ export default function UserPortal() {
                                                 <FileText className="w-3.5 h-3.5" />
                                             </div>
                                             <span className="text-xl font-black text-slate-800 tracking-tight">
-                                                {(() => {
-                                                    const pendingLeaves = myLeaveRequests.filter((lr: any) => lr.status === 'PENDING').length
-                                                    return pendingLeaves + myAttendanceRequests.length
-                                                })()}
+                                                {totalPendingLeaves + myAttendanceRequests.length}
                                             </span>
                                             <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Pending</span>
                                         </div>

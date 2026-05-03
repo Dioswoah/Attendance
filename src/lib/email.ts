@@ -180,7 +180,7 @@ export async function sendAdminActionEmail({ userName, userEmail, adminName, adm
     }
 }
 
-interface BreakLimitEmailProps { userName: string; userEmail: string; userAccessToken: string; totalBreakTime: string; limit: string; actionLink: string; refreshToken?: string; }
+interface BreakLimitEmailProps { userName: string; userEmail: string; userAccessToken?: string; totalBreakTime: string; limit: string; actionLink: string; refreshToken?: string; }
 export async function sendBreakLimitEmail({ userName, userEmail, totalBreakTime, limit, actionLink }: BreakLimitEmailProps): Promise<boolean> {
     try {
         if (!(await isEmailEnabled())) return true;
@@ -202,7 +202,7 @@ export async function sendBreakLimitEmail({ userName, userEmail, totalBreakTime,
     }
 }
 
-interface BreakExpectedReturnEmailProps { userName: string; userEmail: string; userAccessToken: string; expectedReturnTime: string; actionLink: string; refreshToken?: string; }
+interface BreakExpectedReturnEmailProps { userName: string; userEmail: string; userAccessToken?: string; expectedReturnTime: string; actionLink: string; refreshToken?: string; }
 export async function sendBreakExpectedReturnEmail({ userName, userEmail, expectedReturnTime, actionLink }: BreakExpectedReturnEmailProps): Promise<boolean> {
     try {
         if (!(await isEmailEnabled())) return true;
@@ -224,7 +224,7 @@ export async function sendBreakExpectedReturnEmail({ userName, userEmail, expect
     }
 }
 
-interface ForgottenClockOutEmailProps { userName: string; userEmail: string; userAccessToken: string; date: string; clockOutTime: string; reason: string; refreshToken?: string; }
+interface ForgottenClockOutEmailProps { userName: string; userEmail: string; userAccessToken?: string; date: string; clockOutTime: string; reason: string; refreshToken?: string; }
 export async function sendForgottenClockOutEmail({ userName, userEmail, date, clockOutTime, reason }: ForgottenClockOutEmailProps) {
     try {
         if (!(await isEmailEnabled())) return;
@@ -251,7 +251,7 @@ export async function sendForgottenClockOutEmail({ userName, userEmail, date, cl
 }
 
 export type SendEmailResult = Promise<boolean>;
-interface GeneralEmailProps { toEmail: string; subject: string; title: string; message: string; link?: string; linkText?: string; accessToken: string; refreshToken?: string; }
+interface GeneralEmailProps { toEmail: string; subject: string; title: string; message: string; link?: string; linkText?: string; accessToken?: string; refreshToken?: string; }
 export async function sendGeneralEmail({ toEmail, subject, title, message, link, linkText = "View Details" }: GeneralEmailProps) {
     try {
         // Fix redundancy: detect if message already has a greeting
@@ -274,7 +274,7 @@ export async function sendGeneralEmail({ toEmail, subject, title, message, link,
     }
 }
 
-interface LateArrivalEmailProps { userName: string; userEmail: string; userAccessToken: string; scheduledStart: string; actionLink: string; refreshToken?: string; }
+interface LateArrivalEmailProps { userName: string; userEmail: string; userAccessToken?: string; scheduledStart: string; actionLink: string; refreshToken?: string; }
 export async function sendLateArrivalEmail({ userName, userEmail, scheduledStart, actionLink }: LateArrivalEmailProps): Promise<boolean> {
     try {
         if (!(await isEmailEnabled())) return true;
@@ -297,7 +297,7 @@ export async function sendLateArrivalEmail({ userName, userEmail, scheduledStart
     }
 }
 
-interface OverdueDepartureEmailProps { userName: string; userEmail: string; userAccessToken: string; scheduledEnd: string; actionLink: string; refreshToken?: string; }
+interface OverdueDepartureEmailProps { userName: string; userEmail: string; userAccessToken?: string; scheduledEnd: string; actionLink: string; refreshToken?: string; }
 export async function sendOverdueDepartureEmail({ userName, userEmail, scheduledEnd, actionLink }: OverdueDepartureEmailProps): Promise<boolean> {
     try {
         if (!(await isEmailEnabled())) return true;
