@@ -1034,7 +1034,6 @@ export async function PATCH(req: Request) {
         })
 
         broadcastUpdate('attendance', updated)
-        broadcastUpdate('staff')
 
         // Fire-and-forget tail work — responds to user immediately
         updateAttendanceSummary(userId, existing.date).catch(e => console.error('[Action] Summary failed:', e))

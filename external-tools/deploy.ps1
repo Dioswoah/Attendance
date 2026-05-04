@@ -53,8 +53,8 @@ Write-Host "Step 2: Running database migrations..." -ForegroundColor Yellow
 $CLOUD_SQL_CONN = "${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
 # Migration job uses a low connection limit (3) since it runs briefly and sequentially
 $CLOUD_RUN_MIGRATION_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=3"
-# connection_limit=3 per instance: with max-instances=10 that's 30 total connections, well within Cloud SQL limits
-$CLOUD_RUN_APP_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=3&pool_timeout=20"
+# connection_limit=15 per instance: with max-instances=3 that's 45 total connections, well within Cloud SQL limits
+$CLOUD_RUN_APP_DATABASE_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=15&pool_timeout=30"
 
 # Check if migration job exists, create if not, then update and execute
 $jobExists = gcloud run jobs describe migrate-db --region $REGION --quiet 2>$null
@@ -109,7 +109,7 @@ gcloud run deploy $SERVICE_NAME `
   --cpu 1 `
   --concurrency 1000 `
   --min-instances 1 `
-  --max-instances 1 `
+  --max-instances 3 `
   --quiet
 
 # Step 4: Set GOOGLE_SERVICE_ACCOUNT_JSON via gcloud secrets to handle embedded JSON quotes/commas
