@@ -44,20 +44,19 @@ export async function uploadMedicalCert(
 }
 
 /**
- * Generate a short-lived signed URL (15 minutes) for a GCS object path.
+ * Download a GCS object and return its contents as a Buffer along with metadata.
  */
-export async function getSignedUrl(objectPath: string): Promise<string> {
+export async function downloadFile(objectPath: string): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
     const storage = getStorageClient()
     const bucket = storage.bucket(BUCKET_NAME)
     const file = bucket.file(objectPath)
 
-    const [url] = await file.getSignedUrl({
-        version: "v4",
-        action: "read",
-        expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-    })
+    const [metadata] = await file.getMetadata()
+    const contentType = (metadata.contentType as string) || "application/octet-stream"
+    const filename = objectPath.split("/").pop() || "attachment"
 
-    return url
+    const [buffer] = await file.download()
+    return { buffer, contentType, filename }
 }
 
 /**

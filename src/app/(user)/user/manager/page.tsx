@@ -627,12 +627,14 @@ export default function ManagerControlPage() {
         try {
             const res = await fetch(`/api/leaves/${leaveId}/attachment`)
             if (!res.ok) {
-                const data = await res.json()
+                const data = await res.json().catch(() => ({}))
                 toast.error(data.error || "Could not load attachment")
                 return
             }
-            const { url } = await res.json()
-            window.open(url, '_blank', 'noopener,noreferrer')
+            const blob = await res.blob()
+            const objectUrl = URL.createObjectURL(blob)
+            window.open(objectUrl, '_blank', 'noopener,noreferrer')
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
         } catch {
             toast.error("Failed to open attachment")
         } finally {

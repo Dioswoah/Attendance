@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { getSignedUrl } from "@/lib/gcs"
+import { downloadFile } from "@/lib/gcs"
 
 export async function GET(
     req: NextRequest,
@@ -53,10 +53,16 @@ export async function GET(
             return NextResponse.json({ error: "No attachment found" }, { status: 404 })
         }
 
-        const url = await getSignedUrl(attachmentPath)
-        return NextResponse.json({ url })
+        const { buffer, contentType, filename } = await downloadFile(attachmentPath)
+        return new NextResponse(buffer, {
+            headers: {
+                "Content-Type": contentType,
+                "Content-Disposition": `inline; filename="${filename}"`,
+                "Cache-Control": "private, no-cache"
+            }
+        })
     } catch (error: any) {
-        console.error("[Attachment] signed URL error:", error?.message || error, "| path:", error?.config?.url)
-        return NextResponse.json({ error: "Failed to generate attachment link", detail: error?.message }, { status: 500 })
+        console.error("[Attachment] download error:", error?.message || error)
+        return NextResponse.json({ error: "Failed to load attachment", detail: error?.message }, { status: 500 })
     }
 }
