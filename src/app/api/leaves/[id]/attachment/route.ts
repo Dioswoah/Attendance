@@ -56,7 +56,7 @@ export async function GET(
         const url = await getSignedUrl(attachmentPath)
         return NextResponse.json({ url })
     } catch (error: any) {
-        console.error("Attachment signed URL error:", error)
-        return NextResponse.json({ error: "Failed to generate attachment link" }, { status: 500 })
+        console.error("[Attachment] signed URL error:", error?.message || error, "| path:", error?.config?.url)
+        return NextResponse.json({ error: "Failed to generate attachment link", detail: error?.message }, { status: 500 })
     }
 }

@@ -7,9 +7,12 @@ function getStorageClient(): Storage {
     if (rawJson) {
         try {
             const credentials = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
-            return new Storage({ credentials })
-        } catch {
-            // fall through to ADC
+            return new Storage({
+                credentials,
+                projectId: credentials.project_id || process.env.GOOGLE_CLOUD_PROJECT
+            })
+        } catch (e) {
+            console.error("[GCS] Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:", e)
         }
     }
     return new Storage()
