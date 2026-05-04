@@ -21,8 +21,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
         const roles = session.user.roles || []
         const isAdmin = roles.includes('ADMIN')
+        const isViewer = roles.includes('VIEWER')
         const isManager = request.user.managerId === session.user.id
+            || (request as any).assignedManagerId === session.user.id
         const isUserEditing = session.user.id === request.userId && !isAdmin && !isManager
+
+        // Viewers can see requests but cannot approve or decline
+        if (isViewer && !isAdmin && (body.status === 'APPROVED' || body.status === 'DECLINED')) {
+            return NextResponse.json({ error: "Viewers cannot approve or decline requests" }, { status: 403 })
+        }
 
         // Update Request
         const timeZone = request.user.selectedTimezone || 'Asia/Manila'

@@ -32,6 +32,7 @@ function UnauthorizedContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const reason = searchParams ? searchParams.get('reason') : null
+    const urlError = searchParams ? searchParams.get('error') : null
 
     useEffect(() => {
         const error = (session as any)?.error;
@@ -45,6 +46,17 @@ function UnauthorizedContent() {
     }, [session, status, router, reason])
 
     const getReasonDetails = () => {
+        // NextAuth ?error=Configuration typically means token refresh failed (e.g. new OAuth scopes added)
+        if (urlError === 'Configuration' || urlError === 'Callback') {
+            return {
+                title: 'Session Expired',
+                subtitle: 'Re-Authentication Required',
+                message: <>Your session could not be refreshed automatically.<br /><br />Please sign in again to continue — this is a one-time step.</>,
+                icon: <RefreshCw className="h-5 w-5 text-amber-700" />,
+                badge: 'Session Refresh Required',
+                errorCode: 'ERR_401_SESSION_EXPIRED'
+            };
+        }
         switch (reason) {
             case 'archived':
                 return {
@@ -88,8 +100,8 @@ function UnauthorizedContent() {
     const details = getReasonDetails();
 
     const handleReset = async () => {
-        // Clear everything and go to home
-        await signOut({ callbackUrl: "/" });
+        // Clear session and redirect to sign-in — use callbackUrl to trigger a fresh Google login (not silent)
+        await signOut({ callbackUrl: "/api/auth/signin" });
     };
 
     return (

@@ -1033,7 +1033,16 @@ export async function PATCH(req: Request) {
             data: updateData
         })
 
-        broadcastUpdate('attendance', updated)
+        // Include availabilityStatus in broadcast so clients can update staff list without a full re-fetch
+        const availabilityStatusForBroadcast =
+            action === 'end-break' ? 'AVAILABLE' :
+            action === 'start-break' ? 'BE_RIGHT_BACK' :
+            action === 'clock-out' ? 'APPEAR_OFFLINE' : undefined
+
+        broadcastUpdate('attendance', {
+            ...updated,
+            ...(availabilityStatusForBroadcast !== undefined ? { availabilityStatus: availabilityStatusForBroadcast } : {})
+        })
 
         // Fire-and-forget tail work — responds to user immediately
         updateAttendanceSummary(userId, existing.date).catch(e => console.error('[Action] Summary failed:', e))

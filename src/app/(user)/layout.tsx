@@ -57,7 +57,7 @@ function UserLayoutInner({
 
     // Determine user roles
     const userRoles = (session?.user as any)?.roles || []
-    const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
+    const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
 
     // Fetch pending counts
     const fetchCounts = async () => {
@@ -239,8 +239,9 @@ function UserLayoutInner({
     }
 
     const displayName = session?.user?.name || "User"
-    const userRole = isManagerOrAdmin
-        ? (userRoles.includes('ADMIN') ? 'Admin' : 'Manager')
+    const userRole = userRoles.includes('ADMIN') ? 'Admin'
+        : userRoles.includes('MANAGER') ? 'Manager'
+        : userRoles.includes('VIEWER') ? 'Viewer'
         : 'Staff'
 
     return (

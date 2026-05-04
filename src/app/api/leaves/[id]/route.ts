@@ -36,9 +36,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         if (leaveRequest) {
             const roles = session.user.roles || []
             const isAdmin = roles.includes('ADMIN')
+            const isViewer = roles.includes('VIEWER')
+            // Manager if: normally assigned manager OR explicitly reassigned to this user
             const isTargetManager = leaveRequest.user.managerId === session.user.id
+                || (leaveRequest as any).assignedManagerId === session.user.id
             const isManager = isAdmin || isTargetManager
             const isUserEditing = session.user.id === leaveRequest.userId && !isManager
+
+            // Viewers can see requests but cannot approve or decline
+            if (isViewer && !isAdmin && (body.status === 'APPROVED' || body.status === 'DECLINED')) {
+                return NextResponse.json({ error: "Viewers cannot approve or decline requests" }, { status: 403 })
+            }
 
             // Capture old values for history before update
             const oldStartDate = leaveRequest.startDate
@@ -117,6 +125,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                         duration: updatedRequest.duration,
                         startTime: updatedRequest.startTime,
                         endTime: updatedRequest.endTime,
+                        // @ts-ignore
+                        attachmentPath: leaveRequest.attachmentPath || null,
                     }
                 })
 

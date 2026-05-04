@@ -32,12 +32,14 @@ model User {
   shiftEndTime        String?             @default("17:00")
   managerNotificationsEnabled Boolean     @default(true)
   accounts            Account[]
-  attendance          Attendance[]
-  attendanceRequests  AttendanceRequest[]
-  chatSessions        ChatSession[]
-  managedDepartments  Department[]        @relation("DepartmentManager")
-  leaves              Leave[]
-  leaveRequests       LeaveRequest[]
+  attendance                    Attendance[]
+  attendanceRequests            AttendanceRequest[]             @relation("AttendanceRequestUser")
+  assignedAttendanceRequests    AttendanceRequest[]             @relation("AttendanceRequestAssignedManager")
+  chatSessions                  ChatSession[]
+  managedDepartments            Department[]                    @relation("DepartmentManager")
+  leaves                        Leave[]
+  leaveRequests                 LeaveRequest[]                  @relation("LeaveRequestUser")
+  assignedLeaveRequests         LeaveRequest[]                  @relation("LeaveRequestAssignedManager")
   notifications       Notification[]
   sessions            Session[]
   ledTeams            Team[]              @relation("TeamLeader")
@@ -156,46 +158,51 @@ model Attendance {
 }
 
 model Leave {
-  id            String    @id @default(cuid())
-  userId        String
-  startDate     DateTime
-  endDate       DateTime
-  type          String
-  reason        String?
-  status        String    @default("APPROVED")
-  duration      String
-  startTime     DateTime?
-  endTime       DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  declineReason String?
-  deletedAt     DateTime?
-  isArchived    Boolean   @default(false)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  userId         String
+  startDate      DateTime
+  endDate        DateTime
+  type           String
+  reason         String?
+  status         String    @default("APPROVED")
+  duration       String
+  startTime      DateTime?
+  endTime        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  declineReason  String?
+  deletedAt      DateTime?
+  isArchived     Boolean   @default(false)
+  attachmentPath String?   // GCS object path for medical certificate
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, startDate, endDate])
   @@index([status])
 }
 
 model LeaveRequest {
-  id            String    @id @default(cuid())
-  userId        String
-  startDate     DateTime
-  endDate       DateTime
-  type          String
-  reason        String?
-  status        String    @default("PENDING")
-  duration      String
-  startTime     DateTime?
-  endTime       DateTime?
-  declineReason String?
-  isArchived    Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  history       LeaveRequestHistory[]
+  id                String    @id @default(cuid())
+  userId            String
+  startDate         DateTime
+  endDate           DateTime
+  type              String
+  reason            String?
+  status            String    @default("PENDING")
+  duration          String
+  startTime         DateTime?
+  endTime           DateTime?
+  declineReason     String?
+  isArchived        Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  attachmentPath    String?
+  assignedManagerId String?   // Override: routes this request to a specific reviewer instead of user.managerId
+  user              User      @relation("LeaveRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedManager   User?     @relation("LeaveRequestAssignedManager", fields: [assignedManagerId], references: [id])
+  history           LeaveRequestHistory[]
   @@index([userId, status])
   @@index([startTime, endTime])
+  @@index([assignedManagerId])
 }
 
 model LeaveRequestHistory {
@@ -247,22 +254,25 @@ model SystemSettings {
 }
 
 model AttendanceRequest {
-  id            String    @id @default(cuid())
-  userId        String
-  date          DateTime
-  type          String
-  time          DateTime
-  reason        String?
-  status        String    @default("PENDING")
-  declineReason String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-  isArchived    Boolean   @default(false)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  targetId      String?
+  id                String    @id @default(cuid())
+  userId            String
+  date              DateTime
+  type              String
+  time              DateTime
+  reason            String?
+  status            String    @default("PENDING")
+  declineReason     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  isArchived        Boolean   @default(false)
+  targetId          String?
+  assignedManagerId String?   // Override: routes this request to a specific reviewer instead of user.managerId
+  user              User      @relation("AttendanceRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedManager   User?     @relation("AttendanceRequestAssignedManager", fields: [assignedManagerId], references: [id])
   @@index([userId, status])
   @@index([date])
+  @@index([assignedManagerId])
 }
 
 model ChatSession {
@@ -287,6 +297,7 @@ model ChatMessage {
 enum Role {
   ADMIN
   MANAGER
+  VIEWER
   USER
 }
 

@@ -270,8 +270,8 @@ export async function GET(request: Request) {
                 if (sent) {
                     console.log(`[Late Check] Sent email to ${user.email}`);
 
-                    // Add to manager's daily report (if enabled in their settings)
-                    if (user.manager?.email && user.manager.managerNotificationsEnabled !== false) {
+                    // Add to manager's daily report (skip Viewers — they don't receive notifications)
+                    if (user.manager?.email && user.manager.managerNotificationsEnabled !== false && !(user.manager.roles || []).includes('VIEWER')) {
                         const mgrId = user.manager.id;
                         if (!managerLateStaffMap.has(mgrId)) {
                             managerLateStaffMap.set(mgrId, {

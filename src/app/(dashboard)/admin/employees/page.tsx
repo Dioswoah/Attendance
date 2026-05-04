@@ -64,6 +64,12 @@ export default function EmployeesPage() {
     const [isBulkProcessing, setIsBulkProcessing] = useState(false)
     const [isDSTDialogOpen, setIsDSTDialogOpen] = useState(false)
 
+    // Bulk Reassign
+    const [isReassignOpen, setIsReassignOpen] = useState(false)
+    const [reassignFromId, setReassignFromId] = useState("")
+    const [reassignToId, setReassignToId] = useState("")
+    const [isReassigning, setIsReassigning] = useState(false)
+
     // Timezone Handling
     const { data: session } = useSession()
     const userPrefs = session?.user as any
@@ -563,6 +569,80 @@ export default function EmployeesPage() {
                         </DialogContent>
                     </Dialog>
 
+                    {/* Bulk Reassign Requests */}
+                    <Dialog open={isReassignOpen} onOpenChange={setIsReassignOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="font-medium gap-2 border-slate-200 hover:border-slate-900">
+                                Reassign Requests
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>Bulk Reassign Pending Requests</DialogTitle>
+                                <DialogDescription>Transfer all pending leave and attendance requests from one manager to another — useful when a manager is on leave.</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-2">
+                                <div>
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">From Manager</label>
+                                    <Select value={reassignFromId} onValueChange={setReassignFromId}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select manager going on leave..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {employees.filter(e => (e.roles || []).some((r: string) => r === 'MANAGER' || r === 'ADMIN')).map(m => (
+                                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">To Manager</label>
+                                    <Select value={reassignToId} onValueChange={setReassignToId}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select substitute manager..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {employees.filter(e => (e.roles || []).some((r: string) => r === 'MANAGER' || r === 'ADMIN') && e.id !== reassignFromId).map(m => (
+                                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <p className="text-xs text-muted-foreground">This only affects currently pending requests. Staff assignments are not changed — future requests still go to the original manager.</p>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsReassignOpen(false)}>Cancel</Button>
+                                <Button
+                                    disabled={!reassignFromId || !reassignToId || isReassigning}
+                                    onClick={async () => {
+                                        setIsReassigning(true)
+                                        try {
+                                            const res = await fetch('/api/admin/reassign-requests', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ fromManagerId: reassignFromId, toManagerId: reassignToId })
+                                            })
+                                            const data = await res.json()
+                                            if (res.ok) {
+                                                alert(`Reassigned ${data.reassigned.leaveRequests} leave requests and ${data.reassigned.attendanceRequests} attendance requests.`)
+                                                setIsReassignOpen(false)
+                                                setReassignFromId("")
+                                                setReassignToId("")
+                                            } else {
+                                                alert(data.error || "Failed to reassign")
+                                            }
+                                        } finally {
+                                            setIsReassigning(false)
+                                        }
+                                    }}
+                                    className="bg-slate-800 hover:bg-slate-700 text-white"
+                                >
+                                    {isReassigning ? "Reassigning..." : "Confirm Reassign"}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+
                     <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                         <DialogTrigger asChild>
                             <Button className="font-medium gap-2">
@@ -718,7 +798,7 @@ export default function EmployeesPage() {
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
                                     <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
-                                        {['USER', 'MANAGER', 'ADMIN'].map((role) => (
+                                        {['USER', 'VIEWER', 'MANAGER', 'ADMIN'].map((role) => (
                                             <div key={role} className="flex items-center gap-2">
                                                 <input
                                                     type="checkbox"
@@ -781,6 +861,7 @@ export default function EmployeesPage() {
                                 <SelectContent>
                                     <SelectItem value="all">All Roles</SelectItem>
                                     <SelectItem value="USER">User</SelectItem>
+                                    <SelectItem value="VIEWER">Viewer</SelectItem>
                                     <SelectItem value="MANAGER">Manager</SelectItem>
                                     <SelectItem value="ADMIN">Admin</SelectItem>
                                     <SelectItem value="USER_ONLY">User Only</SelectItem>
@@ -1230,7 +1311,7 @@ export default function EmployeesPage() {
                             <div className="space-y-2">
                                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
                                 <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
-                                    {['USER', 'MANAGER', 'ADMIN'].map((role) => (
+                                    {['USER', 'VIEWER', 'MANAGER', 'ADMIN'].map((role) => (
                                         <div key={role} className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"

@@ -77,7 +77,12 @@ function patchStaffWithAttendance(staffCurrent: any, attData: any): any {
         ? allToday.map((r: any, i: number) => i === existingIdx ? formatted : r)
         : [formatted, ...allToday]
 
-    return { ...staffCurrent, allToday: newAllToday }
+    // Patch availabilityStatus on the staff entry if the server included it in the broadcast
+    const newStaffList = attData.availabilityStatus !== undefined
+        ? staffList.map((s: any) => s.id === attData.userId ? { ...s, availabilityStatus: attData.availabilityStatus } : s)
+        : staffList
+
+    return { ...staffCurrent, allToday: newAllToday, staff: newStaffList }
 }
 
 export default function UserPortal() {
@@ -141,11 +146,28 @@ export default function UserPortal() {
     const [workedTime, setWorkedTime] = useState("00:00:00")
     const [breakTime, setBreakTime] = useState("00:00:00")
     const [sortBy, setSortBy] = useState<string>("name")
-    const [filterStatus, setFilterStatus] = useState("all")
-    const [filterDepartments, setFilterDepartments] = useState<string[]>([])
-    const [filterEmploymentLocations, setFilterEmploymentLocations] = useState<string[]>([])
-    const [searchQuery, setSearchQuery] = useState("")
+    const [filterStatus, setFilterStatus] = useState(() =>
+        typeof window !== 'undefined' ? sessionStorage.getItem('dashboard_filterStatus') || 'all' : 'all'
+    )
+    const [filterDepartments, setFilterDepartments] = useState<string[]>(() => {
+        if (typeof window === 'undefined') return []
+        try { return JSON.parse(sessionStorage.getItem('dashboard_filterDepartments') || '[]') } catch { return [] }
+    })
+    const [filterEmploymentLocations, setFilterEmploymentLocations] = useState<string[]>(() => {
+        if (typeof window === 'undefined') return []
+        try { return JSON.parse(sessionStorage.getItem('dashboard_filterLocations') || '[]') } catch { return [] }
+    })
+    const [searchQuery, setSearchQuery] = useState(() =>
+        typeof window !== 'undefined' ? sessionStorage.getItem('dashboard_searchQuery') || '' : ''
+    )
     const [feedSearch, setFeedSearch] = useState("")
+
+    // Persist dashboard filters across navigation for the current browser session
+    useEffect(() => { sessionStorage.setItem('dashboard_filterStatus', filterStatus) }, [filterStatus])
+    useEffect(() => { sessionStorage.setItem('dashboard_filterDepartments', JSON.stringify(filterDepartments)) }, [filterDepartments])
+    useEffect(() => { sessionStorage.setItem('dashboard_filterLocations', JSON.stringify(filterEmploymentLocations)) }, [filterEmploymentLocations])
+    useEffect(() => { sessionStorage.setItem('dashboard_searchQuery', searchQuery) }, [searchQuery])
+
     const [breakTotalMs, setBreakTotalMs] = useState(0)
     const [warningTriggered, setWarningTriggered] = useState(false)
     const [limitTriggered, setLimitTriggered] = useState(false)
@@ -279,7 +301,7 @@ export default function UserPortal() {
 
                 // Handle Manager/Admin extra data
                 // Note: fetchPendingLeaves is defined below, but effects run after mount/render so it is safe
-                if (data.user.roles.includes('MANAGER') || data.user.roles.includes('ADMIN')) {
+                if (data.user.roles.includes('MANAGER') || data.user.roles.includes('ADMIN') || data.user.roles.includes('VIEWER')) {
                     // Start async fetches
                     const loadManagerData = async () => {
                         // We defer this call slightly to ensure function is defined if using const
@@ -1723,7 +1745,15 @@ export default function UserPortal() {
                 return filterEmploymentLocations.includes(staff.employmentLocation)
             })
             .sort((a: any, b: any) => {
-                // Priority 1: Status Grouping (Clocked In / On Break > Others)
+                // Priority 1: My Department First
+                const getPrimaryDept = (staff: any) => typeof staff.department === 'string' ? staff.department : (staff.department?.name || staff.departmentName || "")
+                const aIsMyDept = getPrimaryDept(a) === userDepartment
+                const bIsMyDept = getPrimaryDept(b) === userDepartment
+
+                if (aIsMyDept && !bIsMyDept) return -1
+                if (!aIsMyDept && bIsMyDept) return 1
+
+                // Priority 2: Status Grouping (Clocked In / On Break > Others)
                 const priorityStatuses = ["clocked-in", "on-break", "do-not-disturb", "be-right-back", "appear-away"]
                 const aIsPriority = priorityStatuses.includes(a.status)
                 const bIsPriority = priorityStatuses.includes(b.status)
@@ -1731,12 +1761,12 @@ export default function UserPortal() {
                 if (aIsPriority && !bIsPriority) return -1
                 if (!aIsPriority && bIsPriority) return 1
 
-                // Priority 2: Secondary sorting based on user selection
+                // Priority 3: Secondary sorting based on user selection
                 switch (sortBy) {
                     case "name": return (a.name || "").localeCompare(b.name || "")
                     case "department":
-                        const deptA = typeof a.department === 'string' ? a.department : a.department?.name || ""
-                        const deptB = typeof b.department === 'string' ? b.department : b.department?.name || ""
+                        const deptA = getPrimaryDept(a)
+                        const deptB = getPrimaryDept(b)
                         return deptA.localeCompare(deptB)
                     case "status":
                         const statusOrder: any = {
@@ -1752,7 +1782,7 @@ export default function UserPortal() {
                     default: return 0
                 }
             })
-    }, [enrichedStaffList, searchQuery, filterStatus, filterDepartments, filterEmploymentLocations, sortBy])
+    }, [enrichedStaffList, searchQuery, filterStatus, filterDepartments, filterEmploymentLocations, sortBy, userDepartment])
 
     // 4. Sidebar Stats List (Filters by department but NOT by status)
     const departmentStaff = useMemo(() => {
@@ -1866,7 +1896,7 @@ export default function UserPortal() {
 
     const getEventsForDay = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd')
-        const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
+        const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
 
         // 1a. Approved Leaves (sick excluded — privacy)
         const approvedLeavesForDay = teamApprovedLeaves.filter((leave: any) => {
@@ -2589,7 +2619,7 @@ export default function UserPortal() {
                                                             const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
                                                             const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
 
-                                                            const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
+                                                            const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
                                                             const pendingReq = isManagerOrAdmin
                                                                 ? pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
                                                                 : undefined
@@ -2709,7 +2739,7 @@ export default function UserPortal() {
                                         <div className="flex items-center gap-3">
                                             <div className="flex flex-col gap-1">
                                                 {/* Department Filter for Calendar */}
-                                                {(userProfile?.roles?.includes('MANAGER') || userProfile?.roles?.includes('ADMIN')) ? (
+                                                {(userProfile?.roles?.includes('MANAGER') || userProfile?.roles?.includes('ADMIN') || userProfile?.roles?.includes('VIEWER')) ? (
                                                     <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
                                                         <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
                                                             <SelectValue placeholder="Department" />
@@ -2802,7 +2832,7 @@ export default function UserPortal() {
                                             <div className="w-2 h-2 rounded-full bg-blue-500" />
                                             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Approved Leave</span>
                                         </div>
-                                        {(userRoles.includes('MANAGER') || userRoles.includes('ADMIN')) && (
+                                        {(userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')) && (
                                             <div className="flex items-center gap-1.5">
                                                 <div className="w-2 h-2 rounded-full bg-indigo-500" />
                                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pending Leave</span>
@@ -2862,7 +2892,7 @@ export default function UserPortal() {
                                                             }).map((l: any) => ({ type: 'leave-approved', data: l }))
 
                                                             // 2. Pending Leaves — managers/admins only, SICK included (needs approval)
-                                                            const calIsManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN')
+                                                            const calIsManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
                                                             const pendingLeavesOnDay = !calIsManagerOrAdmin ? [] : pendingLeaves.filter((leave: any) => {
                                                                 if (calendarFilterDepartment !== 'all') {
                                                                     const dept = leave.department || leave.user?.department?.name || "Unassigned"

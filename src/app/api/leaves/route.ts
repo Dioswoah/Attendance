@@ -23,13 +23,23 @@ export async function GET(req: Request) {
     }
 
     try {
+        // When filtering by managerId, respect assignedManagerId overrides:
+        // - assignedManagerId = managerId (explicitly reassigned to this manager)
+        // - OR assignedManagerId IS NULL AND user.managerId = managerId (normal routing)
+        const managerWhere = (mgrId: string, deptId?: string | null) => ({
+            OR: [
+                { assignedManagerId: mgrId },
+                { assignedManagerId: null, user: { managerId: mgrId, ...(deptId && deptId !== 'all' && { departmentId: deptId }) } }
+            ]
+        })
+
         const leaveFilter: any = {
             where: {
                 ...(userIdsStr ? { userId: userFilter(userIdsStr) } : userId ? { userId } : {}),
-                user: {
-                    ...(departmentId && departmentId !== 'all' && { departmentId }),
-                    ...(managerId && { managerId })
-                },
+                ...(managerId
+                    ? managerWhere(managerId, departmentId)
+                    : { user: { ...(departmentId && departmentId !== 'all' && { departmentId }) } }
+                ),
                 ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
                     startDate: { lte: new Date(endDate) },
@@ -44,10 +54,10 @@ export async function GET(req: Request) {
         const requestFilter: any = {
             where: {
                 ...(userIdsStr ? { userId: userFilter(userIdsStr) } : userId ? { userId } : {}),
-                user: {
-                    ...(departmentId && departmentId !== 'all' && { departmentId }),
-                    ...(managerId && { managerId })
-                },
+                ...(managerId
+                    ? managerWhere(managerId, departmentId)
+                    : { user: { ...(departmentId && departmentId !== 'all' && { departmentId }) } }
+                ),
                 ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
                     startDate: { lte: new Date(endDate) },
@@ -89,6 +99,7 @@ export async function GET(req: Request) {
             createdAt: l.createdAt.toISOString(),
             userTimeZone: l.user.selectedTimezone,
             isRequest,
+            attachmentPath: l.attachmentPath || null,
             history: isRequest ? (l.history || []).map((h: any) => ({
                 id: h.id,
                 activity: h.activity,
@@ -317,7 +328,7 @@ export async function POST(req: Request) {
                 }
             })
 
-            if (user.manager && user.manager.email) {
+            if (user.manager && user.manager.email && !(user.manager.roles || []).includes('VIEWER')) {
                 const accessToken = session?.accessToken;
                 if (accessToken) {
                     let durationDisplay = duration;

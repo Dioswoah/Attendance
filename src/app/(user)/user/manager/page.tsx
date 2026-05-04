@@ -22,7 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, History, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit, LogIn, LogOut, MapPin, ChevronDown, ArrowRight, FileEdit, FilePlus2 } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, History, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit, LogIn, LogOut, MapPin, ChevronDown, ArrowRight, FileEdit, FilePlus2, Paperclip } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -70,6 +70,7 @@ export default function ManagerControlPage() {
     const { data: session, status } = useSession()
     const router = useRouter()
     const searchParams = useSearchParams()
+    const isViewer = ((session?.user as any)?.roles || []).includes('VIEWER')
 
     // Sync active tab with search params
     const activeTab = searchParams.get('tab') || 'requests'
@@ -100,6 +101,9 @@ export default function ManagerControlPage() {
     const [actionType, setActionType] = useState<"approve" | "deny" | null>(null)
     const [denyReason, setDenyReason] = useState("")
     const [denyReasonError, setDenyReasonError] = useState(false)
+    const [reassignRequest, setReassignRequest] = useState<Request | null>(null)
+    const [reassignToManagerId, setReassignToManagerId] = useState("")
+    const [isReassigning, setIsReassigning] = useState(false)
     const [selectedDayDetail, setSelectedDayDetail] = useState<Date | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -130,6 +134,7 @@ export default function ManagerControlPage() {
 
     // Report Selection State
     const [reportSelectedStaff, setReportSelectedStaff] = useState<string[]>([])
+    const [viewingAttachmentId, setViewingAttachmentId] = useState<string | null>(null)
 
     // Grant Leave State
     const [grantLeaveEmpId, setGrantLeaveEmpId] = useState("")
@@ -182,6 +187,10 @@ export default function ManagerControlPage() {
 
     // 2. Employees (Staff)
     const { data: employeesData } = useSWR(uid ? '/api/employees' : null, fetcher)
+
+    // Managers list for reassign dialog
+    const { data: managersData } = useSWR(uid ? '/api/managers' : null, fetcher)
+    const allManagers: any[] = managersData || []
 
     // 3. Pending Leaves
     const { data: pendingLeavesData, mutate: mutatePendingLeaves } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=PENDING` : null, fetcher)
@@ -504,6 +513,36 @@ export default function ManagerControlPage() {
         }
     }
 
+    const confirmReassign = async () => {
+        if (!reassignRequest || !reassignToManagerId) return
+        setIsReassigning(true)
+        try {
+            const res = await fetch('/api/admin/reassign-requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    requestId: reassignRequest.id,
+                    requestType: reassignRequest.kind === 'ATTENDANCE' ? 'ATTENDANCE' : 'LEAVE',
+                    toManagerId: reassignToManagerId
+                })
+            })
+            if (res.ok) {
+                toast.success("Request reassigned successfully")
+                setPendingRequests(prev => prev.filter(r => r.id !== reassignRequest.id))
+                setReassignRequest(null)
+                setReassignToManagerId("")
+                if (reassignRequest.kind === 'ATTENDANCE') mutatePendingAttendance()
+                else mutatePendingLeaves()
+            } else {
+                toast.error("Failed to reassign request")
+            }
+        } catch {
+            toast.error("Failed to reassign request")
+        } finally {
+            setIsReassigning(false)
+        }
+    }
+
     const handleDeleteHistory = async (request: Request) => {
         if (!confirm(`Are you sure you want to delete this ${request.kind?.toLowerCase() || 'leave'} record? This will notify the administrators.`)) return
 
@@ -580,6 +619,24 @@ export default function ManagerControlPage() {
             toast.error("An error occurred")
         } finally {
             setIsGrantingLeave(false)
+        }
+    }
+
+    const handleViewAttachment = async (leaveId: string) => {
+        setViewingAttachmentId(leaveId)
+        try {
+            const res = await fetch(`/api/leaves/${leaveId}/attachment`)
+            if (!res.ok) {
+                const data = await res.json()
+                toast.error(data.error || "Could not load attachment")
+                return
+            }
+            const { url } = await res.json()
+            window.open(url, '_blank', 'noopener,noreferrer')
+        } catch {
+            toast.error("Failed to open attachment")
+        } finally {
+            setViewingAttachmentId(null)
         }
     }
 
@@ -1086,11 +1143,16 @@ export default function ManagerControlPage() {
                                                                         })()}
                                                                     </div>
                                                                     <div className="flex lg:flex-col gap-2 pt-2 lg:pt-0">
+                                                                        {!isViewer && (<>
                                                                         <Button onClick={() => handleAction(request, "approve")} className="bg-green-600 hover:bg-green-700 text-white shadow-sm w-full sm:w-auto">
                                                                             <Check className="w-4 h-4 mr-2" /> Approve
                                                                         </Button>
                                                                         <Button onClick={() => handleAction(request, "deny")} variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto">
                                                                             <X className="w-4 h-4 mr-2" /> Deny
+                                                                        </Button>
+                                                                        </>)}
+                                                                        <Button onClick={() => { setReassignRequest(request); setReassignToManagerId("") }} variant="outline" className="text-slate-600 hover:bg-slate-50 w-full sm:w-auto text-xs">
+                                                                            Reassign
                                                                         </Button>
                                                                     </div>
                                                                 </div>
@@ -1191,6 +1253,7 @@ export default function ManagerControlPage() {
                                                                         </div>
                                                                     )}
                                                                 </div>
+                                                                {!isViewer && (
                                                                 <div className="flex lg:flex-col gap-2 pt-2 lg:pt-0">
                                                                     <Button onClick={() => handleAction(request, "approve")} className="bg-green-600 hover:bg-green-700 text-white shadow-sm w-full sm:w-auto">
                                                                         <Check className="w-4 h-4 mr-2" /> Approve
@@ -1198,7 +1261,22 @@ export default function ManagerControlPage() {
                                                                     <Button onClick={() => handleAction(request, "deny")} variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto">
                                                                         <X className="w-4 h-4 mr-2" /> Deny
                                                                     </Button>
+                                                                    {(request as any).attachmentPath && (
+                                                                        <Button
+                                                                            onClick={() => handleViewAttachment(request.id)}
+                                                                            variant="outline"
+                                                                            className="text-blue-600 hover:bg-blue-50 w-full sm:w-auto"
+                                                                            disabled={viewingAttachmentId === request.id}
+                                                                        >
+                                                                            {viewingAttachmentId === request.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Paperclip className="w-4 h-4 mr-2" />}
+                                                                            View Cert
+                                                                        </Button>
+                                                                    )}
+                                                                    <Button onClick={() => { setReassignRequest(request); setReassignToManagerId("") }} variant="outline" className="text-slate-600 hover:bg-slate-50 w-full sm:w-auto text-xs">
+                                                                        Reassign
+                                                                    </Button>
                                                                 </div>
+                                                                )}
                                                             </div>
                                                         </CardContent>
                                                     </div>
@@ -1286,11 +1364,18 @@ export default function ManagerControlPage() {
                                                                     </td>
                                                                     <td className="p-4">
                                                                         <div className="flex items-center justify-end gap-2">
-                                                                            <Button onClick={() => handleAction(request, "approve")} size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8">
-                                                                                <Check className="w-3 h-3 mr-1" /> Approve
-                                                                            </Button>
-                                                                            <Button onClick={() => handleAction(request, "deny")} size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8">
-                                                                                <X className="w-3 h-3 mr-1" /> Deny
+                                                                            {!isViewer && (
+                                                                                <>
+                                                                                    <Button onClick={() => handleAction(request, "approve")} size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8">
+                                                                                        <Check className="w-3 h-3 mr-1" /> Approve
+                                                                                    </Button>
+                                                                                    <Button onClick={() => handleAction(request, "deny")} size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8">
+                                                                                        <X className="w-3 h-3 mr-1" /> Deny
+                                                                                    </Button>
+                                                                                </>
+                                                                            )}
+                                                                            <Button onClick={() => setReassignRequest({ id: request.id, type: 'ATTENDANCE', name: request.userName })} size="sm" variant="outline" className="h-8 text-slate-600 border-slate-300 hover:bg-slate-50">
+                                                                                Reassign
                                                                             </Button>
                                                                         </div>
                                                                     </td>
@@ -1353,14 +1438,32 @@ export default function ManagerControlPage() {
                                                                 <td className="p-4 text-sm text-slate-600">{request.duration}</td>
                                                                 <td className="p-4">
                                                                     <p className="text-sm text-slate-600 italic line-clamp-2 max-w-[200px]">"{request.reason}"</p>
+                                                                    {(request as any).attachmentPath && (
+                                                                        <button 
+                                                                            type="button"
+                                                                            onClick={() => handleViewAttachment(request.id)}
+                                                                            disabled={viewingAttachmentId === request.id}
+                                                                            className="flex items-center gap-1 mt-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                                                                        >
+                                                                            {viewingAttachmentId === request.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+                                                                            View Cert
+                                                                        </button>
+                                                                    )}
                                                                 </td>
                                                                 <td className="p-4">
                                                                     <div className="flex items-center justify-end gap-2">
-                                                                        <Button onClick={() => handleAction(request, "approve")} size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8">
-                                                                            <Check className="w-3 h-3 mr-1" /> Approve
-                                                                        </Button>
-                                                                        <Button onClick={() => handleAction(request, "deny")} size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8">
-                                                                            <X className="w-3 h-3 mr-1" /> Deny
+                                                                        {!isViewer && (
+                                                                            <>
+                                                                                <Button onClick={() => handleAction(request, "approve")} size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8">
+                                                                                    <Check className="w-3 h-3 mr-1" /> Approve
+                                                                                </Button>
+                                                                                <Button onClick={() => handleAction(request, "deny")} size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8">
+                                                                                    <X className="w-3 h-3 mr-1" /> Deny
+                                                                                </Button>
+                                                                            </>
+                                                                        )}
+                                                                        <Button onClick={() => setReassignRequest({ id: request.id, type: 'LEAVE', name: request.userName })} size="sm" variant="outline" className="h-8 text-slate-600 border-slate-300 hover:bg-slate-50">
+                                                                            Reassign
                                                                         </Button>
                                                                     </div>
                                                                 </td>
@@ -2895,6 +2998,42 @@ export default function ManagerControlPage() {
                         >
                             {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                             Confirm
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Reassign Request Dialog */}
+            <Dialog open={!!reassignRequest} onOpenChange={() => setReassignRequest(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Reassign Request</DialogTitle>
+                        <DialogDescription>
+                            Send {reassignRequest?.userName}&apos;s request to a different manager for review.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Label className="text-xs font-bold mb-2 block">Reassign To</Label>
+                        <Select value={reassignToManagerId} onValueChange={setReassignToManagerId}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select a manager..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {allManagers.filter((m: any) => m.id !== uid).map((m: any) => (
+                                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setReassignRequest(null)}>Cancel</Button>
+                        <Button
+                            onClick={confirmReassign}
+                            disabled={isReassigning || !reassignToManagerId}
+                            className="bg-slate-800 hover:bg-slate-700 text-white"
+                        >
+                            {isReassigning && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Reassign
                         </Button>
                     </DialogFooter>
                 </DialogContent>

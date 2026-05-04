@@ -17,7 +17,12 @@ export async function GET(req: Request) {
         const requests = await prisma.attendanceRequest.findMany({
             where: {
                 ...(userId && { userId }),
-                ...(managerId && { user: { managerId } }),
+                ...(managerId && {
+                    OR: [
+                        { assignedManagerId: managerId },
+                        { assignedManagerId: null, user: { managerId } }
+                    ]
+                }),
                 ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
                     date: {
@@ -157,8 +162,8 @@ export async function POST(req: Request) {
                 }
             })
 
-            // Send Email
-            if (user.manager?.email && session?.accessToken) {
+            // Send Email (skip if manager is a Viewer — they don't receive notifications)
+            if (user.manager?.email && session?.accessToken && !(user.manager.roles || []).includes('VIEWER')) {
                 await sendLeaveRequestEmail({
                     managerName: user.manager.name || "Manager",
                     managerEmail: user.manager.email,
