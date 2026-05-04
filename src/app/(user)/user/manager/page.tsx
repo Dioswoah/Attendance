@@ -1374,7 +1374,7 @@ export default function ManagerControlPage() {
                                                                                     </Button>
                                                                                 </>
                                                                             )}
-                                                                            <Button onClick={() => setReassignRequest({ id: request.id, type: 'ATTENDANCE', name: request.userName })} size="sm" variant="outline" className="h-8 text-slate-600 border-slate-300 hover:bg-slate-50">
+                                                                            <Button onClick={() => setReassignRequest({ ...request, kind: 'ATTENDANCE' })} size="sm" variant="outline" className="h-8 text-slate-600 border-slate-300 hover:bg-slate-50">
                                                                                 Reassign
                                                                             </Button>
                                                                         </div>
@@ -1462,7 +1462,7 @@ export default function ManagerControlPage() {
                                                                                 </Button>
                                                                             </>
                                                                         )}
-                                                                        <Button onClick={() => setReassignRequest({ id: request.id, type: 'LEAVE', name: request.userName })} size="sm" variant="outline" className="h-8 text-slate-600 border-slate-300 hover:bg-slate-50">
+                                                                        <Button onClick={() => setReassignRequest({ ...request, kind: 'LEAVE' })} size="sm" variant="outline" className="h-8 text-slate-600 border-slate-300 hover:bg-slate-50">
                                                                             Reassign
                                                                         </Button>
                                                                     </div>
