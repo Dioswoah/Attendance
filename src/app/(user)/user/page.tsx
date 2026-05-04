@@ -147,26 +147,26 @@ export default function UserPortal() {
     const [breakTime, setBreakTime] = useState("00:00:00")
     const [sortBy, setSortBy] = useState<string>("name")
     const [filterStatus, setFilterStatus] = useState(() =>
-        typeof window !== 'undefined' ? sessionStorage.getItem('dashboard_filterStatus') || 'all' : 'all'
+        typeof window !== 'undefined' ? localStorage.getItem('dashboard_filterStatus') || 'all' : 'all'
     )
     const [filterDepartments, setFilterDepartments] = useState<string[]>(() => {
         if (typeof window === 'undefined') return []
-        try { return JSON.parse(sessionStorage.getItem('dashboard_filterDepartments') || '[]') } catch { return [] }
+        try { return JSON.parse(localStorage.getItem('dashboard_filterDepartments') || '[]') } catch { return [] }
     })
     const [filterEmploymentLocations, setFilterEmploymentLocations] = useState<string[]>(() => {
         if (typeof window === 'undefined') return []
-        try { return JSON.parse(sessionStorage.getItem('dashboard_filterLocations') || '[]') } catch { return [] }
+        try { return JSON.parse(localStorage.getItem('dashboard_filterLocations') || '[]') } catch { return [] }
     })
     const [searchQuery, setSearchQuery] = useState(() =>
-        typeof window !== 'undefined' ? sessionStorage.getItem('dashboard_searchQuery') || '' : ''
+        typeof window !== 'undefined' ? localStorage.getItem('dashboard_searchQuery') || '' : ''
     )
     const [feedSearch, setFeedSearch] = useState("")
 
     // Persist dashboard filters across navigation for the current browser session
-    useEffect(() => { sessionStorage.setItem('dashboard_filterStatus', filterStatus) }, [filterStatus])
-    useEffect(() => { sessionStorage.setItem('dashboard_filterDepartments', JSON.stringify(filterDepartments)) }, [filterDepartments])
-    useEffect(() => { sessionStorage.setItem('dashboard_filterLocations', JSON.stringify(filterEmploymentLocations)) }, [filterEmploymentLocations])
-    useEffect(() => { sessionStorage.setItem('dashboard_searchQuery', searchQuery) }, [searchQuery])
+    useEffect(() => { localStorage.setItem('dashboard_filterStatus', filterStatus) }, [filterStatus])
+    useEffect(() => { localStorage.setItem('dashboard_filterDepartments', JSON.stringify(filterDepartments)) }, [filterDepartments])
+    useEffect(() => { localStorage.setItem('dashboard_filterLocations', JSON.stringify(filterEmploymentLocations)) }, [filterEmploymentLocations])
+    useEffect(() => { localStorage.setItem('dashboard_searchQuery', searchQuery) }, [searchQuery])
 
     const [breakTotalMs, setBreakTotalMs] = useState(0)
     const [warningTriggered, setWarningTriggered] = useState(false)
@@ -943,7 +943,7 @@ export default function UserPortal() {
                 // Given the requirement, this is the best signal we have without schema changes.
                 if (cOut.getSeconds() === 59) {
                     const key = `auto_logout_notified_${lastSession.id}`
-                    if (!sessionStorage.getItem(key)) {
+                    if (!localStorage.getItem(key)) {
                         toast("You forgot to clock out yesterday", {
                             description: "We've automatically clocked you out at 11:59 PM. Please amend the record if necessary.",
                             action: {
@@ -952,7 +952,7 @@ export default function UserPortal() {
                             },
                             duration: 8000,
                         })
-                        sessionStorage.setItem(key, "true")
+                        localStorage.setItem(key, "true")
                     }
                 }
             }
