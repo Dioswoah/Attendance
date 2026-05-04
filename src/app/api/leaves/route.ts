@@ -33,13 +33,15 @@ export async function GET(req: Request) {
             ]
         })
 
+        // Leave (legacy model) has no assignedManagerId — use simple managerId filter
+        const leaveManagerWhere = managerId
+            ? { user: { managerId, ...(departmentId && departmentId !== 'all' && { departmentId }) } }
+            : { user: { ...(departmentId && departmentId !== 'all' && { departmentId }) } }
+
         const leaveFilter: any = {
             where: {
                 ...(userIdsStr ? { userId: userFilter(userIdsStr) } : userId ? { userId } : {}),
-                ...(managerId
-                    ? managerWhere(managerId, departmentId)
-                    : { user: { ...(departmentId && departmentId !== 'all' && { departmentId }) } }
-                ),
+                ...leaveManagerWhere,
                 ...(status && { status: status.includes(',') ? { in: status.split(',') } : status }),
                 ...(startDate && endDate && {
                     startDate: { lte: new Date(endDate) },
