@@ -116,6 +116,7 @@ export default function AdminDashboard() {
     const activityFeed = useMemo(() => {
         const feed: any[] = []
         attendanceRecords.forEach(record => {
+            const emp = employees.find((e: any) => e.id === record.userId)
             if (record.clockIn) {
                 feed.push({
                     id: `${record.id}-in`,
@@ -123,7 +124,8 @@ export default function AdminDashboard() {
                     userImage: record.userImage,
                     department: record.department,
                     type: 'clock-in',
-                    timestamp: new Date(record.clockIn)
+                    timestamp: new Date(record.clockIn),
+                    timezone: emp?.selectedTimezone || (emp?.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila')
                 })
             }
             if (record.breaks && Array.isArray(record.breaks)) {
@@ -134,7 +136,8 @@ export default function AdminDashboard() {
                         userImage: record.userImage,
                         department: record.department,
                         type: 'start-break',
-                        timestamp: new Date(b.startTime)
+                        timestamp: new Date(b.startTime),
+                        timezone: emp?.selectedTimezone || (emp?.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila')
                     })
                     if (b.endTime) {
                         feed.push({
@@ -143,7 +146,8 @@ export default function AdminDashboard() {
                             userImage: record.userImage,
                             department: record.department,
                             type: 'end-break',
-                            timestamp: new Date(b.endTime)
+                            timestamp: new Date(b.endTime),
+                            timezone: emp?.selectedTimezone || (emp?.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila')
                         })
                     }
                 })
@@ -155,12 +159,13 @@ export default function AdminDashboard() {
                     userImage: record.userImage,
                     department: record.department,
                     type: 'clock-out',
-                    timestamp: new Date(record.clockOut)
+                    timestamp: new Date(record.clockOut),
+                    timezone: emp?.selectedTimezone || (emp?.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila')
                 })
             }
         })
         return feed.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-    }, [attendanceRecords])
+    }, [attendanceRecords, employees])
 
     // Live Clock State
     const [now, setNow] = useState(new Date())
@@ -372,7 +377,7 @@ export default function AdminDashboard() {
                                                             'Clocked Out'}
                                             </Badge>
                                             <p className="text-xs text-muted-foreground font-mono">
-                                                {log.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                {log.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: log.timezone || userTimeZone })}
                                             </p>
                                         </div>
                                     </div>
@@ -562,7 +567,7 @@ export default function AdminDashboard() {
                                                 </Badge>
                                                 {status === 'on-leave' && record?.returnDate && (
                                                     <span className="text-[10px] font-semibold text-muted-foreground">
-                                                        Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: userTimeZone })}
+                                                        Returns {new Date(record.returnDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: emp.selectedTimezone || (emp.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila') })}
                                                     </span>
                                                 )}
                                             </div>
@@ -571,7 +576,7 @@ export default function AdminDashboard() {
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                                                     <Clock className="h-3 w-3 text-muted-foreground" />
-                                                    <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone }) : '---'}</span>
+                                                    <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emp.selectedTimezone || (emp.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila') }) : '---'}</span>
                                                 </div>
                                                 <span className="text-xs text-muted-foreground font-mono tabular-nums">{calculateLiveDuration(record)}</span>
                                             </div>

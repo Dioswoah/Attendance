@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Calendar, Clock, FileText, X, Loader2, Pencil, Trash2, Archive, ArchiveRestore } from "lucide-react"
+import { Plus, Calendar, Clock, FileText, X, Loader2, Pencil, Trash2, Archive, ArchiveRestore, Paperclip, Eye, Upload } from "lucide-react"
 import { format, isSameDay, subDays } from "date-fns"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
@@ -34,6 +34,7 @@ interface LeaveRequest {
     createdAt: string
     declineReason?: string
     isArchived?: boolean
+    attachmentPath?: string | null
 }
 
 export default function LeaveRequestsPage() {
@@ -57,6 +58,9 @@ export default function LeaveRequestsPage() {
     const [endTime, setEndTime] = useState<string>("13:00")
     const [reason, setReason] = useState<string>("")
     const [editingId, setEditingId] = useState<string | null>(null)
+    const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+    const [isUploadingFile, setIsUploadingFile] = useState(false)
+    const [viewingAttachmentId, setViewingAttachmentId] = useState<string | null>(null)
     const [dateFilter, setDateFilter] = useState({
         start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
         end: format(new Date(), 'yyyy-MM-dd')
@@ -134,6 +138,24 @@ export default function LeaveRequestsPage() {
         setEndDate(newEnd)
     }
 
+    const handleViewAttachment = async (leaveId: string) => {
+        setViewingAttachmentId(leaveId)
+        try {
+            const res = await fetch(`/api/leaves/${leaveId}/attachment`)
+            if (!res.ok) {
+                const data = await res.json()
+                toast.error(data.error || "Could not load attachment")
+                return
+            }
+            const { url } = await res.json()
+            window.open(url, '_blank', 'noopener,noreferrer')
+        } catch {
+            toast.error("Failed to open attachment")
+        } finally {
+            setViewingAttachmentId(null)
+        }
+    }
+
     const handleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         if (!session?.user?.id) return
@@ -185,6 +207,27 @@ export default function LeaveRequestsPage() {
             })
 
             if (res.ok) {
+                const record = await res.json()
+                const leaveRequestId = record.id
+
+                // Upload attachment if one was selected (only for new requests)
+                if (attachmentFile && leaveRequestId && !editingId) {
+                    setIsUploadingFile(true)
+                    try {
+                        const formData = new FormData()
+                        formData.append('file', attachmentFile)
+                        formData.append('leaveRequestId', leaveRequestId)
+                        const uploadRes = await fetch('/api/leaves/upload', { method: 'POST', body: formData })
+                        if (!uploadRes.ok) {
+                            toast.warning("Leave submitted, but certificate upload failed. You can re-upload later.")
+                        }
+                    } catch {
+                        toast.warning("Leave submitted, but certificate upload failed.")
+                    } finally {
+                        setIsUploadingFile(false)
+                    }
+                }
+
                 setDialogOpen(false)
                 resetForm()
                 fetchLeaveRequests()
@@ -297,6 +340,7 @@ export default function LeaveRequestsPage() {
         setStartTime("09:00")
         setEndTime("13:00")
         setReason("")
+        setAttachmentFile(null)
     }
 
     // Loading check removed to allow Skeleton UI rendering
@@ -456,14 +500,72 @@ export default function LeaveRequestsPage() {
                                 />
                             </div>
 
+                            {/* Medical Certificate Upload (new requests only) */}
+                            {!editingId && (
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-1.5">
+                                        <Paperclip className="w-3.5 h-3.5" />
+                                        Medical Certificate
+                                        <span className="text-xs text-muted-foreground font-normal ml-1">(optional)</span>
+                                    </Label>
+                                    <label
+                                        htmlFor="cert-upload"
+                                        className={cn(
+                                            "flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                                            attachmentFile
+                                                ? "border-green-400 bg-green-50 hover:bg-green-100"
+                                                : "border-border bg-muted/30 hover:bg-muted/50"
+                                        )}
+                                    >
+                                        {attachmentFile ? (
+                                            <div className="flex flex-col items-center gap-1">
+                                                <Paperclip className="w-5 h-5 text-green-600" />
+                                                <span className="text-xs font-medium text-green-700 max-w-[200px] truncate">{attachmentFile.name}</span>
+                                                <span className="text-[10px] text-muted-foreground">{(attachmentFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-1">
+                                                <Upload className="w-5 h-5 text-muted-foreground" />
+                                                <span className="text-xs text-muted-foreground">Click to upload PDF or photo</span>
+                                                <span className="text-[10px] text-muted-foreground">Max 10 MB · PDF, JPG, PNG</span>
+                                            </div>
+                                        )}
+                                        <input
+                                            id="cert-upload"
+                                            type="file"
+                                            accept="image/*,application/pdf"
+                                            capture="environment"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0] || null
+                                                if (file && file.size > 10 * 1024 * 1024) {
+                                                    toast.error("File is too large. Maximum size is 10 MB.")
+                                                    return
+                                                }
+                                                setAttachmentFile(file)
+                                            }}
+                                        />
+                                    </label>
+                                    {attachmentFile && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setAttachmentFile(null)}
+                                            className="text-xs text-muted-foreground hover:text-red-600 flex items-center gap-1 transition-colors"
+                                        >
+                                            <X className="w-3 h-3" /> Remove file
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex justify-end pt-2">
                                 <Button
                                     type="submit"
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || isUploadingFile}
                                     className="h-10 px-8 bg-red-600 hover:bg-red-700 text-white font-medium"
                                 >
-                                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                    {editingId ? "Update Request" : "Submit Request"}
+                                    {(isSubmitting || isUploadingFile) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                    {isUploadingFile ? "Uploading Certificate..." : editingId ? "Update Request" : "Submit Request"}
                                 </Button>
                             </div>
                         </form>
@@ -628,6 +730,20 @@ export default function LeaveRequestsPage() {
                                                     <p className="text-sm text-foreground/80 pl-2 border-l-2 border-muted mt-1 italic">
                                                         "{request.reason}"
                                                     </p>
+
+                                                    {request.attachmentPath && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleViewAttachment(request.id)}
+                                                            disabled={viewingAttachmentId === request.id}
+                                                            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium mt-1 transition-colors disabled:opacity-60"
+                                                        >
+                                                            {viewingAttachmentId === request.id
+                                                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                : <Paperclip className="w-3.5 h-3.5" />}
+                                                            View Certificate
+                                                        </button>
+                                                    )}
 
                                                     {request.status === "DECLINED" && request.declineReason && (
                                                         <div className="bg-red-50 p-2 rounded border border-red-100 mt-1">
