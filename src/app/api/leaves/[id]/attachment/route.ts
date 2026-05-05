@@ -54,7 +54,7 @@ export async function GET(
         }
 
         const { buffer, contentType, filename } = await downloadFile(attachmentPath)
-        return new NextResponse(buffer, {
+        return new NextResponse(new Uint8Array(buffer), {
             headers: {
                 "Content-Type": contentType,
                 "Content-Disposition": `inline; filename="${filename}"`,
