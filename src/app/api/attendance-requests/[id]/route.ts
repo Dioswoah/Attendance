@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { sendLeaveStatusUpdateEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
+import { invalidateCache, CacheKeys } from '@/lib/cache'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -213,6 +214,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }
 
         broadcastUpdate('attendance', updatedRequest)
+        void invalidateCache(CacheKeys.staffDashboard)
         return NextResponse.json(updatedRequest)
 
     } catch (e) {
@@ -269,6 +271,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         })
 
         broadcastUpdate('attendance', { id, deleted: true })
+        void invalidateCache(CacheKeys.staffDashboard)
         return NextResponse.json({ success: true })
     } catch (e) {
         console.error("Delete request error:", e)

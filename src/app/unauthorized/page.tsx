@@ -101,7 +101,7 @@ function UnauthorizedContent() {
 
     const handleReset = async () => {
         // Clear session and redirect to sign-in — use callbackUrl to trigger a fresh Google login (not silent)
-        await signOut({ callbackUrl: "/api/auth/signin" });
+        await signOut({ callbackUrl: "/" });
     };
 
     return (

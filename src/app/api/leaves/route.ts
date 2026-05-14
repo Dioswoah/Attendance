@@ -5,6 +5,7 @@ import { auth } from "@/auth"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
 import { notifyRole } from "@/lib/notifications"
+import { invalidateCache, invalidateCachePattern, CacheKeys } from '@/lib/cache'
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -386,6 +387,8 @@ export async function POST(req: Request) {
         })
 
         broadcastUpdate('leaves', record)
+        void invalidateCachePattern('leaves:*')
+        void invalidateCache(CacheKeys.staffDashboard)
         return NextResponse.json(record)
     } catch (error) {
         return NextResponse.json({ error: "Failed to create leave request" }, { status: 500 })

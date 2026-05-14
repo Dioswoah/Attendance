@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2 } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,8 @@ import { useSession, signOut } from "next-auth/react"
 import { RisaChatbot } from "@/components/RisaChatbot"
 import { UserOnboardingTour } from "@/components/UserOnboardingTour"
 
+import { toast } from "sonner"
+import { isActionLocked } from "@/lib/actionLock"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
 import { Breadcrumbs } from "@/components/Breadcrumbs"
@@ -51,6 +53,8 @@ function UserLayoutInner({
     const [managerPendingCount, setManagerPendingCount] = useState(0)
     const [managerPendingLeaves, setManagerPendingLeaves] = useState(0)
     const [managerPendingAttn, setManagerPendingAttn] = useState(0)
+    const [isNavBlocked, setIsNavBlocked] = useState(false)
+    const actionOverlayRef = useRef<HTMLDivElement>(null)
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const { data: session, status } = useSession()
@@ -182,6 +186,25 @@ function UserLayoutInner({
         }
     }, [session?.user?.id])
 
+    // Block all interaction while an attendance action is processing
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const locked = (e as CustomEvent<{ locked: boolean }>).detail.locked
+            // Direct DOM update — no React re-render lag
+            if (actionOverlayRef.current) {
+                actionOverlayRef.current.style.display = locked ? 'block' : 'none'
+            }
+            setIsNavBlocked(locked)
+        }
+        window.addEventListener('attendance-action-lock', handler)
+        return () => window.removeEventListener('attendance-action-lock', handler)
+    }, [])
+
+    const handleBlockedNav = useCallback((e: React.MouseEvent) => {
+        e.preventDefault()
+        toast.warning("Please wait — your attendance is currently being recorded. If the buttons don't update, please reload the app.", { duration: 3500 })
+    }, [])
+
     // Dynamic navigation items based on role
     const navItems = [
         { name: "Dashboard", href: "/user", icon: LayoutDashboard },
@@ -292,6 +315,7 @@ function UserLayoutInner({
                                 <Link
                                     href={item.href}
                                     onClick={(e) => {
+                                        if (isActionLocked()) { handleBlockedNav(e); return; }
                                         if (hasSubItems) {
                                             e.preventDefault();
                                             setExpandedMenus(prev => ({
@@ -306,7 +330,8 @@ function UserLayoutInner({
                                             ? "bg-[#D4A056] text-primary-foreground font-semibold shadow-sm"
                                             : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground",
                                         sidebarCollapsed && "justify-center px-0 h-10 w-10 mx-auto",
-                                        isActive && hasSubItems && !sidebarCollapsed && "text-white font-bold"
+                                        isActive && hasSubItems && !sidebarCollapsed && "text-white font-bold",
+                                        isNavBlocked && "cursor-not-allowed opacity-60"
                                     )}
                                 >
                                     <Icon className={cn("h-5 w-5 shrink-0", isActive ? (hasSubItems ? "text-white" : "text-primary-foreground") : "text-sidebar-foreground/70")} />
@@ -347,11 +372,13 @@ function UserLayoutInner({
                                                 <Link
                                                     key={sub.href}
                                                     href={sub.href}
+                                                    onClick={(e) => { if (isActionLocked()) handleBlockedNav(e) }}
                                                     className={cn(
                                                         "flex items-center gap-3 px-3 h-9 rounded-lg font-medium text-[11px] uppercase tracking-wider transition-all duration-200 relative",
                                                         isSubActive
                                                             ? "bg-white/10 text-white font-bold shadow-inner border border-white/5"
-                                                            : "text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-white/5"
+                                                            : "text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-white/5",
+                                                        isNavBlocked && "cursor-not-allowed opacity-60"
                                                     )}
                                                 >
                                                     <SubIcon className="h-3.5 w-3.5" />
@@ -513,6 +540,7 @@ function UserLayoutInner({
                                             <Link
                                                 href={item.href}
                                                 onClick={(e) => {
+                                                    if (isActionLocked()) { handleBlockedNav(e); return; }
                                                     if (hasSubItems) {
                                                         e.preventDefault();
                                                         setExpandedMenus(prev => ({
@@ -527,7 +555,8 @@ function UserLayoutInner({
                                                     "flex items-center gap-4 px-4 h-14 rounded-xl font-bold text-sm uppercase tracking-wide transition-all duration-300 relative",
                                                     isActive && !hasSubItems
                                                         ? "bg-[#8B2323] text-white shadow-lg shadow-[#8B2323]/20"
-                                                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                                                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
+                                                    isNavBlocked && "cursor-not-allowed opacity-60"
                                                 )}
                                             >
                                                 <Icon className="h-6 w-6" />
@@ -558,12 +587,16 @@ function UserLayoutInner({
                                                             <Link
                                                                 key={sub.href}
                                                                 href={sub.href}
-                                                                onClick={() => setSidebarOpen(false)}
+                                                                onClick={(e) => {
+                                                                    if (isActionLocked()) { handleBlockedNav(e); return; }
+                                                                    setSidebarOpen(false)
+                                                                }}
                                                                 className={cn(
                                                                     "flex items-center gap-3 py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-[0.2em] transition-all w-full",
                                                                     isSubActive
                                                                         ? "bg-red-50 text-red-700"
-                                                                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                                                                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50",
+                                                                    isNavBlocked && "cursor-not-allowed opacity-60"
                                                                 )}
                                                             >
                                                                 <SubIcon className="h-4 w-4" />
@@ -717,6 +750,13 @@ function UserLayoutInner({
                     {children}
                 </main>
             </div>
+            {/* Transparent overlay — blocks all clicks while an attendance action is in flight */}
+            <div
+                ref={actionOverlayRef}
+                style={{ display: 'none' }}
+                className="fixed inset-0 z-[9999] cursor-not-allowed"
+                onClick={handleBlockedNav}
+            />
             <RisaChatbot />
             <ScrollIndicator variant="maroon" offset="bottom-24" />
             <UserOnboardingTour mode="logic" />

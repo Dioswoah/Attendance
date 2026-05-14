@@ -123,15 +123,11 @@ export async function POST(req: Request) {
             }
         })
 
-        // Update User Availability Status if session is active
+        // Keep user as AVAILABLE when break state changes via admin panel
         if (updatedAttendance.clockOut === null) {
-            let newStatus: 'AVAILABLE' | 'BE_RIGHT_BACK' = 'AVAILABLE'
-            if (latestBreak && !latestBreak.endTime) {
-                newStatus = 'BE_RIGHT_BACK'
-            }
             await prisma.user.update({
                 where: { id: userId },
-                data: { availabilityStatus: newStatus }
+                data: { availabilityStatus: 'AVAILABLE' }
             })
         }
 

@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getCache, setCache, CacheKeys, TTL } from '@/lib/cache'
 
 export async function GET() {
     try {
-        // Fetch users who have MANAGER or ADMIN role
+        const cached = await getCache<object[]>(CacheKeys.managers)
+        if (cached) return NextResponse.json(cached)
+
         const managers = await prisma.user.findMany({
             where: {
                 deletedAt: null,
@@ -21,6 +24,7 @@ export async function GET() {
             }
         })
 
+        await setCache(CacheKeys.managers, managers, TTL.managers)
         return NextResponse.json(managers)
     } catch (error) {
         console.error("Fetch managers error:", error)

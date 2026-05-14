@@ -12,8 +12,12 @@ export async function GET() {
 
     const userId = session.user.id
 
+    // Only consider sessions started within the last 36 hours — covers all timezones and
+    // overnight shifts while excluding stale sessions from previous days that cleanup missed.
+    const cutoff = new Date(Date.now() - 36 * 60 * 60 * 1000)
+
     const active = await prisma.attendance.findFirst({
-        where: { userId, clockOut: null, deletedAt: null },
+        where: { userId, clockOut: null, deletedAt: null, clockIn: { gte: cutoff } },
         include: {
             breaks: {
                 where: { deletedAt: null },

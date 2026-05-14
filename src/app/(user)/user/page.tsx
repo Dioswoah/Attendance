@@ -1,5 +1,7 @@
 "use client"
 
+import { actionLock, setActionLock } from "@/lib/actionLock"
+
 import { useState, useEffect, useMemo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { useSession, signIn, signOut } from "next-auth/react"
@@ -62,6 +64,7 @@ function patchStaffWithAttendance(staffCurrent: any, attData: any): any {
             id: b.id,
             startTime: b.startTime,
             endTime: b.endTime || null,
+            expectedReturnTime: b.expectedReturnTime || null,
         })),
         notes: attData.notes || null,
         pendingRequests: existingRecord?.pendingRequests || [],
@@ -97,7 +100,9 @@ export default function UserPortal() {
     const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
-    const actionInFlightRef = useRef(false)
+    const [isActionInFlight, setIsActionInFlight] = useState(false)
+    const actionInFlightRef = actionLock
+
     const [totalPendingLeaves, setTotalPendingLeaves] = useState(0)
     const [hasAutoSwitchedStatus, setHasAutoSwitchedStatus] = useState(false)
     const [hasAutoActionRun, setHasAutoActionRun] = useState(false)
@@ -149,10 +154,8 @@ export default function UserPortal() {
     const [filterStatus, setFilterStatus] = useState(() =>
         typeof window !== 'undefined' ? localStorage.getItem('dashboard_filterStatus') || 'all' : 'all'
     )
-    const [filterDepartments, setFilterDepartments] = useState<string[]>(() => {
-        if (typeof window === 'undefined') return []
-        try { return JSON.parse(localStorage.getItem('dashboard_filterDepartments') || '[]') } catch { return [] }
-    })
+    const [filterDepartments, setFilterDepartments] = useState<string[]>([])
+    const departmentFilterInitialized = useRef(false)
     const [filterEmploymentLocations, setFilterEmploymentLocations] = useState<string[]>(() => {
         if (typeof window === 'undefined') return []
         try { return JSON.parse(localStorage.getItem('dashboard_filterLocations') || '[]') } catch { return [] }
@@ -164,7 +167,6 @@ export default function UserPortal() {
 
     // Persist dashboard filters across navigation for the current browser session
     useEffect(() => { localStorage.setItem('dashboard_filterStatus', filterStatus) }, [filterStatus])
-    useEffect(() => { localStorage.setItem('dashboard_filterDepartments', JSON.stringify(filterDepartments)) }, [filterDepartments])
     useEffect(() => { localStorage.setItem('dashboard_filterLocations', JSON.stringify(filterEmploymentLocations)) }, [filterEmploymentLocations])
     useEffect(() => { localStorage.setItem('dashboard_searchQuery', searchQuery) }, [searchQuery])
 
@@ -220,14 +222,14 @@ export default function UserPortal() {
     )
 
     // Second SWR for Heavy Staff/Team data - this will load in the background
-    const { data: staffData, mutate: mutateStaff } = useSWR(
+    const { data: staffData, mutate: mutateStaff, isLoading: isStaffLoading } = useSWR(
         status === 'authenticated' && session?.user?.id ? '/api/user/dashboard/staff' : null,
         fetcher,
         {
             revalidateOnFocus: false,
             revalidateIfStale: false,
-            dedupingInterval: 60000,
-            refreshInterval: 0,
+            dedupingInterval: 2000,
+            refreshInterval: 15000, // Safety net: re-fetch every 15s to recover from missed SSE events or stale cache
             keepPreviousData: true
         }
     )
@@ -295,6 +297,7 @@ export default function UserPortal() {
                 setUserRoles(data.user.roles || [])
                 setUserDepartment(data.user.department?.name || "Unassigned")
                 setUserDepartmentId(data.user.departmentId || "")
+                departmentFilterInitialized.current = true
                 setManagedDepartments(data.user.managedDepartments || [])
                 setUserSecondaryDepartments(data.user.secondaryDepartments || [])
                 setUserManagerId(data.user.managerId || null)
@@ -343,11 +346,24 @@ export default function UserPortal() {
             }
 
             // 2. Set Attendance Core Logic
-            setUserAttendanceList(data.attendance.mine || [])
-
-            // Determine active session
-            const active = data.attendance.mine && data.attendance.mine.find((r: any) => !r.clockOut)
-            setCurrentAttendance(active || (data.attendance.mine && data.attendance.mine[0]) || null)
+            const mineData = data.attendance.mine || []
+            setUserAttendanceList(mineData)
+            // Only update currentAttendance from dashboardData when we have real records.
+            // If mine is empty (updateAttendanceSummary race), leave currentAttendance alone —
+            // the currentState fast-path useEffect handles it with direct attendance table data.
+            if (mineData.length > 0) {
+                const cutoff36h = new Date(Date.now() - 36 * 60 * 60 * 1000)
+                const active = mineData.find((r: any) =>
+                    !r.clockOut && r.clockIn && new Date(r.clockIn) >= cutoff36h
+                )
+                if (active) {
+                    // Active session confirmed in summary — use it (richer data than fast endpoint)
+                    setCurrentAttendance(active)
+                }
+                // No active session in mine: could be a race where the new clock-in hasn't reached
+                // attendanceSummary yet (fire-and-forget delay). Don't overwrite currentAttendance
+                // with an old clocked-out record — the currentState useEffect holds the correct state.
+            }
 
             setMyLeaveRequests(data.leaves || [])
             setMyAttendanceRequests(data.attendanceRequests || [])
@@ -371,11 +387,20 @@ export default function UserPortal() {
         }
     }, [staffData])
 
-    // Prime currentAttendance from the fast endpoint while full dashboard is still loading
+    // Apply fast endpoint data only on initial load — never once dashboardData has real records
     useEffect(() => {
-        if (!currentState || dashboardData) return
-        setCurrentAttendance(currentState.active || null)
-        setIsLoading(false)
+        if (!currentState) return
+        // Defer to dashboardData only when it has actual attendance records (richer data).
+        // If dashboardData loaded but mine is empty (race with updateAttendanceSummary),
+        // still let currentState set the active session — it queries the attendance table directly.
+        if (dashboardData?.attendance?.mine?.length > 0) return
+        if (currentState.active) {
+            setCurrentAttendance(currentState.active)
+            setIsLoading(false)
+        } else {
+            setCurrentAttendance(null)
+            setIsLoading(false)
+        }
     }, [currentState, dashboardData])
 
     // Alias for legacy interaction handlers
@@ -619,7 +644,10 @@ export default function UserPortal() {
 
         // Only load dashboard if authenticated
         if (session?.user?.id) {
+            // If an action was in-flight when the user navigated away, keep buttons disabled on remount
+            if (actionLock.current) setIsActionInFlight(true)
             fetchDashboardData()
+            mutateCurrentState()
         }
 
         // Initialize Realtime Server-Sent Events
@@ -637,11 +665,14 @@ export default function UserPortal() {
                     const payload = JSON.parse(event.data);
 
                     if (payload.type === 'attendance') {
-                        // Instantly patch the staff overview from the SSE payload — no re-fetch needed
+                        // Instantly patch the staff overview from the SSE payload.
+                        // revalidate: false prevents out-of-order re-fetch responses from
+                        // overwriting a newer patch with stale data during rapid actions.
+                        // The 15s refreshInterval on staffData SWR acts as the safety net.
                         if (payload.data) {
                             mutateStaff(
                                 (current: any) => patchStaffWithAttendance(current, payload.data),
-                                { revalidate: true }
+                                { revalidate: false }
                             )
                         }
                         // Only re-fetch own dashboard if this event is about the current user
@@ -1021,29 +1052,7 @@ export default function UserPortal() {
             return
         }
 
-        // Optimistic UI: Update state immediately
-        const now = new Date()
-        const clockInISO = now.toISOString()
-
-        // Create optimistic record
-        const optimisticRecord = {
-            id: `temp-${Date.now()}`,
-            userId: session.user.id,
-            clockIn: clockInISO,
-            clockOut: null,
-            breaks: [],
-            status: 'clocked-in',
-            mode: mode,
-            locationDetails: locationDetails
-        }
-
-        // Save previous state for rollback
-        const previousAttendance = currentAttendance
-        const previousList = [...userAttendanceList]
-
-        // Update local state instantly
-        setCurrentAttendance(optimisticRecord)
-        setUserAttendanceList([optimisticRecord, ...userAttendanceList])
+        const clockInISO = new Date().toISOString()
         setShowLocationDialog(false)
 
         // Amendment path: no instant action, must wait for manager approval — block UI while submitting
@@ -1062,8 +1071,6 @@ export default function UserPortal() {
 
             if (!customReason.trim()) {
                 toast.error("Please kindly provide a reason for this time adjustment")
-                setCurrentAttendance(previousAttendance)
-                setUserAttendanceList(previousList)
                 return
             }
 
@@ -1092,128 +1099,65 @@ export default function UserPortal() {
                 } else {
                     const data = await res.json()
                     toast.error(data.error || "We encountered a small issue submitting your request. Please try again.")
-                    setCurrentAttendance(previousAttendance)
-                    setUserAttendanceList(previousList)
                 }
             } catch {
                 toast.error("We encountered a small issue. Please try again.")
-                setCurrentAttendance(previousAttendance)
-                setUserAttendanceList(previousList)
             } finally {
                 setIsProcessing(false)
             }
             return
         }
 
-        // Normal Clock In: optimistic update is already applied, fire API in background so buttons are instant
+        // Normal Clock In: fire API, then refresh from server
         if (actionInFlightRef.current) return
-        actionInFlightRef.current = true
+        setActionLock(true)
+        setIsActionInFlight(true)
         fetch('/api/attendance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: session.user.id, mode, locationDetails, clockIn: clockInISO })
+            body: JSON.stringify({ userId: session.user.id, mode, locationDetails, clockIn: clockInISO }),
+            keepalive: true
         })
         .then(async res => {
             if (res.ok) {
+                const rawAtt = await res.json()
+                // Use response body directly — committed record, no DB race possible
+                const mapped = {
+                    id: rawAtt.id, userId: rawAtt.userId,
+                    date: (rawAtt.date as string).split('T')[0],
+                    clockIn: rawAtt.clockIn, clockOut: null,
+                    mode: rawAtt.mode, locationDetails: rawAtt.locationDetails,
+                    status: 'clocked-in', breakStart: null, breakEnd: null, breaks: []
+                }
+                setCurrentAttendance(mapped)
+                // Sync SWR cache so currentState useEffect sees correct data (no re-fetch race)
+                mutateCurrentState({ active: mapped }, { revalidate: false })
                 mutateDashboard()
+                // Delayed refetch catches Today's Activity after updateAttendanceSummary finishes
+                setTimeout(() => mutateDashboard(), 3000)
             } else {
-                const data = await res.json()
+                const data = await res.json().catch(() => ({}))
                 toast.error(data.error || "We couldn't clock you in just yet. Please try again.")
-                setCurrentAttendance(previousAttendance)
-                setUserAttendanceList(previousList)
+                const stateData = await mutateCurrentState()
+                if (stateData) setCurrentAttendance(stateData.active || null)
                 mutateDashboard()
             }
         })
         .catch(() => {
             toast.error("We encountered a small issue. Please try again.")
-            setCurrentAttendance(previousAttendance)
-            setUserAttendanceList(previousList)
         })
-        .finally(() => { actionInFlightRef.current = false })
+        .finally(() => {
+            setActionLock(false)
+            setIsActionInFlight(false)
+        })
     }
     // --- ACTIONS ---
 
     const handleAction = async (action: 'clock-out' | 'start-break' | 'end-break') => {
         if (!session?.user?.id) return
 
-        // Optimistic UI: Save state & Update immediately
-        const now = new Date()
-        const nowISO = now.toISOString()
-        const previousAttendance = currentAttendance ? { ...currentAttendance } : null
-        const previousList = [...userAttendanceList]
-
-        // We only apply optimistic updates for normal actions, not simulated/amendment requests
-        // because amendment requests don't change the "Live" status instantly anyway.
         const realStatus = currentAttendance?.status || 'clocked-out'
         const isSimulated = optimisticStatus !== realStatus
-
-        let shouldApplyOptimistic = !isSimulated
-
-        // Special case: If we are correcting a "simulated" state that aligns with reality
-        if (isSimulated && currentAttendance?.clockIn && !currentAttendance.clockOut) {
-            if (action === 'start-break' && realStatus === 'clocked-in') shouldApplyOptimistic = true
-            else if (action === 'end-break' && realStatus === 'on-break') shouldApplyOptimistic = true
-            else if (action === 'clock-out' && (realStatus === 'clocked-in' || realStatus === 'on-break')) shouldApplyOptimistic = true
-        }
-
-        if (shouldApplyOptimistic && currentAttendance) {
-            const updatedRecord = { ...currentAttendance }
-
-            if (action === 'start-break') {
-                updatedRecord.status = 'on-break'
-                // Add a new break
-                let resolvedOptimisticTime = null
-                if (breakInputMode === "minutes" && breakMinutes) {
-                    const d = new Date()
-                    d.setMinutes(d.getMinutes() + parseInt(breakMinutes, 10))
-                    resolvedOptimisticTime = d.toISOString()
-                } else if (breakInputMode === "time" && breakReturnTime) {
-                    const [h, m] = breakReturnTime.split(':').map(Number)
-                    const d = new Date()
-                    d.setHours(h, m, 0, 0)
-                    resolvedOptimisticTime = d.toISOString()
-                }
-
-                const newBreak = {
-                    id: `temp-break-${Date.now()}`,
-                    startTime: nowISO,
-                    endTime: null,
-                    expectedReturnTime: resolvedOptimisticTime
-                }
-                updatedRecord.breaks = updatedRecord.breaks ? [...updatedRecord.breaks, newBreak] : [newBreak]
-            } else if (action === 'end-break') {
-                updatedRecord.status = 'clocked-in'
-                // Close the open break
-                if (updatedRecord.breaks && updatedRecord.breaks.length > 0) {
-                    // Find last open break
-                    const lastBreakIndex = updatedRecord.breaks.findIndex((b: any) => !b.endTime)
-                    if (lastBreakIndex >= 0) {
-                        const breaks = [...updatedRecord.breaks]
-                        breaks[lastBreakIndex] = { ...breaks[lastBreakIndex], endTime: nowISO }
-                        updatedRecord.breaks = breaks
-                    }
-                }
-            } else if (action === 'clock-out') {
-                updatedRecord.status = 'clocked-out'
-                updatedRecord.clockOut = nowISO
-                // Close any open breaks
-                if (updatedRecord.breaks) {
-                    updatedRecord.breaks = updatedRecord.breaks.map((b: any) =>
-                        !b.endTime ? { ...b, endTime: nowISO } : b
-                    )
-                }
-            }
-
-            // Apply Optimistic Update
-            setCurrentAttendance(updatedRecord)
-            // Also update the list view
-            const newList = [...userAttendanceList]
-            const recordIndex = newList.findIndex(r => r.id === updatedRecord.id)
-            if (recordIndex >= 0) {
-                newList[recordIndex] = updatedRecord
-                setUserAttendanceList(newList)
-            }
-        }
 
         const pendingClockIn = myAttendanceRequests.find((req: any) => {
             if (req.type !== 'CLOCK_IN' || req.status !== 'PENDING') return false
@@ -1225,10 +1169,6 @@ export default function UserPortal() {
 
         // Amendment request path: no real session to patch, must wait for response
         if (isSimulated && !(currentAttendance?.clockIn && !currentAttendance.clockOut) && !isProvisionalFlow) {
-            if (shouldApplyOptimistic) {
-                setCurrentAttendance(previousAttendance)
-                setUserAttendanceList(previousList)
-            }
             let reqType = ''
             if (action === 'start-break') reqType = 'BREAK_START'
             if (action === 'end-break') reqType = 'BREAK_END'
@@ -1261,22 +1201,18 @@ export default function UserPortal() {
             return
         }
 
-        // Revert sim state that doesn't align for a direct patch
         if (isSimulated && currentAttendance?.clockIn && !currentAttendance.clockOut && !isProvisionalFlow) {
             const safeTransition =
                 (action === 'start-break' && realStatus === 'clocked-in') ||
                 (action === 'end-break' && realStatus === 'on-break') ||
                 (action === 'clock-out' && (realStatus === 'clocked-in' || realStatus === 'on-break'))
-            if (!safeTransition && shouldApplyOptimistic) {
-                setCurrentAttendance(previousAttendance)
-                setUserAttendanceList(previousList)
-                return
-            }
+            if (!safeTransition) return
         }
 
         // Normal PATCH: optimistic update already applied, fire in background so buttons are instant
         if (actionInFlightRef.current) return
-        actionInFlightRef.current = true
+        setActionLock(true)
+        setIsActionInFlight(true)
 
         const body: any = { userId: session.user.id, action }
         if (action === 'start-break') {
@@ -1297,27 +1233,50 @@ export default function UserPortal() {
         fetch('/api/attendance', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
+            keepalive: true
         })
         .then(async res => {
             if (res.ok) {
+                const rawAtt = await res.json()
+                // Use response body directly — committed record, no DB race possible
+                if (action === 'clock-out') {
+                    setCurrentAttendance(null)
+                    mutateCurrentState({ active: null }, { revalidate: false })
+                } else {
+                    const derivedStatus = action === 'start-break' ? 'on-break' : 'clocked-in'
+                    const mapped = {
+                        id: rawAtt.id, userId: rawAtt.userId,
+                        date: (rawAtt.date as string).split('T')[0],
+                        clockIn: rawAtt.clockIn, clockOut: null,
+                        mode: rawAtt.mode, locationDetails: rawAtt.locationDetails,
+                        status: derivedStatus,
+                        breakStart: rawAtt.breakStart || null,
+                        breakEnd: rawAtt.breakEnd || null,
+                        breaks: (rawAtt.breaks || []).map((b: any) => ({
+                            id: b.id, startTime: b.startTime,
+                            endTime: b.endTime || null, expectedReturnTime: b.expectedReturnTime || null
+                        }))
+                    }
+                    setCurrentAttendance(mapped)
+                    mutateCurrentState({ active: mapped }, { revalidate: false })
+                }
                 mutateDashboard()
             } else {
-                if (shouldApplyOptimistic) {
-                    setCurrentAttendance(previousAttendance)
-                    setUserAttendanceList(previousList)
-                }
-                toast.error("Action failed. Please try again.")
+                const data = await res.json().catch(() => ({}))
+                toast.error(data.error || "Action failed. Please try again.")
+                const stateData = await mutateCurrentState()
+                if (stateData) setCurrentAttendance(stateData.active || null)
+                mutateDashboard()
             }
         })
         .catch(() => {
-            if (shouldApplyOptimistic) {
-                setCurrentAttendance(previousAttendance)
-                setUserAttendanceList(previousList)
-            }
             toast.error("We encountered a small issue. Please try again.")
         })
-        .finally(() => { actionInFlightRef.current = false })
+        .finally(() => {
+            setActionLock(false)
+            setIsActionInFlight(false)
+        })
     }
 
     const requestLeave = async (e: React.FormEvent) => {
@@ -1498,7 +1457,6 @@ export default function UserPortal() {
         if (optimisticStatus === "clocked-in" && userProfile?.availabilityStatus) {
             const status = userProfile.availabilityStatus
             if (status === 'DO_NOT_DISTURB') return "bg-rose-100 text-rose-700 border-rose-200"
-            if (status === 'BE_RIGHT_BACK') return "bg-amber-100 text-amber-700 border-amber-200"
             if (status === 'APPEAR_AWAY') return "bg-amber-100 text-amber-700 border-amber-200"
         }
 
@@ -1513,7 +1471,6 @@ export default function UserPortal() {
         if (optimisticStatus === "clocked-in" && userProfile?.availabilityStatus) {
             const status = userProfile.availabilityStatus
             if (status === 'DO_NOT_DISTURB') return "text-rose-600"
-            if (status === 'BE_RIGHT_BACK') return "text-amber-600"
             if (status === 'APPEAR_AWAY') return "text-amber-600"
         }
         switch (optimisticStatus) {
@@ -1528,7 +1485,6 @@ export default function UserPortal() {
         if (optimisticStatus === "clocked-in" && userProfile?.availabilityStatus) {
             const status = userProfile.availabilityStatus
             if (status === 'DO_NOT_DISTURB') return "In a Meeting"
-            if (status === 'BE_RIGHT_BACK') return "Be Right Back"
             if (status === 'APPEAR_AWAY') return "Away"
         }
 
@@ -1550,7 +1506,7 @@ export default function UserPortal() {
             case "do-not-disturb":
                 return <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-200/50 border-0 font-bold">In a Meeting</Badge>
             case "be-right-back":
-                return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200/50 border-0 font-bold">Be Right Back</Badge>
+                return <Badge className="bg-green-100 text-green-700 hover:bg-green-200/50 border-0 font-bold">Active</Badge>
             case "appear-away":
                 return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200/50 border-0 font-bold">Away</Badge>
             default:
@@ -1612,7 +1568,7 @@ export default function UserPortal() {
     // Standardized Status Checker
     const isStatus = (currentStatus: string, targetType: 'in' | 'break' | 'leave' | 'out') => {
         const s = currentStatus?.toLowerCase() || ''
-        if (targetType === 'in') return s === 'present' || s === 'clocked-in' || s === 'working' || s === 'clock_in' || s === 'do-not-disturb' || s === 'be-right-back' || s === 'appear-away'
+        if (targetType === 'in') return s === 'present' || s === 'clocked-in' || s === 'working' || s === 'clock_in' || s === 'do-not-disturb' || s === 'appear-away'
         if (targetType === 'break') return s === 'break' || s === 'on-break' || s === 'on break'
         if (targetType === 'leave') return s === 'on-leave' || s === 'on leave' || s === 'leave' || s === 'sick' || s === 'annual' || s === 'vacation'
         if (targetType === 'out') return s === 'absent' || s === 'clocked-out' || s === 'off duty' || s === 'offline' || s === 'clock_out' || s === 'clocked_out'
@@ -1646,11 +1602,10 @@ export default function UserPortal() {
             }
 
             // AVAILABILITY OVERRIDE: If the user is technically Active (Clocked In), check their specific Availability Status
-            // This allows "In a Meeting" or "Be Right Back" to supersede generic "Working"
+            // This allows "In a Meeting" to supersede generic "Working"
             const avail = staff.availabilityStatus
             if (liveStatus === 'clocked-in') { // Only override if they are actually working
                 if (avail === 'DO_NOT_DISTURB') liveStatus = 'do-not-disturb'
-                else if (avail === 'BE_RIGHT_BACK') liveStatus = 'be-right-back'
                 else if (avail === 'APPEAR_AWAY') liveStatus = 'appear-away'
             }
 
@@ -1729,7 +1684,6 @@ export default function UserPortal() {
         return enrichedStaffList
             .filter((staff: any) => staff.name?.toLowerCase().includes(searchQuery.toLowerCase()))
             .filter((staff: any) => filterStatus === "all" || staff.status === filterStatus)
-            .filter((staff: any) => filterStatus === "all" || staff.status === filterStatus)
             .filter((staff: any) => {
                 if (filterDepartments.length === 0) return true
                 const dObj = staff.department
@@ -1754,7 +1708,7 @@ export default function UserPortal() {
                 if (!aIsMyDept && bIsMyDept) return 1
 
                 // Priority 2: Status Grouping (Clocked In / On Break > Others)
-                const priorityStatuses = ["clocked-in", "on-break", "do-not-disturb", "be-right-back", "appear-away"]
+                const priorityStatuses = ["clocked-in", "on-break", "do-not-disturb", "appear-away"]
                 const aIsPriority = priorityStatuses.includes(a.status)
                 const bIsPriority = priorityStatuses.includes(b.status)
 
@@ -1772,7 +1726,6 @@ export default function UserPortal() {
                         const statusOrder: any = {
                             "clocked-in": 0,
                             "do-not-disturb": 0,
-                            "be-right-back": 0,
                             "appear-away": 0,
                             "on-break": 1,
                             "on-leave": 2,
@@ -2153,13 +2106,13 @@ export default function UserPortal() {
                     <div id="tour-action-buttons" className="flex items-center gap-2">
                         {['clocked-out', 'on-leave'].includes(optimisticStatus) && (
                             <div className="flex bg-green-600 rounded-2xl items-center shadow-md group p-1 z-20">
-                                <Button onClick={handleClockInClick} disabled={isProcessing || isInitializing} className="h-12 sm:h-14 px-6 sm:px-8 gap-3 bg-transparent hover:bg-green-700/20 text-white font-black border-r border-white/20 rounded-r-none focus:ring-0 uppercase tracking-widest text-xs sm:text-sm transition-all active:scale-95 duration-200">
-                                    {isProcessing || isInitializing ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+                                <Button onClick={handleClockInClick} disabled={isProcessing || isInitializing || isActionInFlight} className="h-12 sm:h-14 px-6 sm:px-8 gap-3 bg-transparent hover:bg-green-700/20 text-white font-black border-r border-white/20 rounded-r-none focus:ring-0 uppercase tracking-widest text-xs sm:text-sm transition-all active:scale-95 duration-200">
+                                    {isProcessing || isInitializing || isActionInFlight ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
                                     Clock In
                                 </Button>
                                 <Popover>
                                     <PopoverTrigger asChild>
-                                        <Button disabled={isProcessing || isInitializing} className="px-3 sm:px-4 h-12 sm:h-14 bg-transparent hover:bg-green-700/20 text-white rounded-l-none focus:ring-0 rounded-r-[0.9rem] transition-all active:scale-95 duration-200">
+                                        <Button disabled={isProcessing || isInitializing || isActionInFlight} className="px-3 sm:px-4 h-12 sm:h-14 bg-transparent hover:bg-green-700/20 text-white rounded-l-none focus:ring-0 rounded-r-[0.9rem] transition-all active:scale-95 duration-200">
                                             <ChevronDown className="h-5 w-5" />
                                         </Button>
                                     </PopoverTrigger>
@@ -2185,17 +2138,17 @@ export default function UserPortal() {
                         )}
                         {optimisticStatus === 'clocked-in' && (
                             <>
-                                <Button onClick={breakStart} disabled={isProcessing || isLoading} variant="outline" className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 border border-[#8B2323]/20 text-[#8B2323] bg-[#8B2323]/5 hover:bg-[#8B2323]/10 hover:text-[#8B2323] font-black rounded-2xl uppercase tracking-widest text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
-                                    {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Coffee className="w-4 h-4 sm:h-5 sm:w-5" />} Start Break
+                                <Button onClick={breakStart} disabled={isProcessing || isLoading || isActionInFlight} variant="outline" className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 border border-[#8B2323]/20 text-[#8B2323] bg-[#8B2323]/5 hover:bg-[#8B2323]/10 hover:text-[#8B2323] font-black rounded-2xl uppercase tracking-widest text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                    {isProcessing || isLoading || isActionInFlight ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Coffee className="w-4 h-4 sm:h-5 sm:w-5" />} Start Break
                                 </Button>
-                                <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 font-black rounded-2xl bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-widest text-xs sm:text-sm shadow-md transition-all hover:scale-[1.02] active:scale-95 duration-200">
-                                    {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <LogOut className="w-4 h-4 sm:h-5 sm:w-5" />} Clock Out
+                                <Button onClick={() => setShowClockOutConfirm(true)} disabled={isProcessing || isLoading || isActionInFlight} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 font-black rounded-2xl bg-[#8B2323] hover:bg-[#701c1c] text-white uppercase tracking-widest text-xs sm:text-sm shadow-md transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                    {isProcessing || isLoading || isActionInFlight ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <LogOut className="w-4 h-4 sm:h-5 sm:w-5" />} Clock Out
                                 </Button>
                             </>
                         )}
                         {optimisticStatus === 'on-break' && (
-                            <Button onClick={breakEnd} disabled={isProcessing || isLoading} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 bg-primary hover:bg-primary/90 text-primary-foreground font-black rounded-2xl shadow-md uppercase tracking-widest text-xs sm:text-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
-                                {isProcessing || isLoading ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Timer className="w-4 h-4 sm:h-5 sm:w-5" />} End Break
+                            <Button onClick={breakEnd} disabled={isProcessing || isLoading || isActionInFlight} className="h-12 sm:h-14 px-6 sm:px-8 gap-2 sm:gap-3 bg-primary hover:bg-primary/90 text-primary-foreground font-black rounded-2xl shadow-md uppercase tracking-widest text-xs sm:text-sm transition-all hover:scale-[1.02] active:scale-95 duration-200">
+                                {isProcessing || isLoading || isActionInFlight ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Timer className="w-4 h-4 sm:h-5 sm:w-5" />} End Break
                             </Button>
                         )}
                     </div>
@@ -2606,7 +2559,22 @@ export default function UserPortal() {
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
-                                                    {sortedStaff.length === 0 ? (
+                                                    {isStaffLoading && employees.length === 0 ? (
+                                                        Array.from({ length: 6 }).map((_, i) => (
+                                                            <TableRow key={i} className="border-b-slate-100">
+                                                                <TableCell className="pl-6 py-3">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="w-8 h-8 rounded-full bg-slate-200 animate-pulse" />
+                                                                        <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                                                                    </div>
+                                                                </TableCell>
+                                                                <TableCell><div className="h-3 w-20 bg-slate-200 rounded animate-pulse" /></TableCell>
+                                                                <TableCell><div className="h-3 w-24 bg-slate-200 rounded animate-pulse" /></TableCell>
+                                                                <TableCell><div className="h-3 w-20 bg-slate-200 rounded animate-pulse" /></TableCell>
+                                                                <TableCell><div className="h-3 w-16 bg-slate-200 rounded animate-pulse" /></TableCell>
+                                                            </TableRow>
+                                                        ))
+                                                    ) : sortedStaff.length === 0 ? (
                                                         <TableRow>
                                                             <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm italic font-medium">
                                                                 No staff found matching your criteria
@@ -2614,7 +2582,7 @@ export default function UserPortal() {
                                                         </TableRow>
                                                     ) : (
                                                         sortedStaff.map((staff: any) => {
-                                                            const isOnline = ['clocked-in', 'on-break', 'do-not-disturb', 'be-right-back', 'appear-away'].includes(staff.status)
+                                                            const isOnline = ['clocked-in', 'on-break', 'do-not-disturb', 'appear-away'].includes(staff.status)
                                                             // Ensure we check availabilityStatus existence, default to AVAILABLE if online
                                                             const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
                                                             const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]

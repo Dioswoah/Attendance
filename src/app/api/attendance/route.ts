@@ -5,6 +5,7 @@ import { sendAdminActionEmail, sendForgottenClockOutEmail, sendOverdueDepartureE
 import { broadcastUpdate } from "@/lib/eventBus"
 import { syncStatusToCalendar } from "@/lib/calendar"
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
+import { invalidateCache, invalidateCachePattern, CacheKeys } from '@/lib/cache'
 
 // NSW Public Holidays 2026
 const HOLIDAYS_2026 = [
@@ -88,6 +89,26 @@ export async function cleanupOldSessions() {
 
     if (unclosed.length === 0) return
 
+    const getOffset = (d: Date, tz: string) => {
+        try {
+            const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
+            const parts = fmt.formatToParts(d);
+            const offset = parts.find(p => p.type === 'timeZoneName')?.value;
+            if (!offset) return 'Z';
+            const cleaned = offset.replace('GMT', '');
+            return cleaned || 'Z';
+        } catch (e) {
+            return 'Z';
+        }
+    };
+
+    // Hard 9pm Australia/Sydney cutoff — computed once per cleanup run
+    const nowGlobal = new Date()
+    const sydneyTodayStr = nowGlobal.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
+    const sydneyOffset = getOffset(nowGlobal, 'Australia/Sydney')
+    const sydney9pmUtc = new Date(`${sydneyTodayStr}T21:00:00${sydneyOffset}`)
+    const isSydney9pmOrLater = nowGlobal >= sydney9pmUtc
+
     for (const session of unclosed) {
         let timeZone = 'Asia/Manila';
         if (session.user?.employmentLocation === 'Philippines') {
@@ -105,19 +126,6 @@ export async function cleanupOldSessions() {
         if (!session.clockIn) continue
 
         const is14HoursPast = (now.getTime() - session.clockIn.getTime()) >= (14 * 60 * 60 * 1000);
-
-        const getOffset = (d: Date, tz: string) => {
-            try {
-                const format = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
-                const parts = format.formatToParts(d);
-                const offset = parts.find(p => p.type === 'timeZoneName')?.value;
-                if (!offset) return 'Z';
-                const cleaned = offset.replace('GMT', '');
-                return cleaned || 'Z';
-            } catch (e) {
-                return 'Z';
-            }
-        };
 
         const probe = new Date(session.date);
         probe.setUTCHours(12);
@@ -167,6 +175,11 @@ export async function cleanupOldSessions() {
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && is14HoursPast) {
             shouldAutoClockOut = true;
+        } else if (sessionDateStr === userTodayStr && isSydney9pmOrLater && session.clockIn < sydney9pmUtc) {
+            // Hard 9pm AU cutoff — clock out anyone still in, stamp at exactly 9pm AU
+            shouldAutoClockOut = true;
+            targetTime = sydney9pmUtc;
+            reason = "end of business day (9:00 PM AU time)";
         } else if (sessionDateStr === userTodayStr && now >= autoClockOutTriggerTime) {
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && now >= reminderTriggerTime) {
@@ -610,7 +623,7 @@ export async function GET(req: Request) {
                 scheduledEnd: a.scheduledEnd?.toISOString(),
                 mode: a.mode,
                 locationDetails: a.locationDetails,
-                status: a.clockOut ? 'clocked-out' : (a.breakStart && !a.breakEnd ? 'on-break' : 'clocked-in'),
+                status: a.clockOut ? 'clocked-out' : ((a.breaks?.some((b: any) => !b.endTime) || (a.breakStart && !a.breakEnd)) ? 'on-break' : 'clocked-in'),
                 attendanceStatus: a.status, // DB-level status: PRESENT, LATE, ABSENT, etc.
                 breakStart: a.breakStart?.toISOString(),
                 breakEnd: a.breakEnd?.toISOString(),
@@ -865,8 +878,9 @@ export async function POST(req: Request) {
         }
 
 
+        // Clear cache before broadcasting so any immediate refetch from SSE gets fresh data
+        await invalidateCache(CacheKeys.staffDashboard)
         broadcastUpdate('attendance', attendance)
-        broadcastUpdate('staff')
 
         // Fire-and-forget tail work — responds to user immediately
         const actorName = session?.user?.id !== userId ? (session?.user?.name || 'Admin') : undefined
@@ -902,13 +916,14 @@ export async function PATCH(req: Request) {
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
-        // Find ACTIVE session
+        // Find ACTIVE session (most recent, in case duplicates exist)
         const existing = await prisma.attendance.findFirst({
             where: {
                 userId,
                 clockOut: null,
                 deletedAt: null
-            }
+            },
+            orderBy: { clockIn: 'desc' }
         })
 
         if (!existing) {
@@ -978,20 +993,11 @@ export async function PATCH(req: Request) {
             // Convenience field (current break)
             updateData = { breakStart: now, breakEnd: null }
 
-            // Update user availability to BE_RIGHT_BACK when starting a break
+            // Keep user as AVAILABLE during break — BE_RIGHT_BACK status removed
             await prisma.user.update({
                 where: { id: userId },
-                data: { availabilityStatus: 'BE_RIGHT_BACK' }
+                data: { availabilityStatus: 'AVAILABLE' }
             })
-
-            // Sync to Google Calendar (non-blocking)
-            const sessionBreakStart = await auth() as any
-            if (sessionBreakStart?.accessToken) {
-                const userForTimezone = await prisma.user.findUnique({ where: { id: userId } }) as any
-                const timezone = userForTimezone?.selectedTimezone || 'UTC'
-                syncStatusToCalendar(sessionBreakStart.accessToken, 'BE_RIGHT_BACK', existing.mode, timezone)
-                    .catch(err => console.error('[Calendar Sync] Failed on break start:', err))
-            }
         } else if (action === 'end-break') {
             // Close the latest break in the Break table
             const latestBreak = await prisma.break.findFirst({
@@ -1008,6 +1014,8 @@ export async function PATCH(req: Request) {
                     where: { id: latestBreak.id },
                     data: { endTime: now }
                 })
+            } else {
+                console.warn(`[end-break] No open break found for session ${existing.id} (userId=${userId}). Possible deleted break in dashboard.`)
             }
             // Convenience field
             updateData = { breakEnd: now }
@@ -1030,17 +1038,30 @@ export async function PATCH(req: Request) {
 
         const updated = await prisma.attendance.update({
             where: { id: existing.id },
-            data: updateData
+            data: updateData,
+            include: {
+                breaks: {
+                    where: { deletedAt: null },
+                    orderBy: { startTime: 'desc' }
+                }
+            }
         })
 
         // Include availabilityStatus in broadcast so clients can update staff list without a full re-fetch
         const availabilityStatusForBroadcast =
             action === 'end-break' ? 'AVAILABLE' :
-            action === 'start-break' ? 'BE_RIGHT_BACK' :
+            action === 'start-break' ? 'AVAILABLE' :
             action === 'clock-out' ? 'APPEAR_OFFLINE' : undefined
 
+        await invalidateCache(CacheKeys.staffDashboard)
         broadcastUpdate('attendance', {
             ...updated,
+            breaks: updated.breaks.map((b: any) => ({
+                id: b.id,
+                startTime: b.startTime.toISOString(),
+                endTime: b.endTime?.toISOString() || null,
+                expectedReturnTime: b.expectedReturnTime?.toISOString() || null,
+            })),
             ...(availabilityStatusForBroadcast !== undefined ? { availabilityStatus: availabilityStatusForBroadcast } : {})
         })
 

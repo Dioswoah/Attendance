@@ -20,7 +20,7 @@ export type UserStatus = 'AVAILABLE' | 'BUSY' | 'DO_NOT_DISTURB' | 'BE_RIGHT_BAC
 export const statusConfig: Record<UserStatus, { label: string, icon: any, color: string }> = {
     AVAILABLE: { label: 'Active', icon: CheckCircle2, color: 'text-emerald-500' },
     DO_NOT_DISTURB: { label: 'In a Meeting', icon: MinusCircle, color: 'text-rose-500' },
-    BE_RIGHT_BACK: { label: 'Be right back', icon: Clock, color: 'text-amber-500' },
+    BE_RIGHT_BACK: { label: 'Active', icon: CheckCircle2, color: 'text-emerald-500' }, // legacy — treated as AVAILABLE
     APPEAR_AWAY: { label: 'Set as away', icon: Clock, color: 'text-amber-500' },
     APPEAR_OFFLINE: { label: 'Offline', icon: XCircle, color: 'text-slate-400' },
     // BUSY removed as per user request to match Google's simple options
@@ -176,7 +176,7 @@ export function UserStatusDropdown({
 
                 <div className="space-y-0.5">
                     {(Object.keys(statusConfig) as UserStatus[])
-                        .filter(key => key !== 'BUSY')
+                        .filter(key => key !== 'BUSY' && key !== 'BE_RIGHT_BACK')
                         .map((key) => {
                             const config = statusConfig[key]
                             const Icon = config.icon

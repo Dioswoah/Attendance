@@ -50,7 +50,9 @@ if (-not $SkipBuild) {
 }
 
 Write-Host "Step 2: Running database migrations..." -ForegroundColor Yellow
-$CLOUD_SQL_CONN = "${PROJECT_ID}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
+# Support cross-project Cloud SQL: use CLOUD_SQL_PROJECT_ID if set, otherwise fall back to PROJECT_ID
+$CloudSqlProjectId = if ($CLOUD_SQL_PROJECT_ID) { $CLOUD_SQL_PROJECT_ID } else { $PROJECT_ID }
+$CLOUD_SQL_CONN = "${CloudSqlProjectId}:${CLOUD_SQL_REGION}:${CLOUD_SQL_INSTANCE}"
 # Migration job uses a low connection limit (3) since it runs briefly and sequentially
 $CLOUD_RUN_MIGRATION_URL = "postgresql://${DATABASE_USER}:${DATABASE_PASS_ENCODED}@localhost/${DATABASE_NAME}?host=/cloudsql/$CLOUD_SQL_CONN&connection_limit=3"
 # connection_limit=15 per instance: with max-instances=3 that's 45 total connections, well within Cloud SQL limits
@@ -91,6 +93,8 @@ gcloud run deploy $SERVICE_NAME `
   --region $REGION `
   --allow-unauthenticated `
   --add-cloudsql-instances $CLOUD_SQL_CONN `
+  --vpc-connector attendance-vpc-connector `
+  --vpc-egress private-ranges-only `
   --set-env-vars "NODE_ENV=production" `
   --set-env-vars "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" `
   --set-env-vars "NEXTAUTH_URL=$SERVICE_URL" `
@@ -105,7 +109,8 @@ gcloud run deploy $SERVICE_NAME `
   --set-env-vars "^|^ALLOWED_WORKSPACE_DOMAINS=$ALLOWED_WORKSPACE_DOMAINS" `
   --set-env-vars "ZEPTOMAIL_PASSWORD=$ZEPTOMAIL_PASSWORD" `
   --set-env-vars "BIOMETRIC_APPS_SCRIPT_URL=$BIOMETRIC_APPS_SCRIPT_URL" `
-  --memory 1Gi `
+  --set-env-vars "REDIS_URL=$REDIS_URL" `
+  --memory 2Gi `
   --cpu 1 `
   --concurrency 1000 `
   --min-instances 1 `

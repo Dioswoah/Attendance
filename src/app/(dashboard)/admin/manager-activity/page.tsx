@@ -91,6 +91,7 @@ export default function ManagerActivityPage() {
     const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [userTimeZone, setUserTimeZone] = useState("UTC")
+    const [statusFilter, setStatusFilter] = useState<string>("all")
     const { data: session } = useSession()
 
     // NEW: Manager Control Sub-Tabs
@@ -653,11 +654,26 @@ export default function ManagerActivityPage() {
                     {activeTab === 'logs' && (
                         <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                             <CardHeader className="bg-muted/10 border-b border-border">
-                                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                                    <HistoryIcon className="h-5 w-5 text-muted-foreground" />
-                                    Review Activity Log
-                                </CardTitle>
-                                <CardDescription>Recent actions taken on leave requests across all managers</CardDescription>
+                                <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                        <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                                            <HistoryIcon className="h-5 w-5 text-muted-foreground" />
+                                            Review Activity Log
+                                        </CardTitle>
+                                        <CardDescription>Recent actions taken on leave requests across all managers</CardDescription>
+                                    </div>
+                                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                        <SelectTrigger className="h-9 w-[160px] bg-white">
+                                            <SelectValue placeholder="All Statuses" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Statuses</SelectItem>
+                                            <SelectItem value="PENDING">Pending</SelectItem>
+                                            <SelectItem value="APPROVED">Approved</SelectItem>
+                                            <SelectItem value="DECLINED">Declined</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </CardHeader>
                             <CardContent className="p-0">
                                 <Table>
@@ -672,7 +688,15 @@ export default function ManagerActivityPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
+                                        {leaves.filter(leaf => statusFilter === "all" || leaf.status === statusFilter).length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">
+                                                    No records match the selected status filter
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
                                         {leaves
+                                            .filter(leaf => statusFilter === "all" || leaf.status === statusFilter)
                                             .map(leaf => {
                                                 const manager = getManagerOfUser(leaf.userId)
                                                 return (
@@ -709,6 +733,7 @@ export default function ManagerActivityPage() {
                                                             <div className="flex flex-col gap-1.5 items-start">
                                                                 <Badge className={
                                                                     leaf.status === 'APPROVED' ? "bg-green-100 text-green-700 hover:bg-green-100" :
+                                                                    leaf.status === 'PENDING' ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
                                                                         "bg-red-100 text-red-700 hover:bg-red-100"
                                                                 }>
                                                                     {leaf.status}

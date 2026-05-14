@@ -90,18 +90,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             data: attendanceUpdate
         })
 
-        // 4. Update User Availability Status if session is active
+        // Keep user as AVAILABLE when break state changes via admin panel
         if (updatedAttendance.clockOut === null) {
-            let newStatus: 'AVAILABLE' | 'BE_RIGHT_BACK' = 'AVAILABLE'
-
-            // If the LATEST break is still ongoing, user is BE_RIGHT_BACK
-            if (latestBreak && !latestBreak.endTime) {
-                newStatus = 'BE_RIGHT_BACK'
-            }
-
             await prisma.user.update({
                 where: { id: updatedAttendance.userId },
-                data: { availabilityStatus: newStatus }
+                data: { availabilityStatus: 'AVAILABLE' }
             })
         }
 
@@ -154,15 +147,11 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             data: attendanceUpdate
         })
 
-        // 4. Update User status
+        // Keep user as AVAILABLE when break is deleted via admin panel
         if (updatedAttendance.clockOut === null) {
-            let newStatus: 'AVAILABLE' | 'BE_RIGHT_BACK' = 'AVAILABLE'
-            if (latestBreak && !latestBreak.endTime) {
-                newStatus = 'BE_RIGHT_BACK'
-            }
             await prisma.user.update({
                 where: { id: updatedAttendance.userId },
-                data: { availabilityStatus: newStatus }
+                data: { availabilityStatus: 'AVAILABLE' }
             })
         }
 

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
+import { getCache, setCache, invalidateCachePattern, CacheKeys, TTL } from '@/lib/cache'
 
 export async function GET(req: Request) {
     const session = await auth()
@@ -12,6 +13,13 @@ export async function GET(req: Request) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const departmentId = searchParams.get('departmentId')
+
+    const cacheKey = CacheKeys.attendanceSummary(
+        `u=${userId}&m=${managerId}&s=${startDate}&e=${endDate}&d=${departmentId}`
+    )
+
+    const cached = await getCache<object[]>(cacheKey)
+    if (cached) return NextResponse.json(cached)
 
     const where: any = {}
 
@@ -49,6 +57,7 @@ export async function GET(req: Request) {
             orderBy: { date: 'desc' }
         })
 
+        await setCache(cacheKey, summaries, TTL.attendanceSummary)
         return NextResponse.json(summaries)
     } catch (error) {
         console.error("Fetch summaries error:", error)
@@ -76,6 +85,7 @@ export async function PATCH(req: Request) {
             }
         })
 
+        void invalidateCachePattern('attendance:summary:*')
         return NextResponse.json(updated)
     } catch (error) {
         console.error("Update summary error:", error)

@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { sendLeaveRequestEmail } from "@/lib/email"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
+import { invalidateCache, invalidateCachePattern, CacheKeys } from '@/lib/cache'
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
@@ -104,6 +105,7 @@ export async function POST(req: Request) {
                     await updateAttendanceSummary(userId, normalizedDate)
                     await logActivity({ userId, action: 'ATTENDANCE_REQUEST_SUBMIT', entityType: 'ATTENDANCE_REQUEST', entityId: autoRequest.id, details: { type, auto_approved: true } })
                     broadcastUpdate('attendance', autoRequest)
+                    void invalidateCache(CacheKeys.staffDashboard)
                     return NextResponse.json({ ...autoRequest, autoApproved: true })
                 }
             }
@@ -195,6 +197,7 @@ export async function POST(req: Request) {
         })
 
         broadcastUpdate('attendance', request)
+        void invalidateCache(CacheKeys.staffDashboard)
         return NextResponse.json(request)
     } catch (error) {
         console.error("Failed to create attendance request:", error)

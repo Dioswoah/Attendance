@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getCache, setCache, invalidateCache, invalidateCachePattern, CacheKeys, TTL } from '@/lib/cache'
 
 export async function GET() {
     try {
+        const cached = await getCache<object[]>(CacheKeys.employees)
+        if (cached) return NextResponse.json(cached)
+
         const employees = await prisma.user.findMany({
             where: {
                 deletedAt: null
@@ -20,6 +24,8 @@ export async function GET() {
             },
             orderBy: { name: 'asc' }
         })
+
+        await setCache(CacheKeys.employees, employees, TTL.employees)
         return NextResponse.json(employees)
     } catch (error) {
         console.error("Fetch employees error:", error)
@@ -49,6 +55,9 @@ export async function POST(req: Request) {
                 useCurrentTimezone: false
             }
         })
+
+        // Invalidate caches that include employee/manager lists
+        await invalidateCache(CacheKeys.employees, CacheKeys.managers, CacheKeys.staffDashboard)
         return NextResponse.json(employee)
     } catch (error) {
         console.error("Create employee error:", error)

@@ -48,7 +48,7 @@ export async function GET() {
                 include: {
                     rawRecords: {
                         where: { deletedAt: null },
-                        include: { breaks: true },
+                        include: { breaks: { where: { deletedAt: null } } },
                         orderBy: { clockIn: 'asc' }
                     }
                 },
@@ -67,21 +67,43 @@ export async function GET() {
             })
         ])
 
-        // Self-heal: if an active session exists but has no summaryId, the fire-and-forget
-        // updateAttendanceSummary call on clock-in failed silently. Repair it now so the
-        // dashboard can find it via the summary → rawRecords path.
+        // Self-heal: if any recent attendance records have no summaryId, the fire-and-forget
+        // updateAttendanceSummary call on clock-in/out failed silently. Repair them now so the
+        // dashboard can find them via the summary → rawRecords path. We check the last 7 days
+        // and cover both active sessions (clockOut: null) and completed ones (clockOut set) so
+        // that auto-clocked-out records are not silently lost from the user portal.
         let myAttendance = rawMyAttendance
-        const orphaned = await prisma.attendance.findFirst({
-            where: { userId, clockOut: null, deletedAt: null, summaryId: null }
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        const orphanedRecords = await prisma.attendance.findMany({
+            where: { userId, deletedAt: null, summaryId: null, clockIn: { gte: sevenDaysAgo } },
+            select: { id: true, date: true, clockIn: true, clockOut: true }
         })
-        if (orphaned) {
-            await updateAttendanceSummary(userId, orphaned.date)
+        if (orphanedRecords.length > 0) {
+            // Auto-close any orphaned sessions that are still "open" (clockOut: null) but are from
+            // a previous day — cleanupOldSessions handles these normally via /api/attendance GET,
+            // but the user portal doesn't hit that route. Without closing them they'd appear as
+            // today's active session and show wrong buttons.
+            const staleCutoff = new Date(now.getTime() - 36 * 60 * 60 * 1000)
+            const staleOpen = orphanedRecords.filter((r: any) => !r.clockOut && r.clockIn && new Date(r.clockIn) < staleCutoff)
+            if (staleOpen.length > 0) {
+                await Promise.all(staleOpen.map(async (r: any) => {
+                    const closeAt = new Date(Math.min(
+                        new Date(r.clockIn).getTime() + 9 * 60 * 60 * 1000,
+                        now.getTime()
+                    ))
+                    await prisma.attendance.update({ where: { id: r.id }, data: { clockOut: closeAt } })
+                    await prisma.break.updateMany({ where: { attendanceId: r.id, endTime: null, deletedAt: null }, data: { endTime: closeAt } })
+                }))
+            }
+
+            const uniqueDates = [...new Set(orphanedRecords.map((r: any) => r.date.toISOString().split('T')[0]))]
+            await Promise.all(uniqueDates.map((dateStr: string) => updateAttendanceSummary(userId, new Date(dateStr))))
             myAttendance = await prisma.attendanceSummary.findMany({
                 where: { userId },
                 include: {
                     rawRecords: {
                         where: { deletedAt: null },
-                        include: { breaks: true },
+                        include: { breaks: { where: { deletedAt: null } } },
                         orderBy: { clockIn: 'asc' }
                     }
                 },

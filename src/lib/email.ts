@@ -13,6 +13,7 @@ const transporter = nodemailer.createTransport({
 });
 
 async function isEmailEnabled(): Promise<boolean> {
+    if (process.env.DISABLE_EMAILS === 'true') return false;
     try {
         const setting = await prisma.systemSettings.findUnique({
             where: { key: 'email_notifications_enabled' }

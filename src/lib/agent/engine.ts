@@ -15,7 +15,7 @@ export async function runAgent(
     history: any[]
 ): Promise<AgentResponse> {
     try {
-        const project = process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'attendance-app-451608';
+        const project = process.env.VERTEX_PROJECT_ID || process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'attendance-app-451608';
         const location = AGENT_CONFIG.location;
         const vertexAI = new VertexAI({ project, location });
 

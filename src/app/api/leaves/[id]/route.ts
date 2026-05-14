@@ -6,6 +6,7 @@ import { sendLeaveStatusUpdateEmail, sendLeaveActionEmail, sendGeneralEmail } fr
 import { broadcastUpdate } from "@/lib/eventBus"
 import { notifyRole } from "@/lib/notifications"
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
+import { invalidateCache, invalidateCachePattern, CacheKeys } from '@/lib/cache'
 
 async function updateRangeSummaries(userId, startDate, endDate) {
     const start = new Date(startDate)
@@ -258,6 +259,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             }
 
             broadcastUpdate('leaves', updatedRequest)
+            void invalidateCachePattern('leaves:*')
+            void invalidateCache(CacheKeys.staffDashboard)
             return NextResponse.json(updatedRequest)
         }
 
@@ -410,6 +413,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
 
         broadcastUpdate('leaves', updatedLeave)
+        void invalidateCachePattern('leaves:*')
+        void invalidateCache(CacheKeys.staffDashboard)
         return NextResponse.json(updatedLeave)
     } catch (error) {
         return NextResponse.json({ error: "Failed to update leave" }, { status: 500 })
@@ -454,6 +459,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             })
 
             broadcastUpdate('leaves', { id, deleted: true })
+            void invalidateCachePattern('leaves:*')
+            void invalidateCache(CacheKeys.staffDashboard)
             return NextResponse.json({ success: true })
         }
 
@@ -488,6 +495,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         })
 
         broadcastUpdate('leaves', { id, deleted: true })
+        void invalidateCachePattern('leaves:*')
+        void invalidateCache(CacheKeys.staffDashboard)
         return NextResponse.json({ success: true })
     } catch (error) {
         console.error("DELETE leave error:", error)

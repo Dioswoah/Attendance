@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/auth'
 import { sendAdminActionEmail } from '@/lib/email'
 import { broadcastUpdate } from '@/lib/eventBus'
+import { invalidateCache, CacheKeys } from '@/lib/cache'
 
 export async function PATCH(
     req: Request,
@@ -106,6 +107,7 @@ export async function PATCH(
             }
         }
 
+        void invalidateCache(CacheKeys.employees, CacheKeys.managers, CacheKeys.staffDashboard)
         return NextResponse.json(updated)
     } catch (error) {
         console.error("Update employee error details:", error)
@@ -123,6 +125,7 @@ export async function DELETE(
             where: { id },
             data: { deletedAt: new Date() }
         })
+        void invalidateCache(CacheKeys.employees, CacheKeys.managers, CacheKeys.staffDashboard)
         return NextResponse.json({ success: true })
     } catch (error) {
         console.error("Delete employee error:", error)

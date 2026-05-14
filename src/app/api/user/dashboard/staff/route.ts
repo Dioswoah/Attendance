@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
+import { getCache, setCache, CacheKeys, TTL } from '@/lib/cache'
 
 export async function GET() {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const cached = await getCache<object>(CacheKeys.staffDashboard)
+    if (cached) return NextResponse.json(cached)
 
     const now = new Date()
     const startOfToday = new Date()
@@ -28,7 +32,7 @@ export async function GET() {
                 include: {
                     rawRecords: {
                         where: { deletedAt: null },
-                        include: { breaks: true },
+                        include: { breaks: { where: { deletedAt: null } } },
                         orderBy: { clockIn: 'asc' }
                     }
                 },
@@ -123,7 +127,7 @@ export async function GET() {
             }
         })
 
-        return NextResponse.json({
+        const result = {
             allToday: transformStaff(allAttendanceToday),
             staff: detailedEmployees,
             teamLeaves: teamLeavesApproved,
@@ -134,7 +138,10 @@ export async function GET() {
                 time: r.time?.toISOString() ?? null,
                 date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date).split('T')[0]
             }))
-        })
+        }
+
+        await setCache(CacheKeys.staffDashboard, result, TTL.staffDashboard)
+        return NextResponse.json(result)
 
     } catch (error) {
         console.error("Dashboard Staff Fetch Error:", error)
