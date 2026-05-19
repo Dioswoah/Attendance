@@ -63,12 +63,20 @@ export default function ActivityLogsPage() {
             case 'END_BREAK': return { icon: Coffee, color: 'text-indigo-600', label: 'End Break', bg: 'bg-indigo-100' }
             case 'LEAVE_SUBMIT': return { icon: FileText, color: 'text-purple-600', label: 'Leave Request', bg: 'bg-purple-100' }
             case 'LEAVE_APPROVED': return { icon: ShieldCheck, color: 'text-green-700', label: 'Leave Approved', bg: 'bg-green-200' }
+            case 'LEAVE_GRANTED_ADMIN': return { icon: ShieldCheck, color: 'text-green-700', label: 'Leave Approved', bg: 'bg-green-200' }
             case 'LEAVE_DECLINED': return { icon: AlertCircle, color: 'text-red-600', label: 'Leave Declined', bg: 'bg-red-100' }
+            case 'LEAVE_EDIT': return { icon: Edit2, color: 'text-purple-600', label: 'Leave Edited', bg: 'bg-purple-100' }
+            case 'LEAVE_CANCEL': return { icon: AlertCircle, color: 'text-slate-600', label: 'Leave Cancelled', bg: 'bg-slate-100' }
+            case 'LEAVE_DELETE': return { icon: Trash2, color: 'text-red-600', label: 'Leave Deleted', bg: 'bg-red-100' }
             case 'ADMIN_EDIT': return { icon: Edit2, color: 'text-amber-600', label: 'Admin Edit', bg: 'bg-amber-100' }
             case 'ADMIN_DELETE': return { icon: Trash2, color: 'text-red-700', label: 'Admin Delete', bg: 'bg-red-100' }
+            case 'ADMIN_LEAVE_EDIT': return { icon: Edit2, color: 'text-amber-600', label: 'Admin Leave Edit', bg: 'bg-amber-100' }
             case 'ATTENDANCE_REQUEST_SUBMIT': return { icon: History, color: 'text-indigo-600', label: 'Correction Request', bg: 'bg-indigo-100' }
-            case 'ATTENDANCE_SUMMARY_UPPERCASE': return { icon: UserCheck, color: 'text-teal-600', label: 'Summary Update', bg: 'bg-teal-100' }
-            default: return { icon: Settings, color: 'text-slate-600', label: action, bg: 'bg-slate-100' }
+            case 'ATTENDANCE_REQUEST_EDIT': return { icon: Edit2, color: 'text-indigo-600', label: 'Correction Edited', bg: 'bg-indigo-100' }
+            case 'ATTENDANCE_REQUEST_DELETE': return { icon: Trash2, color: 'text-red-600', label: 'Correction Deleted', bg: 'bg-red-100' }
+            case 'ATTENDANCE_REQUEST_APPROVED': return { icon: ShieldCheck, color: 'text-green-700', label: 'Correction Approved', bg: 'bg-green-200' }
+            case 'ATTENDANCE_REQUEST_DECLINED': return { icon: AlertCircle, color: 'text-red-600', label: 'Correction Declined', bg: 'bg-red-100' }
+            default: return { icon: Settings, color: 'text-slate-600', label: action.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()), bg: 'bg-slate-100' }
         }
     }
 
@@ -85,7 +93,7 @@ export default function ActivityLogsPage() {
 
             const action = log.action as string
             let mappedGroup = action
-            if (action.startsWith('LEAVE_') || ['ATTENDANCE_REQUEST_SUBMIT'].includes(action)) {
+            if (action.startsWith('LEAVE_') || action.startsWith('ATTENDANCE_REQUEST_')) {
                 mappedGroup = 'LEAVES'
             } else if (action.startsWith('ADMIN_') || action.startsWith('ATTENDANCE_SUMMARY')) {
                 mappedGroup = 'ADMIN'

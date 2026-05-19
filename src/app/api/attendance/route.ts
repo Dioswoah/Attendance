@@ -225,6 +225,11 @@ export async function cleanupOldSessions() {
                 continue;
             }
 
+            // Bust the dashboard cache so the next request reflects the clock-out immediately.
+            // Without this, the Redis-cached dashboard state stays stale until its TTL expires.
+            await invalidateCache(CacheKeys.staffDashboard)
+            broadcastUpdate('attendance', { userId: session.user.id })
+
             // Update Summary
             await updateAttendanceSummary(session.user.id, session.date)
 
