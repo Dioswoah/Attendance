@@ -467,6 +467,7 @@ export default function ManagerControlPage() {
         if (!selectedRequest) return
 
         setIsSubmitting(true)
+        const toastId = toast.loading(actionType === "approve" ? "Approving request..." : "Declining request...")
         try {
             const body: any = { status: actionType === "approve" ? "APPROVED" : "DECLINED" }
             if (actionType === "deny" && denyReason) body.declineReason = denyReason
@@ -482,19 +483,20 @@ export default function ManagerControlPage() {
             })
 
             if (res.ok) {
-                // Remove from pending
-                const request = selectedRequest // Save reference
+                const request = selectedRequest
                 setPendingRequests(prev => prev.filter(r => r.id !== request.id))
-                // Add to history
                 setRequestHistory(prev => [{ ...request, status: actionType === "approve" ? "APPROVED" : "DECLINED" }, ...prev])
-                // If approved, add to approved list (optimistic update or re-fetch)
                 if (actionType === "approve") {
                     setApprovedLeaves(prev => [...prev, { ...request, status: 'APPROVED' }])
                 }
                 setSelectedRequest(null)
                 setActionType(null)
 
-                // Trigger Background Revalidation
+                toast.success(
+                    actionType === "approve" ? "Request approved successfully" : "Request declined",
+                    { id: toastId }
+                )
+
                 if (request.kind === 'ATTENDANCE') {
                     mutatePendingAttendance()
                     mutateHistoryAttendance()
@@ -504,10 +506,10 @@ export default function ManagerControlPage() {
                 }
                 mutateApprovedLeaves()
             } else {
-                alert("Failed to update request")
+                toast.error("Failed to update request", { id: toastId })
             }
         } catch (error) {
-            // Action failed
+            toast.error("Something went wrong", { id: toastId })
         } finally {
             setIsSubmitting(false)
         }
@@ -544,25 +546,38 @@ export default function ManagerControlPage() {
     }
 
     const handleDeleteHistory = async (request: Request) => {
-        if (!confirm(`Are you sure you want to delete this ${request.kind?.toLowerCase() || 'leave'} record? This will notify the administrators.`)) return
+        toast(`Delete ${request.kind === 'ATTENDANCE' ? 'attendance' : 'leave'} record?`, {
+            description: `This will permanently remove the record for ${request.userName}.`,
+            action: {
+                label: "Delete",
+                onClick: async () => {
+                    setIsSubmitting(true)
+                    const toastId = toast.loading("Deleting record...")
+                    try {
+                        const endpoint = request.kind === 'ATTENDANCE'
+                            ? `/api/attendance-requests/${request.id}`
+                            : `/api/leaves/${request.id}`
 
-        setIsSubmitting(true)
-        try {
-            const endpoint = request.kind === 'ATTENDANCE'
-                ? `/api/attendance-requests/${request.id}`
-                : `/api/leaves/${request.id}`
-
-            const res = await fetch(endpoint, { method: 'DELETE' })
-            if (res.ok) {
-                setRequestHistory(prev => prev.filter(r => r.id !== request.id))
-            } else {
-                alert("Failed to delete record")
+                        const res = await fetch(endpoint, { method: 'DELETE' })
+                        if (res.ok) {
+                            setRequestHistory(prev => prev.filter(r => r.id !== request.id))
+                            toast.success("Record deleted successfully", { id: toastId })
+                        } else {
+                            toast.error("Failed to delete record", { id: toastId })
+                        }
+                    } catch (error) {
+                        console.error(error)
+                        toast.error("Something went wrong", { id: toastId })
+                    } finally {
+                        setIsSubmitting(false)
+                    }
+                }
+            },
+            cancel: {
+                label: "Cancel",
+                onClick: () => toast.dismiss()
             }
-        } catch (error) {
-            console.error(error)
-        } finally {
-            setIsSubmitting(false)
-        }
+        })
     }
 
     const handleGrantLeave = async (e: React.FormEvent) => {
@@ -2796,39 +2811,90 @@ export default function ManagerControlPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Info Panel */}
-                        <div className="space-y-4">
-                            <Card className="border-green-100 bg-green-50 shadow-none">
-                                <CardHeader className="pb-3">
-                                    <CardTitle className="text-sm font-semibold text-green-800 flex items-center gap-2">
-                                        <CheckCircle2 className="w-4 h-4" />
-                                        What this does
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2 text-xs text-green-700">
-                                    <p>• Creates an <strong>approved</strong> leave record immediately — no approval step needed.</p>
-                                    <p>• The staff member will receive an in-app notification and email.</p>
-                                    <p>• They will <strong>not</strong> appear as late or absent on that day.</p>
-                                    <p>• They will <strong>not</strong> be sent a missed check-in reminder.</p>
-                                </CardContent>
-                            </Card>
+                        {/* Staff Leave History Panel */}
+                        <Card className="border-border bg-white shadow-sm flex flex-col">
+                            <CardHeader className="pb-3 shrink-0">
+                                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                    <History className="w-4 h-4 text-muted-foreground" />
+                                    Leave History
+                                    {grantLeaveEmpId && (
+                                        <span className="text-xs font-normal text-muted-foreground truncate">
+                                            — {myTeam.find((e: any) => e.id === grantLeaveEmpId)?.name}
+                                        </span>
+                                    )}
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-0 flex-1">
+                                {!grantLeaveEmpId ? (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                                        <CalendarDays className="w-8 h-8 text-muted-foreground/30 mb-3" />
+                                        <p className="text-sm text-muted-foreground">Select a staff member to view their leave records.</p>
+                                    </div>
+                                ) : (() => {
+                                    const seen = new Set<string>()
+                                    const staffLeaves = [
+                                        ...(pendingLeavesData || []),
+                                        ...(historyLeavesData || [])
+                                    ]
+                                        .filter((l: any) => {
+                                            if (seen.has(l.id)) return false
+                                            seen.add(l.id)
+                                            return l.userId === grantLeaveEmpId
+                                        })
+                                        .sort((a: any, b: any) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
 
-                            <Card className="border-border bg-white shadow-sm">
-                                <CardHeader className="pb-3">
-                                    <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-                                        <AlertCircle className="w-4 h-4 text-amber-500" />
-                                        Leave Types
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2 text-xs text-muted-foreground">
-                                    <p><strong className="text-foreground">Sick Leave</strong> — Medical absence</p>
-                                    <p><strong className="text-foreground">Vacation</strong> — Annual leave</p>
-                                    <p><strong className="text-foreground">Birthday</strong> — One per calendar year</p>
-                                    <p><strong className="text-foreground">Maternity / Paternity</strong> — Parental leave</p>
-                                    <p><strong className="text-foreground">Other</strong> — Any other reason</p>
-                                </CardContent>
-                            </Card>
-                        </div>
+                                    if (staffLeaves.length === 0) {
+                                        return (
+                                            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                                                <CalendarDays className="w-8 h-8 text-muted-foreground/30 mb-3" />
+                                                <p className="text-sm text-muted-foreground">No leave records found for this staff member.</p>
+                                            </div>
+                                        )
+                                    }
+
+                                    const statusColors: Record<string, string> = {
+                                        APPROVED: 'bg-green-100 text-green-700 border-green-200',
+                                        PENDING: 'bg-amber-100 text-amber-700 border-amber-200',
+                                        DECLINED: 'bg-red-100 text-red-700 border-red-200',
+                                    }
+                                    const typeLabel: Record<string, string> = {
+                                        SICK: 'Sick Leave', VACATION: 'Vacation', BIRTHDAY: 'Birthday',
+                                        MATERNITY: 'Maternity / Paternity', OTHER: 'Other'
+                                    }
+
+                                    return (
+                                        <div className="divide-y divide-border max-h-[420px] overflow-y-auto">
+                                            {staffLeaves.map((leave: any) => (
+                                                <div key={leave.id} className="px-4 py-3">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-semibold text-foreground">
+                                                                {typeLabel[leave.type] || leave.type}
+                                                                {leave.duration === 'Part Day' && (
+                                                                    <span className="text-muted-foreground font-normal ml-1">(Part Day)</span>
+                                                                )}
+                                                            </p>
+                                                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                                                                {format(new Date(leave.startDate), "MMM d, yyyy")}
+                                                                {leave.startDate.split('T')[0] !== leave.endDate.split('T')[0] && (
+                                                                    <> — {format(new Date(leave.endDate), "MMM d, yyyy")}</>
+                                                                )}
+                                                            </p>
+                                                            {leave.reason && (
+                                                                <p className="text-[10px] text-muted-foreground mt-0.5 italic line-clamp-1">{leave.reason}</p>
+                                                            )}
+                                                        </div>
+                                                        <Badge className={cn("text-[10px] border shrink-0 font-medium", statusColors[leave.status] || 'bg-gray-100 text-gray-600 border-gray-200')}>
+                                                            {leave.status}
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )
+                                })()}
+                            </CardContent>
+                        </Card>
                     </div>
                 </TabsContent>
             </Tabs>

@@ -25,8 +25,8 @@ RUN grep "Employment Location" src/app/\(user\)/user/page.tsx || (echo "Source c
 # Generate Prisma Client
 RUN npx prisma generate
 
-# Build Next.js application
-RUN npm run build
+# Build Next.js application (increase heap for large TS projects)
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Production stage
 FROM node:20-alpine AS runner

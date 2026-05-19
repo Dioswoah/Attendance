@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, Globe, Shield, History, Users, Edit, Briefcase, MoreHorizontal, Plus, Minus } from "lucide-react"
+import { Clock, Loader2, LogOut, MapPin, CheckCircle2, LayoutDashboard, CalendarDays, FileText, Check, X, Bell, CalendarOff, Search, LogIn, Coffee, Timer, Calendar, TrendingUp, ArrowUpDown, Building2, AlertTriangle, Lock, ChevronDown, ChevronUp, Globe, Shield, History, Users, Edit, Briefcase, MoreHorizontal, Plus, Minus } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
@@ -139,6 +139,7 @@ export default function UserPortal() {
     const [todayTeamLeaves, setTodayTeamLeaves] = useState<any[]>([])
     const [pendingAttendanceToday, setPendingAttendanceToday] = useState<any[]>([])
     const [selectedDayDetail, setSelectedDayDetail] = useState<Date | null>(null)
+    const [statGroupModal, setStatGroupModal] = useState<{ label: string, staff: any[] } | null>(null)
     const [leaveType, setLeaveType] = useState('SICK')
     const [leaveDurationType, setLeaveDurationType] = useState('Full Day')
     const [leaveStartTime, setLeaveStartTime] = useState('09:00')
@@ -151,11 +152,19 @@ export default function UserPortal() {
     const [workedTime, setWorkedTime] = useState("00:00:00")
     const [breakTime, setBreakTime] = useState("00:00:00")
     const [sortBy, setSortBy] = useState<string>("name")
+    const [colSort, setColSort] = useState<{ col: string | null, dir: 'asc' | 'desc' }>({ col: null, dir: 'asc' })
     const [filterStatus, setFilterStatus] = useState(() =>
         typeof window !== 'undefined' ? localStorage.getItem('dashboard_filterStatus') || 'all' : 'all'
     )
-    const [filterDepartments, setFilterDepartments] = useState<string[]>([])
-    const departmentFilterInitialized = useRef(false)
+    const departmentFilterInitialized = useRef(
+        typeof window !== 'undefined' && localStorage.getItem('dashboard_filterDepts') !== null
+    )
+    const [filterDepartments, setFilterDepartments] = useState<string[]>(() => {
+        if (typeof window === 'undefined') return []
+        const saved = localStorage.getItem('dashboard_filterDepts')
+        if (saved === null) return []
+        try { return JSON.parse(saved) } catch { return [] }
+    })
     const [filterEmploymentLocations, setFilterEmploymentLocations] = useState<string[]>(() => {
         if (typeof window === 'undefined') return []
         try { return JSON.parse(localStorage.getItem('dashboard_filterLocations') || '[]') } catch { return [] }
@@ -165,9 +174,15 @@ export default function UserPortal() {
     )
     const [feedSearch, setFeedSearch] = useState("")
 
+    const [showAllStaff, setShowAllStaff] = useState(() =>
+        typeof window !== 'undefined' ? localStorage.getItem('dashboard_showAllStaff') === 'true' : false
+    )
+
     // Persist dashboard filters across navigation for the current browser session
     useEffect(() => { localStorage.setItem('dashboard_filterStatus', filterStatus) }, [filterStatus])
     useEffect(() => { localStorage.setItem('dashboard_filterLocations', JSON.stringify(filterEmploymentLocations)) }, [filterEmploymentLocations])
+    useEffect(() => { localStorage.setItem('dashboard_filterDepts', JSON.stringify(filterDepartments)) }, [filterDepartments])
+    useEffect(() => { localStorage.setItem('dashboard_showAllStaff', String(showAllStaff)) }, [showAllStaff])
     useEffect(() => { localStorage.setItem('dashboard_searchQuery', searchQuery) }, [searchQuery])
 
     const [breakTotalMs, setBreakTotalMs] = useState(0)
@@ -297,9 +312,15 @@ export default function UserPortal() {
                 setUserRoles(data.user.roles || [])
                 setUserDepartment(data.user.department?.name || "Unassigned")
                 setUserDepartmentId(data.user.departmentId || "")
-                departmentFilterInitialized.current = true
                 setManagedDepartments(data.user.managedDepartments || [])
                 setUserSecondaryDepartments(data.user.secondaryDepartments || [])
+                if (!departmentFilterInitialized.current) {
+                    const primaryDept = data.user.department?.name
+                    const secondaryDepts = (data.user.secondaryDepartments || []).map((d: any) => d.name)
+                    const defaults = [primaryDept, ...secondaryDepts].filter(Boolean)
+                    setFilterDepartments(defaults)
+                    departmentFilterInitialized.current = true
+                }
                 setUserManagerId(data.user.managerId || null)
 
                 // Handle Manager/Admin extra data
@@ -671,9 +692,17 @@ export default function UserPortal() {
                         // The 15s refreshInterval on staffData SWR acts as the safety net.
                         if (payload.data) {
                             mutateStaff(
-                                (current: any) => patchStaffWithAttendance(current, payload.data),
+                                (current: any) => {
+                                    // If staffData hasn't loaded yet, don't patch — returning undefined
+                                    // from the updater would wipe the SWR cache and block loading.
+                                    // Fall through to a normal revalidation fetch instead.
+                                    if (!current) return current
+                                    return patchStaffWithAttendance(current, payload.data)
+                                },
                                 { revalidate: false }
                             )
+                            // If staff wasn't loaded yet, trigger a normal fetch now
+                            if (!staffData) mutateStaff()
                         }
                         // Only re-fetch own dashboard if this event is about the current user
                         // (e.g. admin clocked them in, or auto clock-out fired)
@@ -1685,7 +1714,7 @@ export default function UserPortal() {
             .filter((staff: any) => staff.name?.toLowerCase().includes(searchQuery.toLowerCase()))
             .filter((staff: any) => filterStatus === "all" || staff.status === filterStatus)
             .filter((staff: any) => {
-                if (filterDepartments.length === 0) return true
+                if (showAllStaff || filterDepartments.length === 0) return true
                 const dObj = staff.department
                 const primaryDept = typeof dObj === 'string' ? dObj : (dObj?.name || staff.departmentName)
                 const secondaryDeptNames = (staff.secondaryDepartments || []).map((d: any) => d.name)
@@ -1699,43 +1728,88 @@ export default function UserPortal() {
                 return filterEmploymentLocations.includes(staff.employmentLocation)
             })
             .sort((a: any, b: any) => {
-                // Priority 1: My Department First
-                const getPrimaryDept = (staff: any) => typeof staff.department === 'string' ? staff.department : (staff.department?.name || staff.departmentName || "")
-                const aIsMyDept = getPrimaryDept(a) === userDepartment
-                const bIsMyDept = getPrimaryDept(b) === userDepartment
-
-                if (aIsMyDept && !bIsMyDept) return -1
-                if (!aIsMyDept && bIsMyDept) return 1
-
-                // Priority 2: Status Grouping (Clocked In / On Break > Others)
-                const priorityStatuses = ["clocked-in", "on-break", "do-not-disturb", "appear-away"]
-                const aIsPriority = priorityStatuses.includes(a.status)
-                const bIsPriority = priorityStatuses.includes(b.status)
-
-                if (aIsPriority && !bIsPriority) return -1
-                if (!aIsPriority && bIsPriority) return 1
-
-                // Priority 3: Secondary sorting based on user selection
+                const getPrimaryDept = (s: any) => typeof s.department === 'string' ? s.department : (s.department?.name || s.departmentName || "")
+                const statusOrder: any = { "clocked-in": 0, "do-not-disturb": 0, "appear-away": 0, "on-break": 1, "on-leave": 2, "clocked-out": 3 }
+                if (colSort.col) {
+                    let result = 0
+                    switch (colSort.col) {
+                        case 'employee': result = (a.name || '').localeCompare(b.name || ''); break
+                        case 'status': result = (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4); break
+                        case 'location': result = (a.lastAttendance?.mode || '').localeCompare(b.lastAttendance?.mode || ''); break
+                        case 'department': result = getPrimaryDept(a).localeCompare(getPrimaryDept(b)); break
+                        case 'employment_location': result = (a.employmentLocation || '').localeCompare(b.employmentLocation || ''); break
+                    }
+                    return colSort.dir === 'desc' ? -result : result
+                }
                 switch (sortBy) {
                     case "name": return (a.name || "").localeCompare(b.name || "")
-                    case "department":
-                        const deptA = getPrimaryDept(a)
-                        const deptB = getPrimaryDept(b)
-                        return deptA.localeCompare(deptB)
-                    case "status":
-                        const statusOrder: any = {
-                            "clocked-in": 0,
-                            "do-not-disturb": 0,
-                            "appear-away": 0,
-                            "on-break": 1,
-                            "on-leave": 2,
-                            "clocked-out": 3
-                        }
-                        return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4)
+                    case "department": return getPrimaryDept(a).localeCompare(getPrimaryDept(b))
+                    case "status": return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4)
                     default: return 0
                 }
             })
-    }, [enrichedStaffList, searchQuery, filterStatus, filterDepartments, filterEmploymentLocations, sortBy, userDepartment])
+    }, [enrichedStaffList, searchQuery, filterStatus, filterDepartments, filterEmploymentLocations, sortBy, showAllStaff, colSort])
+
+    // Grouped view — selected depts as blocks, rest as flat alpha list (only when showAllStaff)
+    const groupedStaff = useMemo(() => {
+        if (filterDepartments.length === 0) return []
+        const statusRank: Record<string, number> = {
+            'clocked-in': 0, 'do-not-disturb': 0, 'appear-away': 0,
+            'on-break': 1, 'on-leave': 2, 'clocked-out': 3
+        }
+        const getPrimaryDept = (s: any): string =>
+            typeof s.department === 'string' ? s.department : (s.department?.name || s.departmentName || 'Unassigned')
+
+        const selectedSet = new Set(filterDepartments)
+        const selectedGroups: Record<string, any[]> = {}
+        const otherStaff: any[] = []
+
+        for (const staff of sortedStaff) {
+            const dept = getPrimaryDept(staff)
+            if (selectedSet.size > 0 && selectedSet.has(dept)) {
+                if (!selectedGroups[dept]) selectedGroups[dept] = []
+                selectedGroups[dept].push(staff)
+            } else {
+                otherStaff.push(staff)
+            }
+        }
+
+        const colSortComparator = (a: any, b: any) => {
+            if (!colSort.col) {
+                const rankDiff = (statusRank[a.status] ?? 4) - (statusRank[b.status] ?? 4)
+                if (rankDiff !== 0) return rankDiff
+                return (a.name || '').localeCompare(b.name || '')
+            }
+            let result = 0
+            switch (colSort.col) {
+                case 'employee': result = (a.name || '').localeCompare(b.name || ''); break
+                case 'status': result = (statusRank[a.status] ?? 4) - (statusRank[b.status] ?? 4); break
+                case 'location': result = (a.lastAttendance?.mode || '').localeCompare(b.lastAttendance?.mode || ''); break
+                case 'department': result = getPrimaryDept(a).localeCompare(getPrimaryDept(b)); break
+                case 'employment_location': result = (a.employmentLocation || '').localeCompare(b.employmentLocation || ''); break
+            }
+            return colSort.dir === 'desc' ? -result : result
+        }
+
+        const selectedDeptNames = Object.keys(selectedGroups).sort((a, b) => a.localeCompare(b))
+        const result = selectedDeptNames.map(dept => ({
+            dept,
+            isSelected: true,
+            isOtherGroup: false,
+            staff: [...selectedGroups[dept]].sort(colSortComparator)
+        }))
+
+        if (showAllStaff && otherStaff.length > 0) {
+            result.push({
+                dept: 'Other Departments',
+                isSelected: false,
+                isOtherGroup: true,
+                staff: [...otherStaff].sort(colSortComparator)
+            })
+        }
+
+        return result
+    }, [sortedStaff, filterDepartments, showAllStaff, colSort])
 
     // 4. Sidebar Stats List (Filters by department but NOT by status)
     const departmentStaff = useMemo(() => {
@@ -2415,6 +2489,33 @@ export default function UserPortal() {
                                         </TabsTrigger>
                                     </TabsList>
                                 </div>
+
+                                {/* Dept View / All Staff toggle — right side of header, Staff Overview only */}
+                                <div className="flex rounded-full border border-slate-200 overflow-hidden bg-white shadow-sm self-start sm:self-center">
+                                    <button
+                                        onClick={() => setShowAllStaff(false)}
+                                        className={`flex items-center gap-1.5 h-9 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                            !showAllStaff
+                                                ? "bg-primary text-white"
+                                                : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                                        }`}
+                                    >
+                                        <Building2 className="h-3 w-3" />
+                                        Dept View
+                                    </button>
+                                    <div className="w-px bg-slate-200 shrink-0" />
+                                    <button
+                                        onClick={() => setShowAllStaff(true)}
+                                        className={`flex items-center gap-1.5 h-9 px-4 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                            showAllStaff
+                                                ? "bg-primary text-white"
+                                                : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                                        }`}
+                                    >
+                                        <Users className="h-3 w-3" />
+                                        All Staff
+                                    </button>
+                                </div>
                             </CardHeader>
                             <CardContent className="p-0">
                                 {isLoading ? (
@@ -2471,8 +2572,40 @@ export default function UserPortal() {
                                                     </SelectContent>
                                                 </Select>
 
-                                                <div className="relative">
-                                                    {/* Department Filter Dropdown */}
+                                                {/* Employment Location Filter */}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
+                                                            <span className="truncate max-w-[100px]">
+                                                                {filterEmploymentLocations.length === 0 || filterEmploymentLocations.length === 2 ? "Location" : filterEmploymentLocations.join(", ")}
+                                                            </span>
+                                                            <MapPin className="h-3 w-3 ml-2 opacity-50" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent className="w-48 p-2" align="start">
+                                                        <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Emp. Location</DropdownMenuLabel>
+                                                        <DropdownMenuSeparator />
+                                                        <div className="space-y-1">
+                                                            {['Philippines', 'Australia'].map((loc) => (
+                                                                <div key={loc} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        if (filterEmploymentLocations.includes(loc)) {
+                                                                            setFilterEmploymentLocations(filterEmploymentLocations.filter(l => l !== loc));
+                                                                        } else {
+                                                                            setFilterEmploymentLocations([...filterEmploymentLocations, loc]);
+                                                                        }
+                                                                    }}>
+                                                                    <Checkbox id={`loc-${loc}`} checked={filterEmploymentLocations.includes(loc)} />
+                                                                    <label htmlFor={`loc-${loc}`} className="text-xs font-medium cursor-pointer flex-1">{loc}</label>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+
+                                                {/* Department Filter — only visible in Dept View */}
+                                                {!showAllStaff && (
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
                                                             <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
@@ -2510,39 +2643,8 @@ export default function UserPortal() {
                                                             </div>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
-                                                </div>
+                                                )}
 
-                                                {/* Employment Location Filter */}
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="outline" className="h-9 w-auto px-3 min-w-[140px] justify-between text-[10px] font-black uppercase tracking-widest text-slate-500 border-slate-200 bg-white hover:bg-slate-50">
-                                                            <span className="truncate max-w-[100px]">
-                                                                {filterEmploymentLocations.length === 0 || filterEmploymentLocations.length === 2 ? "Location" : filterEmploymentLocations.join(", ")}
-                                                            </span>
-                                                            <MapPin className="h-3 w-3 ml-2 opacity-50" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-48 p-2" align="start">
-                                                        <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Emp. Location</DropdownMenuLabel>
-                                                        <DropdownMenuSeparator />
-                                                        <div className="space-y-1">
-                                                            {['Philippines', 'Australia'].map((loc) => (
-                                                                <div key={loc} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
-                                                                    onClick={(e) => {
-                                                                        e.preventDefault();
-                                                                        if (filterEmploymentLocations.includes(loc)) {
-                                                                            setFilterEmploymentLocations(filterEmploymentLocations.filter(l => l !== loc));
-                                                                        } else {
-                                                                            setFilterEmploymentLocations([...filterEmploymentLocations, loc]);
-                                                                        }
-                                                                    }}>
-                                                                    <Checkbox id={`loc-${loc}`} checked={filterEmploymentLocations.includes(loc)} />
-                                                                    <label htmlFor={`loc-${loc}`} className="text-xs font-medium cursor-pointer flex-1">{loc}</label>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
 
                                             </div>
                                         </div>
@@ -2551,15 +2653,33 @@ export default function UserPortal() {
                                             <Table className="min-w-[800px]">
                                                 <TableHeader className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-20">
                                                     <TableRow className="hover:bg-transparent border-b-slate-100">
-                                                        <TableHead className="w-[280px] sm:w-[300px] pl-6 h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employee</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Department</TableHead>
-                                                        <TableHead className="h-12 text-[10px] font-black uppercase tracking-widest text-slate-400">Employment Location</TableHead>
+                                                        {(['employee', 'status', 'location', 'department', 'employment_location'] as const).map((col, i) => {
+                                                            const labels: Record<string, string> = { employee: 'Employee', status: 'Status', location: 'Location', department: 'Department', employment_location: 'Employment Location' }
+                                                            const isActive = colSort.col === col
+                                                            return (
+                                                                <TableHead
+                                                                    key={col}
+                                                                    className={`h-12 text-[10px] font-black uppercase tracking-widest select-none cursor-pointer transition-colors ${i === 0 ? 'w-[280px] sm:w-[300px] pl-6' : ''} ${isActive ? 'text-primary' : 'text-slate-400 hover:text-slate-600'}`}
+                                                                    onClick={() => setColSort(prev => {
+                                                                        if (prev.col !== col) return { col, dir: 'asc' }
+                                                                        if (prev.dir === 'asc') return { col, dir: 'desc' }
+                                                                        return { col: null, dir: 'asc' }
+                                                                    })}
+                                                                >
+                                                                    <div className="flex items-center gap-1">
+                                                                        {labels[col]}
+                                                                        {isActive
+                                                                            ? (colSort.dir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)
+                                                                            : <ArrowUpDown className="h-3 w-3 opacity-30" />
+                                                                        }
+                                                                    </div>
+                                                                </TableHead>
+                                                            )
+                                                        })}
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
-                                                    {isStaffLoading && employees.length === 0 ? (
+                                                    {(isStaffLoading || !staffData) && employees.length === 0 ? (
                                                         Array.from({ length: 6 }).map((_, i) => (
                                                             <TableRow key={i} className="border-b-slate-100">
                                                                 <TableCell className="pl-6 py-3">
@@ -2580,6 +2700,123 @@ export default function UserPortal() {
                                                                 No staff found matching your criteria
                                                             </TableCell>
                                                         </TableRow>
+                                                    ) : (!showAllStaff && groupedStaff.length > 0) ? (
+                                                        groupedStaff.flatMap(({ dept, isSelected, isOtherGroup, staff: deptStaff }) => {
+                                                            const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
+                                                            return [
+                                                                <TableRow key={`dept-header-${dept}`} className={`border-y border-slate-200 hover:bg-slate-50 ${isOtherGroup ? 'bg-slate-50/50' : 'bg-slate-50'}`}>
+                                                                    <TableCell colSpan={5} className="py-2 pl-6">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`text-[10px] font-black uppercase tracking-widest ${isOtherGroup ? 'text-slate-400' : 'text-slate-500'}`}>{dept}</span>
+                                                                            {isSelected && <span className="text-[9px] font-black uppercase tracking-widest text-primary/60 bg-primary/5 px-1.5 py-0.5 rounded-full">My Dept</span>}
+                                                                            <span className="text-[9px] font-medium text-slate-400">({deptStaff.length})</span>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                </TableRow>,
+                                                                ...deptStaff.map((staff: any) => {
+                                                                    const isOnline = ['clocked-in', 'on-break', 'do-not-disturb', 'appear-away'].includes(staff.status)
+                                                                    const effectiveStatus = isOnline ? (staff.availabilityStatus || 'AVAILABLE') : 'APPEAR_OFFLINE'
+                                                                    const statusConfigItem = statusConfig[effectiveStatus as keyof typeof statusConfig]
+                                                                    const pendingReq = isManagerOrAdmin
+                                                                        ? pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
+                                                                        : undefined
+                                                                    return (
+                                                                        <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
+                                                                            <TableCell className="pl-6 py-4">
+                                                                                <div className="flex items-center gap-3">
+                                                                                    <div className="relative">
+                                                                                        <Avatar className="h-9 w-9 border-2 border-white shadow-sm group-hover:border-slate-200 transition-colors">
+                                                                                            <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
+                                                                                                {staff.name?.slice(0, 2).toUpperCase() || "EQ"}
+                                                                                            </AvatarFallback>
+                                                                                        </Avatar>
+                                                                                        {statusConfigItem && (
+                                                                                            <div className={`absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm border border-slate-100 z-10`} title={statusConfigItem.label}>
+                                                                                                <statusConfigItem.icon className={`h-3 w-3 ${statusConfigItem.color}`} />
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <p className="text-sm font-bold text-slate-700 leading-none">{staff.name}</p>
+                                                                                            {(isOnline && (staff.customStatusMessage || (statusConfigItem && statusConfigItem.label !== 'Active'))) && (
+                                                                                                <span className="text-[10px] text-muted-foreground/80 font-medium px-1.5 py-0.5 bg-slate-100 rounded-full scale-90 origin-left">
+                                                                                                    {staff.customStatusMessage || statusConfigItem?.label}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <p className="text-[10px] font-medium text-slate-400 mt-1">{staff.email}</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <div className="flex flex-col gap-1 min-w-[100px]">
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                        {getStaffStatusBadge(staff.status)}
+                                                                                        {pendingReq && (
+                                                                                            <div className="relative group/pending cursor-help">
+                                                                                                <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                                                                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded whitespace-nowrap opacity-0 group-hover/pending:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                                                                                                    Amend Record Pending
+                                                                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    {staff.status === 'on-break' && staff.expectedReturnTime && (
+                                                                                        <span className="text-[9px] font-bold text-amber-600/80 uppercase tracking-widest pl-1 break-words">
+                                                                                            Exp. Return: {new Date(staff.expectedReturnTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: userTimeZone })}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <div className="flex flex-col gap-1">
+                                                                                    {isOnline && staff.lastAttendance?.mode ? (
+                                                                                        <>
+                                                                                            {staff.lastAttendance.mode === 'ONSITE' || staff.lastAttendance.mode === 'OTHER' ? (
+                                                                                                <div className="flex items-start gap-2 max-w-[200px]">
+                                                                                                    {staff.lastAttendance.mode === 'ONSITE' ? <Briefcase className="h-3 w-3 text-slate-500 mt-0.5 shrink-0" /> : <MoreHorizontal className="h-3 w-3 text-slate-500 mt-0.5 shrink-0" />}
+                                                                                                    <span className="text-[10px] font-bold text-slate-700 leading-tight line-clamp-2" title={staff.lastAttendance.locationDetails || (staff.lastAttendance.mode === 'ONSITE' ? 'OFFSITE' : 'OTHER')}>
+                                                                                                        {staff.lastAttendance.locationDetails || (staff.lastAttendance.mode === 'ONSITE' ? 'OFFSITE' : 'OTHER')}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            ) : (
+                                                                                                <div className="flex items-center gap-2">
+                                                                                                    {staff.lastAttendance.mode === 'WFH' ? <MapPin className="h-3 w-3 text-slate-500" /> : <Building2 className="h-3 w-3 text-slate-500" />}
+                                                                                                    <Badge variant="outline" className="text-[9px] font-black border-slate-200 text-slate-600 uppercase px-1.5 h-5 bg-white">
+                                                                                                        {staff.lastAttendance.mode.replace('_', ' ')}
+                                                                                                    </Badge>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <div className="flex items-center gap-2 opacity-50">
+                                                                                            <div className="w-3 flex justify-center">
+                                                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                                                                            </div>
+                                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                                                                OFFLINE
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <Badge variant="secondary" className="w-fit text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border-none px-2.5 py-0.5 rounded-md not-italic shadow-sm">
+                                                                                    {typeof staff.department === 'string' ? staff.department : staff.department?.name || "Unassigned"}
+                                                                                </Badge>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="text-[10px] font-bold text-slate-600">{staff.employmentLocation || "N/A"}</span>
+                                                                                </div>
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    )
+                                                                })
+                                                            ]
+                                                        })
                                                     ) : (
                                                         sortedStaff.map((staff: any) => {
                                                             const isOnline = ['clocked-in', 'on-break', 'do-not-disturb', 'appear-away'].includes(staff.status)
@@ -2707,23 +2944,29 @@ export default function UserPortal() {
                                         <div className="flex items-center gap-3">
                                             <div className="flex flex-col gap-1">
                                                 {/* Department Filter for Calendar */}
-                                                {(userProfile?.roles?.includes('MANAGER') || userProfile?.roles?.includes('ADMIN') || userProfile?.roles?.includes('VIEWER')) ? (
-                                                    <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
-                                                        <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
-                                                            <SelectValue placeholder="Department" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="all">All Departments</SelectItem>
-                                                            {uniqueDepartments.map((dept: any) => (
-                                                                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                ) : (
-                                                    <div className="h-9 px-4 flex items-center bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 shadow-sm">
-                                                        {userDepartment || "My Department"}
-                                                    </div>
-                                                )}
+                                                {(() => {
+                                                    const isAdmin = userProfile?.roles?.includes('ADMIN')
+                                                    const myDepts: string[] = []
+                                                    if (userDepartment) myDepts.push(userDepartment)
+                                                    ;(userProfile?.secondaryDepartments || []).forEach((d: any) => {
+                                                        const name = typeof d === 'string' ? d : d?.name
+                                                        if (name && !myDepts.includes(name)) myDepts.push(name)
+                                                    })
+                                                    const calendarDeptOptions = isAdmin ? uniqueDepartments : myDepts
+                                                    return (
+                                                        <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
+                                                            <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
+                                                                <SelectValue placeholder="Department" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="all">{isAdmin ? "All Departments" : "My Departments"}</SelectItem>
+                                                                {calendarDeptOptions.map((dept: any) => (
+                                                                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    )
+                                                })()}
                                             </div>
                                             <TabsList className="bg-slate-100 p-1 rounded-xl h-9">
                                                 <TabsTrigger value="overview" className="rounded-lg px-4 h-7 text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -2748,50 +2991,29 @@ export default function UserPortal() {
                                     </div>
                                     {/* Team Status Summary - Integrated */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-border/50">
-                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                            <div className="p-2 rounded-lg bg-green-50 text-green-600">
-                                                <Users className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <p className="text-2xl font-black text-slate-800 leading-none">
-                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'in')).length}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked In</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                            <div className="p-2 rounded-lg bg-amber-50 text-amber-600">
-                                                <Coffee className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <p className="text-2xl font-black text-slate-800 leading-none">
-                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'break')).length}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Break</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                            <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-                                                <CalendarDays className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <p className="text-2xl font-black text-slate-800 leading-none">
-                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'leave')).length}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">On Leave</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                            <div className="p-2 rounded-lg bg-slate-100 text-slate-500">
-                                                <LogOut className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <p className="text-2xl font-black text-slate-800 leading-none">
-                                                    {departmentStaff.filter((s: any) => isStatus(s.status, 'out')).length}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Clocked Out</p>
-                                            </div>
-                                        </div>
+                                        {([
+                                            { key: 'in', label: 'Clocked In', icon: Users, bg: 'bg-green-50', color: 'text-green-600' },
+                                            { key: 'break', label: 'On Break', icon: Coffee, bg: 'bg-amber-50', color: 'text-amber-600' },
+                                            { key: 'leave', label: 'On Leave', icon: CalendarDays, bg: 'bg-blue-50', color: 'text-blue-600' },
+                                            { key: 'out', label: 'Clocked Out', icon: LogOut, bg: 'bg-slate-100', color: 'text-slate-500' },
+                                        ] as const).map(({ key, label, icon: Icon, bg, color }) => {
+                                            const group = departmentStaff.filter((s: any) => isStatus(s.status, key))
+                                            return (
+                                                <button
+                                                    key={key}
+                                                    className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-100 shadow-sm hover:border-slate-300 hover:shadow-md transition-all text-left cursor-pointer"
+                                                    onClick={() => setStatGroupModal({ label, staff: group })}
+                                                >
+                                                    <div className={`p-2 rounded-lg ${bg} ${color}`}>
+                                                        <Icon className="w-4 h-4" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-2xl font-black text-slate-800 leading-none">{group.length}</p>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{label}</p>
+                                                    </div>
+                                                </button>
+                                            )
+                                        })}
                                     </div>
 
                                     {/* Legend */}
@@ -3605,6 +3827,35 @@ export default function UserPortal() {
                 </DialogContent>
             </Dialog>
 
+            {/* Stat Counter Staff List Dialog */}
+            <Dialog open={!!statGroupModal} onOpenChange={() => setStatGroupModal(null)}>
+                <DialogContent className="sm:max-w-md rounded-[2rem]">
+                    <DialogHeader className="pb-4 border-b">
+                        <DialogTitle className="font-black text-xl tracking-tight">{statGroupModal?.label}</DialogTitle>
+                        <DialogDescription className="font-bold uppercase tracking-widest text-[10px]">
+                            {statGroupModal?.staff.length ?? 0} staff · today
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-3">
+                        {statGroupModal?.staff.length === 0 ? (
+                            <p className="text-sm text-center text-muted-foreground italic">No staff in this group.</p>
+                        ) : statGroupModal?.staff.map((s: any) => (
+                            <div key={s.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                <Avatar className="h-8 w-8 border border-white shadow-sm">
+                                    <AvatarFallback className="bg-slate-100 text-slate-600 text-xs font-bold">
+                                        {s.name?.slice(0, 2).toUpperCase() || 'ST'}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-slate-800 truncate">{s.name}</p>
+                                    <p className="text-[10px] font-medium text-slate-400 truncate">{typeof s.department === 'string' ? s.department : s.department?.name || 'Unassigned'}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* Day Detail Dialog (for calendar clicks) */}
             <Dialog open={!!selectedDayDetail} onOpenChange={() => setSelectedDayDetail(null)}>
                 <DialogContent className="sm:max-w-md rounded-[2rem]">
@@ -3618,73 +3869,28 @@ export default function UserPortal() {
                     </DialogHeader>
                     <div className="py-4 space-y-4">
                         {selectedDayDetail && (() => {
-                            const events = getEventsForDay(selectedDayDetail!)
-                            if (events.length === 0) return <p className="text-sm text-center text-muted-foreground italic">No events scheduled for this day.</p>
-
-                            // Group present events by user
-                            const groupedEvents: any[] = []
-                            const presentMap = new Map<string, any>()
-
-                            events.forEach((e: any) => {
-                                if (e.type === 'present' || e.type === 'on-break') {
-                                    const userName = e.data?.userName || e.data?.name || e.data?.user?.name || 'Staff'
-                                    const clockInTime = e.data?.clockIn ? new Date(e.data.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
-                                    const clockOutTime = e.data?.clockOut ? new Date(e.data.clockOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
-                                    const timeRange = clockInTime ? `${clockInTime}${clockOutTime ? ` to ${clockOutTime}` : ''}` : ''
-
-                                    if (presentMap.has(userName)) {
-                                        const entry = presentMap.get(userName)
-                                        if (timeRange) entry.times.push(timeRange)
-                                        // Update to 'on-break' if any session is on break status, though usually latest status matters
-                                        if (e.type === 'on-break') entry.type = 'on-break'
-                                    } else {
-                                        const newEntry = {
-                                            type: e.type,
-                                            userName,
-                                            times: timeRange ? [timeRange] : [],
-                                            data: e.data
-                                        }
-                                        presentMap.set(userName, newEntry)
-                                        groupedEvents.push(newEntry)
-                                    }
-                                } else {
-                                    // Leaves, holidays, etc. - keep separate
-                                    groupedEvents.push({
-                                        type: e.type,
-                                        userName: e.type === 'holiday' ? e.name : (e.data?.userName || e.data?.name || e.data?.user?.name || 'Staff'),
-                                        times: [],
-                                        data: e.data
-                                    })
-                                }
-                            })
+                            const events = getEventsForDay(selectedDayDetail!).filter((e: any) => e.type !== 'present' && e.type !== 'on-break')
+                            if (events.length === 0) return <p className="text-sm text-center text-muted-foreground italic">No leave events for this day.</p>
 
                             return (
                                 <div className="space-y-3">
-                                    {groupedEvents.map((e: any, i: number) => {
-                                        return (
-                                            <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                                                <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm",
-                                                    e.type === 'leave-approved' ? "bg-blue-500" :
-                                                        e.type === 'leave-pending' ? "bg-amber-500" :
-                                                            e.type === 'holiday' ? "bg-red-500" :
-                                                                e.type === 'on-break' ? "bg-amber-600" :
-                                                                    "bg-green-500"
-                                                )} />
-                                                <div className="flex-1">
-                                                    <p className="text-sm font-bold text-slate-800">
-                                                        {e.userName}
-                                                    </p>
-                                                    {e.type === 'leave-approved' && <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">On Leave ({e.data.type})</p>}
-                                                    {e.type === 'leave-pending' && <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Leave Pending Approval</p>}
-                                                    {(e.type === 'present' || e.type === 'on-break') && (
-                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                                                            {e.type === 'on-break' ? 'Running Break' : 'Present'} • {e.times.length > 0 ? e.times.join(' / ') : 'No Time Data'}
-                                                        </p>
-                                                    )}
-                                                </div>
+                                    {events.map((e: any, i: number) => (
+                                        <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                            <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm shrink-0",
+                                                e.type === 'leave-approved' ? "bg-blue-500" :
+                                                e.type === 'leave-pending' ? "bg-amber-500" :
+                                                "bg-red-500"
+                                            )} />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-bold text-slate-800">
+                                                    {e.type === 'holiday' ? e.name : (e.data?.userName || e.data?.name || e.data?.user?.name || 'Staff')}
+                                                </p>
+                                                {e.type === 'leave-approved' && <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Approved Leave · {e.data.type}</p>}
+                                                {e.type === 'leave-pending' && <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Pending Approval · {e.data.type}</p>}
+                                                {e.type === 'holiday' && <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Public Holiday</p>}
                                             </div>
-                                        )
-                                    })}
+                                        </div>
+                                    ))}
                                 </div>
                             )
                         })()}

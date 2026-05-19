@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
+import { broadcastUpdate } from "@/lib/eventBus"
 
 // GET /api/notifications?userId=xxx
 export async function GET(req: Request) {
@@ -29,6 +30,23 @@ export async function GET(req: Request) {
         return NextResponse.json(notifications)
     } catch (error) {
         return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 })
+    }
+}
+
+// POST /api/notifications (Create a notification — admin use)
+export async function POST(req: Request) {
+    try {
+        const { userId, title, message, type, link } = await req.json()
+        if (!userId || !title || !message) {
+            return NextResponse.json({ error: "userId, title, and message are required" }, { status: 400 })
+        }
+        const notification = await prisma.notification.create({
+            data: { userId, title, message, type: type || 'ADMIN_ACTION', link: link || '/user' }
+        })
+        broadcastUpdate('notification', { userId })
+        return NextResponse.json(notification)
+    } catch (error) {
+        return NextResponse.json({ error: "Failed to create notification" }, { status: 500 })
     }
 }
 

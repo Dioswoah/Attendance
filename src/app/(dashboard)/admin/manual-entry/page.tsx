@@ -100,6 +100,10 @@ export default function ManualEntryPage() {
     // Form Filter States
     const [formDeptId, setFormDeptId] = useState("all")
 
+    // Staff Info Panel
+    const [staffInfo, setStaffInfo] = useState<{ records: any[], loading: boolean }>({ records: [], loading: false })
+    const [dupWarning, setDupWarning] = useState<string | null>(null)
+
     // Editing States
     const [editingRecord, setEditingRecord] = useState<any | null>(null)
     const [editForm, setEditForm] = useState<any>({})
@@ -115,6 +119,36 @@ export default function ManualEntryPage() {
             fetchRecords()
         }
     }, [activeMode, activeTab, filterDept, filterEmpIds, startDate, endDate])
+
+    // Fetch existing records for selected staff + date to show in info panel
+    useEffect(() => {
+        const empId = activeTab === 'attendance' ? attEmpId : activeTab === 'leaves' ? lvEmpId : brEmpId
+        const dateFrom = activeTab === 'attendance' ? attDate : activeTab === 'leaves' ? lvStart : brDate
+        const dateTo = activeTab === 'leaves' ? lvEnd : dateFrom
+
+        if (!empId) { setStaffInfo({ records: [], loading: false }); setDupWarning(null); return }
+
+        setStaffInfo({ records: [], loading: true })
+        const params = new URLSearchParams({ userIds: empId, startDate: dateFrom, endDate: dateTo })
+        fetch(`/api/${activeTab}?${params}`)
+            .then(r => r.ok ? r.json() : [])
+            .then(data => {
+                setStaffInfo({ records: data, loading: false })
+                const label = activeTab === 'attendance' ? 'attendance record' : activeTab === 'leaves' ? 'leave record' : 'break session'
+                setDupWarning(data.length > 0 ? `This staff already has ${data.length} existing ${label}(s) for the selected date(s).` : null)
+            })
+            .catch(() => setStaffInfo({ records: [], loading: false }))
+    }, [activeTab, attEmpId, attDate, lvEmpId, lvStart, lvEnd, brEmpId, brDate])
+
+    const notifyStaff = async (userId: string, title: string, message: string) => {
+        try {
+            await fetch('/api/notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, title, message, type: 'ADMIN_ACTION', link: '/user' })
+            })
+        } catch { /* non-critical */ }
+    }
 
     const fetchInitialData = async () => {
         setLoading(true)
@@ -221,6 +255,7 @@ export default function ManualEntryPage() {
             if (res.ok) {
                 showStatus('success')
                 toast.success("Attendance record created. Form cleared — ready for another entry.")
+                notifyStaff(attEmpId, "Manual Attendance Record Created", `An attendance record was manually created for ${format(new Date(attDate), 'MMM d, yyyy')} (${attIn} – ${attOut}).`)
                 setAttEmpId("")
                 setAttDate(format(new Date(), "yyyy-MM-dd"))
                 setAttIn("09:00")
@@ -277,6 +312,7 @@ export default function ManualEntryPage() {
             if (res.ok) {
                 showStatus('success')
                 toast.success("Leave record created. Form cleared — ready for another entry.")
+                notifyStaff(lvEmpId, "Authorized Leave Granted", `A ${lvType.toLowerCase()} leave has been authorized for ${format(new Date(lvStart), 'MMM d')} – ${format(new Date(lvEnd), 'MMM d, yyyy')}.`)
                 setLvEmpId("")
                 setLvStart(format(new Date(), "yyyy-MM-dd"))
                 setLvEnd(format(new Date(), "yyyy-MM-dd"))
@@ -325,6 +361,7 @@ export default function ManualEntryPage() {
             if (res.ok) {
                 showStatus('success')
                 toast.success("Break session created. Form cleared — ready for another entry.")
+                notifyStaff(brEmpId, "Break Session Recorded", `A break session was manually recorded for ${format(new Date(brDate), 'MMM d, yyyy')} (${brIn} – ${brOut}).`)
                 setBrEmpId("")
                 setBrDate(format(new Date(), "yyyy-MM-dd"))
                 setBrIn("12:00")
@@ -744,13 +781,14 @@ export default function ManualEntryPage() {
 
             {/* Content Area */}
             {activeMode === 'create' ? (
-                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                <Card className="lg:col-span-2 border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                     <CardHeader className="border-b border-border p-5 bg-muted/20">
                         <CardTitle className="text-lg font-semibold text-foreground">
-                            Manual {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Record
+                            Manual {activeTab === 'attendance' ? 'Attendance' : activeTab === 'leaves' ? 'Leave' : 'Break'} Record
                         </CardTitle>
                         <CardDescription className="text-sm text-muted-foreground">
-                            Create a new attendance record for a staff member.
+                            Create a new {activeTab === 'attendance' ? 'attendance' : activeTab === 'leaves' ? 'leave' : 'break'} record for a staff member.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="p-6">
@@ -1000,6 +1038,107 @@ export default function ManualEntryPage() {
                         )}
                     </CardContent>
                 </Card>
+
+                {/* Staff Info Panel */}
+                {(() => {
+                    const empId = activeTab === 'attendance' ? attEmpId : activeTab === 'leaves' ? lvEmpId : brEmpId
+                    const emp = employees.find(e => e.id === empId)
+                    return (
+                        <div className="sticky top-4">
+                            <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                                <CardHeader className="border-b border-border p-4 bg-muted/20">
+                                    <CardTitle className="text-sm font-semibold">Staff Preview</CardTitle>
+                                    <CardDescription className="text-xs">Select a staff member to see their details and existing records</CardDescription>
+                                </CardHeader>
+                                <CardContent className="p-4">
+                                    {!empId ? (
+                                        <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
+                                            <User className="h-8 w-8 mb-2 opacity-20" />
+                                            <p className="text-xs font-medium">No staff selected</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {/* Profile */}
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                                                    {emp?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="font-semibold text-sm truncate">{emp?.name}</p>
+                                                    <p className="text-xs text-muted-foreground truncate">{emp?.email}</p>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1.5 text-xs border-t pt-3">
+                                                {[
+                                                    { label: 'Department', value: emp?.department?.name || 'Unassigned' },
+                                                    { label: 'Location', value: emp?.employmentLocation || '—' },
+                                                    { label: 'Shift', value: `${emp?.shiftStartTime || '09:00'} – ${emp?.shiftEndTime || '17:00'}` },
+                                                    { label: 'Timezone', value: emp?.selectedTimezone || 'Asia/Manila' },
+                                                ].map(row => (
+                                                    <div key={row.label} className="flex justify-between gap-2">
+                                                        <span className="text-muted-foreground shrink-0">{row.label}</span>
+                                                        <span className="font-medium text-right truncate">{row.value}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Duplicate Warning */}
+                                            {dupWarning && (
+                                                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                                    <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                                                    <p className="text-xs text-amber-700">{dupWarning}</p>
+                                                </div>
+                                            )}
+
+                                            {/* Existing Records */}
+                                            <div className="border-t pt-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+                                                    {activeTab === 'attendance' ? 'Attendance on Selected Date' : activeTab === 'leaves' ? 'Leave in Date Range' : 'Breaks on Selected Date'}
+                                                </p>
+                                                {staffInfo.loading ? (
+                                                    <div className="flex items-center justify-center py-4">
+                                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                                    </div>
+                                                ) : staffInfo.records.length === 0 ? (
+                                                    <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                                                        <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                                                        <p className="text-xs text-green-700">No existing records for the selected date(s).</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                                        {staffInfo.records.map((rec: any) => (
+                                                            <div key={rec.id} className="bg-muted/40 rounded-lg p-2.5 text-xs border border-border">
+                                                                {activeTab === 'attendance' && (
+                                                                    <div className="flex justify-between">
+                                                                        <span className="font-medium">{formatDate(rec.clockIn || rec.date)}</span>
+                                                                        <span className="text-muted-foreground">{formatTime(rec.clockIn)} – {formatTime(rec.clockOut)}</span>
+                                                                    </div>
+                                                                )}
+                                                                {activeTab === 'leaves' && (
+                                                                    <div>
+                                                                        <span className="font-medium">{rec.type}</span>
+                                                                        <span className="text-muted-foreground ml-2">{formatDate(rec.startDate)} – {formatDate(rec.endDate)}</span>
+                                                                    </div>
+                                                                )}
+                                                                {activeTab === 'breaks' && (
+                                                                    <div className="flex justify-between">
+                                                                        <span className="font-medium">{formatDate(rec.date || rec.startTime)}</span>
+                                                                        <span className="text-muted-foreground">{formatTime(rec.startTime)} – {formatTime(rec.endTime)}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )
+                })()}
+                </div>
             ) : (
                 <div className="space-y-4">
                     {/* Filters for Lists */}

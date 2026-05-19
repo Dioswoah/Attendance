@@ -59,7 +59,10 @@ import {
     Filter,
     Users,
     LogIn,
-    LogOut
+    LogOut,
+    ChevronDown,
+    ChevronLeft,
+    ChevronRight
 } from "lucide-react"
 import { format, parseISO, subDays, eachDayOfInterval } from "date-fns"
 import { toast } from "sonner"
@@ -79,7 +82,7 @@ export default function ManagerActivityPage() {
     const [managers, setManagers] = useState<any[]>([])
     const [departments, setDepartments] = useState<any[]>([])
     const [managerDepartments, setManagerDepartments] = useState<any[]>([])
-    const [perfTeamFilter, setPerfTeamFilter] = useState("all")
+    const [perfDeptFilter, setPerfDeptFilter] = useState<string[]>([])
 
     // Action State
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -88,10 +91,15 @@ export default function ManagerActivityPage() {
     const [selectedLeafForAction, setSelectedLeafForAction] = useState<any>(null)
     const [attendanceRequests, setAttendanceRequests] = useState<any[]>([])
 
-    const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"))
-    const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [startDate] = useState(format(subDays(new Date(), 365 * 5), "yyyy-MM-dd"))
+    const [endDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [userTimeZone, setUserTimeZone] = useState("UTC")
     const [statusFilter, setStatusFilter] = useState<string>("all")
+    const [filterManagerId, setFilterManagerId] = useState<string>("all")
+    const [filterStaffId, setFilterStaffId] = useState<string>("all")
+    const [filterType, setFilterType] = useState<string>("all")
+    const [filterDateFrom, setFilterDateFrom] = useState<string>("")
+    const [filterDateTo, setFilterDateTo] = useState<string>("")
     const { data: session } = useSession()
 
     // NEW: Manager Control Sub-Tabs
@@ -109,9 +117,13 @@ export default function ManagerActivityPage() {
     // Performance Log View State
     const [selectedStaffForLogs, setSelectedStaffForLogs] = useState<any | null>(null)
 
+    // Pagination
+    const [logsPage, setLogsPage] = useState(1)
+    const LOGS_PER_PAGE = 20
+
     // Report Selection State
     const [reportStaffFilter, setReportStaffFilter] = useState<string[]>([])
-    const [reportDeptFilter, setReportDeptFilter] = useState<string>("all")
+    const [reportDeptFilter, setReportDeptFilter] = useState<string[]>([])
 
     useEffect(() => {
         if (session?.user) {
@@ -139,13 +151,17 @@ export default function ManagerActivityPage() {
 
     useEffect(() => {
         fetchData()
-    }, [startDate, endDate, selectedManager])
+    }, [selectedManager])
 
     useEffect(() => {
         if (selectedManager && activeTab === 'control' && controlTab === 'performance') {
             fetchPerformanceData()
         }
-    }, [selectedManager, activeTab, controlTab, perfStartDate, perfEndDate, perfTeamFilter])
+    }, [selectedManager, activeTab, controlTab, perfStartDate, perfEndDate, perfDeptFilter])
+
+    useEffect(() => {
+        setLogsPage(1)
+    }, [statusFilter, filterManagerId, filterStaffId, filterType, filterDateFrom, filterDateTo, selectedManager])
 
     const fetchData = async () => {
         setLoading(true)
@@ -192,8 +208,9 @@ export default function ManagerActivityPage() {
                     const reports = employeesData.filter((e: any) => e.managerId === selectedManager)
                     setManagerTeam(reports)
 
-                    // Find departments managed by this person
-                    const managedDepts = deptsData.filter((d: any) => d.managerId === selectedManager)
+                    // Derive departments from direct reports' departmentIds
+                    const reportDeptIds = new Set(reports.map((e: any) => e.departmentId).filter(Boolean))
+                    const managedDepts = deptsData.filter((d: any) => reportDeptIds.has(d.id))
                     setManagerDepartments(managedDepts)
                 }
 
@@ -221,17 +238,8 @@ export default function ManagerActivityPage() {
         try {
             // Determine filtered team
             let team = employees.filter(e => e.managerId === selectedManager)
-            if (perfTeamFilter !== "all" && perfTeamFilter !== "reports") {
-                team = employees.filter(e => e.departmentId === perfTeamFilter)
-            } else if (perfTeamFilter === "reports") {
-                team = employees.filter(e => e.managerId === selectedManager)
-            } else if (perfTeamFilter === "all") {
-                // All managed: direct reports OR employees in managed departments
-                const managedDeptIds = managerDepartments.map(d => d.id)
-                team = employees.filter(e =>
-                    e.managerId === selectedManager ||
-                    (e.departmentId && managedDeptIds.includes(e.departmentId))
-                )
+            if (perfDeptFilter.length > 0) {
+                team = employees.filter(e => e.departmentId && perfDeptFilter.includes(e.departmentId))
             }
 
             if (team.length === 0) {
@@ -298,9 +306,9 @@ export default function ManagerActivityPage() {
         try {
             const team = reportStaffFilter.length > 0
                 ? managerTeam.filter(e => reportStaffFilter.includes(e.id))
-                : (reportDeptFilter === "all"
+                : (reportDeptFilter.length === 0
                     ? managerTeam
-                    : managerTeam.filter(e => e.departmentId === reportDeptFilter))
+                    : managerTeam.filter(e => e.departmentId && reportDeptFilter.includes(e.departmentId)))
 
             if (team.length === 0) {
                 toast.error("No staff members selected for the report")
@@ -580,6 +588,25 @@ export default function ManagerActivityPage() {
         </div>
     )
 
+    // Derived filter + pagination for Review Activity Log
+    const filteredLeaves = leaves.filter(leaf => {
+        const manager = getManagerOfUser(leaf.userId)
+        const leafDate = new Date(leaf.createdAt || new Date()).toISOString().slice(0, 10)
+        if (statusFilter !== 'all' && leaf.status !== statusFilter) return false
+        if (filterManagerId !== 'all' && manager?.id !== filterManagerId) return false
+        if (filterStaffId !== 'all' && leaf.userId !== filterStaffId) return false
+        if (filterType !== 'all' && leaf.type !== filterType) return false
+        if (filterDateFrom && leafDate < filterDateFrom) return false
+        if (filterDateTo && leafDate > filterDateTo) return false
+        return true
+    })
+    const totalLogsPages = Math.max(1, Math.ceil(filteredLeaves.length / LOGS_PER_PAGE))
+    const paginatedLeaves = filteredLeaves.slice((logsPage - 1) * LOGS_PER_PAGE, logsPage * LOGS_PER_PAGE)
+
+    const approvedCount = filteredLeaves.filter(l => l.status === 'APPROVED').length
+    const pendingCount = filteredLeaves.filter(l => l.status === 'PENDING').length
+    const declinedCount = filteredLeaves.filter(l => l.status === 'DECLINED').length
+
     return (
         <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -608,27 +635,6 @@ export default function ManagerActivityPage() {
             </div>
 
             <div className="flex flex-col md:flex-row items-center gap-4 bg-white p-4 rounded-xl border border-border shadow-sm">
-                <div className="flex items-center gap-4 flex-1">
-                    <div className="flex items-center gap-2">
-                        <HistoryIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">Logs Period:</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="h-9 w-40 text-sm"
-                        />
-                        <span className="text-muted-foreground">-</span>
-                        <Input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="h-9 w-40 text-sm"
-                        />
-                    </div>
-                </div>
                 <div className="flex items-center gap-2 w-full md:w-[350px]">
                     <UserCog className="h-4 w-4 text-muted-foreground" />
                     <Select value={selectedManager || "all"} onValueChange={(v) => setSelectedManager(v === "all" ? null : v)}>
@@ -653,8 +659,8 @@ export default function ManagerActivityPage() {
                 <>
                     {activeTab === 'logs' && (
                         <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                            <CardHeader className="bg-muted/10 border-b border-border">
-                                <div className="flex items-center justify-between gap-4">
+                            <CardHeader className="bg-muted/10 border-b border-border space-y-3">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                                     <div>
                                         <CardTitle className="text-lg font-semibold flex items-center gap-2">
                                             <HistoryIcon className="h-5 w-5 text-muted-foreground" />
@@ -662,8 +668,25 @@ export default function ManagerActivityPage() {
                                         </CardTitle>
                                         <CardDescription>Recent actions taken on leave requests across all managers</CardDescription>
                                     </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <div className="flex items-center gap-1.5 bg-green-50 border border-green-100 px-3 py-1.5 rounded-lg">
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                                            <span className="text-xs font-bold text-green-700">{approvedCount} Approved</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-100 px-3 py-1.5 rounded-lg">
+                                            <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+                                            <span className="text-xs font-bold text-amber-700">{pendingCount} Pending</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 px-3 py-1.5 rounded-lg">
+                                            <XCircle className="h-3.5 w-3.5 text-red-500" />
+                                            <span className="text-xs font-bold text-red-700">{declinedCount} Declined</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {/* Status */}
                                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                        <SelectTrigger className="h-9 w-[160px] bg-white">
+                                        <SelectTrigger className="h-8 w-[140px] bg-white text-xs">
                                             <SelectValue placeholder="All Statuses" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -673,9 +696,101 @@ export default function ManagerActivityPage() {
                                             <SelectItem value="DECLINED">Declined</SelectItem>
                                         </SelectContent>
                                     </Select>
+
+                                    {/* Manager */}
+                                    <Select value={filterManagerId} onValueChange={setFilterManagerId}>
+                                        <SelectTrigger className="h-8 w-[160px] bg-white text-xs">
+                                            <SelectValue placeholder="All Managers" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Managers</SelectItem>
+                                            {managers.map((m: any) => (
+                                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    {/* Staff */}
+                                    <Select value={filterStaffId} onValueChange={setFilterStaffId}>
+                                        <SelectTrigger className="h-8 w-[160px] bg-white text-xs">
+                                            <SelectValue placeholder="All Staff" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Staff</SelectItem>
+                                            {employees.filter((e: any) => !e.isArchived).map((e: any) => (
+                                                <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    {/* Type */}
+                                    <Select value={filterType} onValueChange={setFilterType}>
+                                        <SelectTrigger className="h-8 w-[140px] bg-white text-xs">
+                                            <SelectValue placeholder="All Types" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Types</SelectItem>
+                                            <SelectItem value="SICK">Sick / Personal</SelectItem>
+                                            <SelectItem value="VACATION">Vacation</SelectItem>
+                                            <SelectItem value="BIRTHDAY">Birthday</SelectItem>
+                                            <SelectItem value="MATERNITY">Maternity/Paternity</SelectItem>
+                                            <SelectItem value="OTHER">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+
+                                    {/* Date From */}
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-xs text-muted-foreground">From</span>
+                                        <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                                            className="h-8 rounded-md border border-input bg-white px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-xs text-muted-foreground">To</span>
+                                        <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                                            className="h-8 rounded-md border border-input bg-white px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                                    </div>
+
+                                    {/* Clear all */}
+                                    {(statusFilter !== 'all' || filterManagerId !== 'all' || filterStaffId !== 'all' || filterType !== 'all' || filterDateFrom || filterDateTo) && (
+                                        <button onClick={() => { setStatusFilter('all'); setFilterManagerId('all'); setFilterStaffId('all'); setFilterType('all'); setFilterDateFrom(''); setFilterDateTo('') }}
+                                            className="text-xs text-primary font-semibold hover:underline">
+                                            Clear all
+                                        </button>
+                                    )}
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
+                            {totalLogsPages > 1 && (
+                                <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-muted/5">
+                                    <span className="text-xs text-muted-foreground">
+                                        Showing {(logsPage - 1) * LOGS_PER_PAGE + 1}–{Math.min(logsPage * LOGS_PER_PAGE, filteredLeaves.length)} of {filteredLeaves.length} records
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setLogsPage(p => Math.max(1, p - 1))} disabled={logsPage === 1}>
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        {Array.from({ length: totalLogsPages }, (_, i) => i + 1)
+                                            .filter(p => p === 1 || p === totalLogsPages || Math.abs(p - logsPage) <= 1)
+                                            .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                                                if (idx > 0 && (arr[idx - 1] as number) < p - 1) acc.push('...')
+                                                acc.push(p)
+                                                return acc
+                                            }, [])
+                                            .map((p, i) =>
+                                                p === '...' ? (
+                                                    <span key={`top-ellipsis-${i}`} className="px-1 text-xs text-muted-foreground">…</span>
+                                                ) : (
+                                                    <Button key={`top-${p}`} variant={logsPage === p ? "default" : "outline"} size="icon" className="h-8 w-8 text-xs" onClick={() => setLogsPage(p as number)}>
+                                                        {p}
+                                                    </Button>
+                                                )
+                                            )}
+                                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setLogsPage(p => Math.min(totalLogsPages, p + 1))} disabled={logsPage === totalLogsPages}>
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
@@ -688,71 +803,118 @@ export default function ManagerActivityPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {leaves.filter(leaf => statusFilter === "all" || leaf.status === statusFilter).length === 0 && (
+                                        {paginatedLeaves.length === 0 && (
                                             <TableRow>
                                                 <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">
-                                                    No records match the selected status filter
+                                                    No records match the selected filters
                                                 </TableCell>
                                             </TableRow>
                                         )}
-                                        {leaves
-                                            .filter(leaf => statusFilter === "all" || leaf.status === statusFilter)
-                                            .map(leaf => {
-                                                const manager = getManagerOfUser(leaf.userId)
-                                                return (
-                                                    <TableRow key={leaf.id}>
-                                                        <TableCell className="pl-6 font-medium text-muted-foreground">
-                                                            {new Date(leaf.createdAt || new Date().toISOString()).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: userTimeZone })}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <div className="flex flex-col">
-                                                                <span className="font-medium">{leaf.userName}</span>
-                                                                <span className="text-xs text-muted-foreground">{leaf.department}</span>
+                                        {paginatedLeaves.map(leaf => {
+                                            const manager = getManagerOfUser(leaf.userId)
+                                            return (
+                                                <TableRow key={leaf.id}>
+                                                    <TableCell className="pl-6 font-medium text-muted-foreground">
+                                                        {new Date(leaf.createdAt || new Date().toISOString()).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: userTimeZone })}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">{leaf.userName}</span>
+                                                            <span className="text-xs text-muted-foreground">{leaf.department}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={cn(
+                                                                "h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                                                                manager?.isSystem ? "bg-slate-100 text-slate-500" : "bg-primary/10 text-primary"
+                                                            )}>
+                                                                {manager?.isSystem ? <ShieldCheck className="h-3 w-3" /> : (manager?.name?.charAt(0) || "?")}
                                                             </div>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <div className="flex items-center gap-2">
-                                                                <div className={cn(
-                                                                    "h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold",
-                                                                    manager?.isSystem ? "bg-slate-100 text-slate-500" : "bg-primary/10 text-primary"
-                                                                )}>
-                                                                    {manager?.isSystem ? <ShieldCheck className="h-3 w-3" /> : (manager?.name?.charAt(0) || "?")}
-                                                                </div>
-                                                                <span className={cn(
-                                                                    "text-sm",
-                                                                    manager?.isSystem ? "text-slate-500 font-medium italic" : "text-slate-900 font-medium"
-                                                                )}>
-                                                                    {manager?.name || "Unassigned"}
+                                                            <span className={cn(
+                                                                "text-sm",
+                                                                manager?.isSystem ? "text-slate-500 font-medium italic" : "text-slate-900 font-medium"
+                                                            )}>
+                                                                {manager?.name || "Unassigned"}
+                                                            </span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline">{leaf.type}</Badge>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col gap-1.5 items-start">
+                                                            <Badge className={
+                                                                leaf.status === 'APPROVED' ? "bg-green-100 text-green-700 hover:bg-green-100" :
+                                                                leaf.status === 'PENDING' ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
+                                                                    "bg-red-100 text-red-700 hover:bg-red-100"
+                                                            }>
+                                                                {leaf.status}
+                                                            </Badge>
+                                                            {leaf.status === 'DECLINED' && leaf.declineReason && (
+                                                                <span className="text-[10px] text-muted-foreground max-w-[200px] truncate bg-muted px-1.5 py-0.5 rounded-sm" title={leaf.declineReason}>
+                                                                    "{leaf.declineReason}"
                                                                 </span>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Badge variant="outline">{leaf.type}</Badge>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <div className="flex flex-col gap-1.5 items-start">
-                                                                <Badge className={
-                                                                    leaf.status === 'APPROVED' ? "bg-green-100 text-green-700 hover:bg-green-100" :
-                                                                    leaf.status === 'PENDING' ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
-                                                                        "bg-red-100 text-red-700 hover:bg-red-100"
-                                                                }>
-                                                                    {leaf.status}
-                                                                </Badge>
-                                                                {leaf.status === 'DECLINED' && leaf.declineReason && (
-                                                                    <span className="text-[10px] text-muted-foreground max-w-[200px] truncate bg-muted px-1.5 py-0.5 rounded-sm" title={leaf.declineReason}>
-                                                                        "{leaf.declineReason}"
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className="pr-6">
-                                                            {renderActionButtons(leaf)}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="pr-6">
+                                                        {renderActionButtons(leaf)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            )
+                                        })}
                                     </TableBody>
                                 </Table>
+                            {totalLogsPages > 1 && (
+                                <div className="flex items-center justify-between px-6 py-3 border-t border-border bg-muted/5">
+                                    <span className="text-xs text-muted-foreground">
+                                        Showing {(logsPage - 1) * LOGS_PER_PAGE + 1}–{Math.min(logsPage * LOGS_PER_PAGE, filteredLeaves.length)} of {filteredLeaves.length} records
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => setLogsPage(p => Math.max(1, p - 1))}
+                                            disabled={logsPage === 1}
+                                        >
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        {Array.from({ length: totalLogsPages }, (_, i) => i + 1)
+                                            .filter(p => p === 1 || p === totalLogsPages || Math.abs(p - logsPage) <= 1)
+                                            .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                                                if (idx > 0 && (arr[idx - 1] as number) < p - 1) acc.push('...')
+                                                acc.push(p)
+                                                return acc
+                                            }, [])
+                                            .map((p, i) =>
+                                                p === '...' ? (
+                                                    <span key={`ellipsis-${i}`} className="px-1 text-xs text-muted-foreground">…</span>
+                                                ) : (
+                                                    <Button
+                                                        key={p}
+                                                        variant={logsPage === p ? "default" : "outline"}
+                                                        size="icon"
+                                                        className="h-8 w-8 text-xs"
+                                                        onClick={() => setLogsPage(p as number)}
+                                                    >
+                                                        {p}
+                                                    </Button>
+                                                )
+                                            )}
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => setLogsPage(p => Math.min(totalLogsPages, p + 1))}
+                                            disabled={logsPage === totalLogsPages}
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                             </CardContent>
                         </Card>
                     )}
@@ -936,24 +1098,53 @@ export default function ManagerActivityPage() {
                                                             </div>
 
                                                             <div className="flex flex-col md:flex-row items-center gap-4 bg-white/50 p-4 rounded-xl border border-primary/10">
-                                                                <div className="flex items-center gap-2 flex-1">
+                                                                <div className="flex items-center gap-2 flex-1 flex-wrap">
                                                                     <Filter className="h-4 w-4 text-primary/60" />
                                                                     <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Department Scope:</span>
-                                                                    <Select value={perfTeamFilter} onValueChange={setPerfTeamFilter}>
-                                                                        <SelectTrigger className="h-9 w-[280px] bg-white border-primary/20 text-sm font-medium">
-                                                                            <SelectValue placeholder="All Managed Departments" />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="all">All Managed Departments</SelectItem>
-                                                                            {managerDepartments.map(d => (
-                                                                                <SelectItem key={d.id} value={d.id}>{d.name} Department</SelectItem>
-                                                                            ))}
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                    <div className="flex items-center gap-1.5 ml-2">
-                                                                        <AlertCircle className="h-3 w-3 text-slate-400" />
-                                                                        <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Filter performance by entire team or specific managed department.</span>
-                                                                    </div>
+                                                                    <Popover>
+                                                                        <PopoverTrigger asChild>
+                                                                            <Button variant="outline" className="h-9 w-[260px] justify-between bg-white border-primary/20 text-sm font-medium">
+                                                                                <span className="truncate">
+                                                                                    {perfDeptFilter.length === 0
+                                                                                        ? "All Direct Reports"
+                                                                                        : perfDeptFilter.length === 1
+                                                                                            ? managerDepartments.find(d => d.id === perfDeptFilter[0])?.name || "1 Department"
+                                                                                            : `${perfDeptFilter.length} Departments`}
+                                                                                </span>
+                                                                                <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                                                                            </Button>
+                                                                        </PopoverTrigger>
+                                                                        <PopoverContent className="w-[260px] p-2" align="start">
+                                                                            <div className="space-y-0.5">
+                                                                                <div
+                                                                                    className={cn("flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-muted text-sm transition-colors", perfDeptFilter.length === 0 && "bg-primary/10 text-primary font-semibold")}
+                                                                                    onClick={() => setPerfDeptFilter([])}
+                                                                                >
+                                                                                    <div className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0", perfDeptFilter.length === 0 ? "bg-primary border-primary text-white" : "border-slate-300 bg-white")}>
+                                                                                        {perfDeptFilter.length === 0 && <CheckCircle2 className="w-3 h-3" />}
+                                                                                    </div>
+                                                                                    All Direct Reports
+                                                                                </div>
+                                                                                {managerDepartments.length === 0 && (
+                                                                                    <p className="text-xs text-muted-foreground italic px-2 py-1">No departments found</p>
+                                                                                )}
+                                                                                {managerDepartments.map(d => (
+                                                                                    <div
+                                                                                        key={d.id}
+                                                                                        className={cn("flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-muted text-sm transition-colors", perfDeptFilter.includes(d.id) && "bg-primary/10 text-primary")}
+                                                                                        onClick={() => setPerfDeptFilter(prev =>
+                                                                                            prev.includes(d.id) ? prev.filter(id => id !== d.id) : [...prev, d.id]
+                                                                                        )}
+                                                                                    >
+                                                                                        <div className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0", perfDeptFilter.includes(d.id) ? "bg-primary border-primary text-white" : "border-slate-300 bg-white")}>
+                                                                                            {perfDeptFilter.includes(d.id) && <CheckCircle2 className="w-3 h-3" />}
+                                                                                        </div>
+                                                                                        {d.name}
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </PopoverContent>
+                                                                    </Popover>
                                                                 </div>
                                                                 <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase bg-white px-3 py-1.5 rounded-lg border border-primary/10">
                                                                     <Users className="h-3 w-3" />
@@ -1100,23 +1291,50 @@ export default function ManagerActivityPage() {
 
                                                                 <div className="space-y-2">
                                                                     <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Target Department</Label>
-                                                                    <Select
-                                                                        value={reportDeptFilter}
-                                                                        onValueChange={(val) => {
-                                                                            setReportDeptFilter(val)
-                                                                            setReportStaffFilter([]) // Reset staff filter when department changes
-                                                                        }}
-                                                                    >
-                                                                        <SelectTrigger className="h-11 rounded-xl bg-white border-border">
-                                                                            <SelectValue placeholder="All Managed Departments" />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="all">All Managed Departments</SelectItem>
-                                                                            {managerDepartments.map(d => (
-                                                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                                                            ))}
-                                                                        </SelectContent>
-                                                                    </Select>
+                                                                    <Popover>
+                                                                        <PopoverTrigger asChild>
+                                                                            <Button variant="outline" className="h-11 w-full justify-between rounded-xl bg-white border-border text-sm font-medium">
+                                                                                <span className="truncate">
+                                                                                    {reportDeptFilter.length === 0
+                                                                                        ? "All Managed Departments"
+                                                                                        : reportDeptFilter.length === 1
+                                                                                            ? managerDepartments.find(d => d.id === reportDeptFilter[0])?.name || "1 Department"
+                                                                                            : `${reportDeptFilter.length} Departments`}
+                                                                                </span>
+                                                                                <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                                                                            </Button>
+                                                                        </PopoverTrigger>
+                                                                        <PopoverContent className="w-full p-2" align="start">
+                                                                            <div className="space-y-0.5">
+                                                                                <div
+                                                                                    className={cn("flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-muted text-sm transition-colors", reportDeptFilter.length === 0 && "bg-primary/10 text-primary font-semibold")}
+                                                                                    onClick={() => { setReportDeptFilter([]); setReportStaffFilter([]) }}
+                                                                                >
+                                                                                    <div className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0", reportDeptFilter.length === 0 ? "bg-primary border-primary text-white" : "border-slate-300 bg-white")}>
+                                                                                        {reportDeptFilter.length === 0 && <CheckCircle2 className="w-3 h-3" />}
+                                                                                    </div>
+                                                                                    All Managed Departments
+                                                                                </div>
+                                                                                {managerDepartments.map(d => (
+                                                                                    <div
+                                                                                        key={d.id}
+                                                                                        className={cn("flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-muted text-sm transition-colors", reportDeptFilter.includes(d.id) && "bg-primary/10 text-primary")}
+                                                                                        onClick={() => {
+                                                                                            setReportDeptFilter(prev =>
+                                                                                                prev.includes(d.id) ? prev.filter(id => id !== d.id) : [...prev, d.id]
+                                                                                            )
+                                                                                            setReportStaffFilter([])
+                                                                                        }}
+                                                                                    >
+                                                                                        <div className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0", reportDeptFilter.includes(d.id) ? "bg-primary border-primary text-white" : "border-slate-300 bg-white")}>
+                                                                                            {reportDeptFilter.includes(d.id) && <CheckCircle2 className="w-3 h-3" />}
+                                                                                        </div>
+                                                                                        {d.name}
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </PopoverContent>
+                                                                    </Popover>
                                                                 </div>
 
                                                                 <div className="space-y-3">
@@ -1125,9 +1343,9 @@ export default function ManagerActivityPage() {
                                                                             Personnel Selection ({reportStaffFilter.length === 0 ? 'All' : reportStaffFilter.length})
                                                                         </Label>
                                                                         {(() => {
-                                                                            const team = reportDeptFilter === "all"
+                                                                            const team = reportDeptFilter.length === 0
                                                                                 ? managerTeam
-                                                                                : managerTeam.filter(e => e.departmentId === reportDeptFilter);
+                                                                                : managerTeam.filter(e => e.departmentId && reportDeptFilter.includes(e.departmentId));
                                                                             if (team.length === 0) return null;
                                                                             return (
                                                                                 <Button
@@ -1149,9 +1367,9 @@ export default function ManagerActivityPage() {
                                                                     </div>
                                                                     <div className="border border-slate-100 rounded-2xl bg-slate-50/50 p-4 max-h-[180px] overflow-y-auto space-y-2 custom-scrollbar shadow-inner">
                                                                         {(() => {
-                                                                            const team = reportDeptFilter === "all"
+                                                                            const team = reportDeptFilter.length === 0
                                                                                 ? managerTeam
-                                                                                : managerTeam.filter(e => e.departmentId === reportDeptFilter);
+                                                                                : managerTeam.filter(e => e.departmentId && reportDeptFilter.includes(e.departmentId));
 
                                                                             if (team.length === 0) {
                                                                                 return <p className="text-[10px] text-center py-6 text-slate-400 font-bold uppercase tracking-widest italic">No staff in this scope</p>
@@ -1208,9 +1426,9 @@ export default function ManagerActivityPage() {
                                                                             <p className="text-sm font-bold text-slate-700">
                                                                                 {reportStaffFilter.length > 0
                                                                                     ? `${reportStaffFilter.length} Selected Personnel`
-                                                                                    : reportDeptFilter === "all"
+                                                                                    : reportDeptFilter.length === 0
                                                                                         ? `All managed staff (${managerTeam.length})`
-                                                                                        : `${managerTeam.filter(e => e.departmentId === reportDeptFilter).length} Staff in Dept.`
+                                                                                        : `${managerTeam.filter(e => e.departmentId && reportDeptFilter.includes(e.departmentId)).length} Staff in selected depts.`
                                                                                 }
                                                                             </p>
                                                                         </div>

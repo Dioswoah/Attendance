@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { invalidateCache, CacheKeys } from '@/lib/cache'
 
 export async function PATCH(
     req: Request,
@@ -18,6 +19,7 @@ export async function PATCH(
             data: { name }
         })
 
+        void invalidateCache(CacheKeys.departments, CacheKeys.staffDashboard, CacheKeys.employees)
         return NextResponse.json(updated)
     } catch (error) {
         console.error("Update department error:", error)
@@ -32,7 +34,6 @@ export async function DELETE(
     try {
         const { id } = await params
 
-        // Before deleting, we should handle users who are in this department
         await prisma.user.updateMany({
             where: { departmentId: id },
             data: { departmentId: null }
@@ -43,6 +44,7 @@ export async function DELETE(
             data: { deletedAt: new Date() }
         })
 
+        void invalidateCache(CacheKeys.departments, CacheKeys.staffDashboard, CacheKeys.employees)
         return NextResponse.json({ success: true })
     } catch (error) {
         console.error("Delete department error:", error)

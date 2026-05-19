@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2 } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
+import { PatchNotesModal } from "@/components/PatchNotesModal"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -269,6 +270,7 @@ function UserLayoutInner({
 
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans selection:bg-red-100 selection:text-red-900 w-full relative overflow-x-hidden">
+            <PatchNotesModal />
             {/* Soft background glow */}
             <div className="fixed top-0 left-0 h-[500px] w-[500px] bg-red-100/30 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
 
@@ -403,7 +405,7 @@ function UserLayoutInner({
                     <div className="p-4">
                         <div className={cn(
                             "flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/10 transition-all hover:bg-white/10 group",
-                            sidebarCollapsed && "justify-center p-2"
+                            sidebarCollapsed && "flex-col justify-center items-center p-2 gap-2"
                         )}>
                             <div className="relative shrink-0">
                                 <Avatar className="w-10 h-10 border-2 border-white/20 shadow-md">

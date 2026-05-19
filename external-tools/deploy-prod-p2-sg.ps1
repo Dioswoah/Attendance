@@ -222,6 +222,7 @@ gcloud run deploy $SERVICE_NAME `
     --concurrency 1000 `
     --min-instances 1 `
     --max-instances 3 `
+    --cpu-boost `
     --project=$PROJECT_ID `
     --quiet
 

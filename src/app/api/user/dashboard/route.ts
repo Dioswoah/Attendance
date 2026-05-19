@@ -30,7 +30,8 @@ export async function GET() {
             user,
             rawMyAttendance,
             myLeaves,
-            myAttendanceRequests
+            myAttendanceRequests,
+            recentDirectAttendance
         ] = await Promise.all([
             // 1. Profile
             prisma.user.findUnique({
@@ -55,7 +56,7 @@ export async function GET() {
                 orderBy: { date: 'desc' },
                 take: 20
             }),
-            // 3. My Leave Requests 
+            // 3. My Leave Requests
             prisma.leave.findMany({
                 where: { userId, isArchived: false, deletedAt: null },
                 orderBy: { createdAt: 'desc' }
@@ -64,53 +65,51 @@ export async function GET() {
             prisma.attendanceRequest.findMany({
                 where: { userId, status: 'PENDING', deletedAt: null },
                 orderBy: { createdAt: 'desc' }
+            }),
+            // 5. Direct attendance query for last 48h — catches records not yet linked to a
+            // summary (fire-and-forget updateAttendanceSummary race where it completes between
+            // the rawMyAttendance fetch and the orphan check, leaving mine empty)
+            prisma.attendance.findMany({
+                where: { userId, deletedAt: null, clockIn: { gte: new Date(now.getTime() - 48 * 60 * 60 * 1000) } },
+                include: { breaks: { where: { deletedAt: null } } },
+                orderBy: { clockIn: 'desc' },
+                take: 10
             })
         ])
 
-        // Self-heal: if any recent attendance records have no summaryId, the fire-and-forget
-        // updateAttendanceSummary call on clock-in/out failed silently. Repair them now so the
-        // dashboard can find them via the summary → rawRecords path. We check the last 7 days
-        // and cover both active sessions (clockOut: null) and completed ones (clockOut set) so
-        // that auto-clocked-out records are not silently lost from the user portal.
-        let myAttendance = rawMyAttendance
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-        const orphanedRecords = await prisma.attendance.findMany({
-            where: { userId, deletedAt: null, summaryId: null, clockIn: { gte: sevenDaysAgo } },
-            select: { id: true, date: true, clockIn: true, clockOut: true }
-        })
-        if (orphanedRecords.length > 0) {
-            // Auto-close any orphaned sessions that are still "open" (clockOut: null) but are from
-            // a previous day — cleanupOldSessions handles these normally via /api/attendance GET,
-            // but the user portal doesn't hit that route. Without closing them they'd appear as
-            // today's active session and show wrong buttons.
-            const staleCutoff = new Date(now.getTime() - 36 * 60 * 60 * 1000)
-            const staleOpen = orphanedRecords.filter((r: any) => !r.clockOut && r.clockIn && new Date(r.clockIn) < staleCutoff)
-            if (staleOpen.length > 0) {
-                await Promise.all(staleOpen.map(async (r: any) => {
-                    const closeAt = new Date(Math.min(
-                        new Date(r.clockIn).getTime() + 9 * 60 * 60 * 1000,
-                        now.getTime()
-                    ))
-                    await prisma.attendance.update({ where: { id: r.id }, data: { clockOut: closeAt } })
-                    await prisma.break.updateMany({ where: { attendanceId: r.id, endTime: null, deletedAt: null }, data: { endTime: closeAt } })
-                }))
-            }
+        const myAttendance = rawMyAttendance
 
-            const uniqueDates = [...new Set(orphanedRecords.map((r: any) => r.date.toISOString().split('T')[0]))]
-            await Promise.all(uniqueDates.map((dateStr: string) => updateAttendanceSummary(userId, new Date(dateStr))))
-            myAttendance = await prisma.attendanceSummary.findMany({
-                where: { userId },
-                include: {
-                    rawRecords: {
-                        where: { deletedAt: null },
-                        include: { breaks: { where: { deletedAt: null } } },
-                        orderBy: { clockIn: 'asc' }
-                    }
-                },
-                orderBy: { date: 'desc' },
-                take: 20
-            })
-        }
+        // Fire-and-forget orphan repair: if any Attendance records have no summaryId, rebuild
+        // the AttendanceSummary links in the background. The recentDirectAttendance query above
+        // already covers orphaned records in today's response, so we don't need to block on this.
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        ;(async () => {
+            try {
+                const orphanedRecords = await prisma.attendance.findMany({
+                    where: { userId, deletedAt: null, summaryId: null, clockIn: { gte: sevenDaysAgo } },
+                    select: { id: true, date: true, clockIn: true, clockOut: true }
+                })
+                if (orphanedRecords.length === 0) return
+
+                const staleCutoff = new Date(now.getTime() - 36 * 60 * 60 * 1000)
+                const staleOpen = orphanedRecords.filter((r: any) => !r.clockOut && r.clockIn && new Date(r.clockIn) < staleCutoff)
+                if (staleOpen.length > 0) {
+                    await Promise.all(staleOpen.map(async (r: any) => {
+                        const closeAt = new Date(Math.min(
+                            new Date(r.clockIn).getTime() + 9 * 60 * 60 * 1000,
+                            now.getTime()
+                        ))
+                        await prisma.attendance.update({ where: { id: r.id }, data: { clockOut: closeAt } })
+                        await prisma.break.updateMany({ where: { attendanceId: r.id, endTime: null, deletedAt: null }, data: { endTime: closeAt } })
+                    }))
+                }
+
+                const uniqueDates = [...new Set(orphanedRecords.map((r: any) => r.date.toISOString().split('T')[0]))]
+                await Promise.all(uniqueDates.map((dateStr: string) => updateAttendanceSummary(userId, new Date(dateStr))))
+            } catch (e) {
+                console.error('Background orphan repair failed:', e)
+            }
+        })()
 
         // Transform summary records to include UI-friendly status strings
         const transformMine = (summaryList: any[]) => {
@@ -150,10 +149,41 @@ export async function GET() {
             }
         } catch { /* LeaveRequest model may not exist in older migrations */ }
 
+        const summaryMine = transformMine(myAttendance)
+        const summaryIds = new Set(summaryMine.map((r: any) => r.id))
+
+        // Merge in any direct records missing from summaries (race-condition safety net)
+        const directFormatted = recentDirectAttendance
+            .filter((r: any) => !summaryIds.has(r.id))
+            .map((raw: any) => {
+                const activeBreak = raw.breaks?.find((b: any) => !b.endTime)
+                return {
+                    ...raw,
+                    status: raw.clockOut ? 'clocked-out' : (activeBreak ? 'on-break' : 'clocked-in'),
+                    clockIn: raw.clockIn?.toISOString(),
+                    clockOut: raw.clockOut?.toISOString() || null,
+                    breakStart: activeBreak ? activeBreak.startTime.toISOString() : null,
+                    date: raw.date instanceof Date ? raw.date.toISOString().split('T')[0] : raw.date,
+                    breaks: raw.breaks?.map((b: any) => ({
+                        id: b.id,
+                        startTime: b.startTime.toISOString(),
+                        endTime: b.endTime?.toISOString() || null,
+                        expectedReturnTime: b.expectedReturnTime?.toISOString() || null,
+                    })) || [],
+                    summaryWorkMs: 0,
+                    summaryBreakMs: 0,
+                    isManualOverride: false,
+                    summaryStatus: null
+                }
+            })
+
+        const mine = [...summaryMine, ...directFormatted]
+            .sort((a: any, b: any) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime())
+
         return NextResponse.json({
             user,
             attendance: {
-                mine: transformMine(myAttendance),
+                mine,
                 allToday: [] // Staff endpoint handles this now
             },
             leaves: myLeaves,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { User, Edit, Loader2 } from "lucide-react"
+import { User, Edit, Loader2, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import {
     Dialog,
@@ -21,23 +21,36 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Checkbox } from "@/components/ui/checkbox"
 
 export function ProfileSettings() {
     const [open, setOpen] = useState(false)
     const [profile, setProfile] = useState<any>(null)
     const [managers, setManagers] = useState<any[]>([])
+    const [departments, setDepartments] = useState<any[]>([])
     const [shiftStart, setShiftStart] = useState("")
     const [shiftEnd, setShiftEnd] = useState("")
     const [managerId, setManagerId] = useState("")
+    const [primaryDeptId, setPrimaryDeptId] = useState("")
+    const [secondaryDeptIds, setSecondaryDeptIds] = useState<string[]>([])
+    const [employmentLocation, setEmploymentLocation] = useState("")
     const [saving, setSaving] = useState(false)
 
     useEffect(() => {
         if (!open) return
         const load = async () => {
             try {
-                const [profileRes, managersRes] = await Promise.all([
+                const [profileRes, managersRes, deptsRes] = await Promise.all([
                     fetch('/api/user/me'),
                     fetch('/api/managers'),
+                    fetch('/api/departments'),
                 ])
                 if (profileRes.ok) {
                     const data = await profileRes.json()
@@ -45,10 +58,12 @@ export function ProfileSettings() {
                     setShiftStart(data.shiftStartTime || "09:00")
                     setShiftEnd(data.shiftEndTime || "17:00")
                     setManagerId(data.managerId || "unassigned")
+                    setPrimaryDeptId(data.departmentId || "unassigned")
+                    setSecondaryDeptIds((data.secondaryDepartments ?? []).map((d: any) => d.id))
+                    setEmploymentLocation(data.employmentLocation || "")
                 }
-                if (managersRes.ok) {
-                    setManagers(await managersRes.json())
-                }
+                if (managersRes.ok) setManagers(await managersRes.json())
+                if (deptsRes.ok) setDepartments(await deptsRes.json())
             } catch {
                 toast.error("Failed to load profile")
             }
@@ -70,6 +85,9 @@ export function ProfileSettings() {
                     shiftStartTime: shiftStart,
                     shiftEndTime: shiftEnd,
                     managerId: managerId || "unassigned",
+                    departmentId: primaryDeptId || "unassigned",
+                    secondaryDepartmentIds: secondaryDeptIds,
+                    location: employmentLocation || undefined,
                 }),
             })
             if (res.ok) {
@@ -86,11 +104,19 @@ export function ProfileSettings() {
         }
     }
 
-    const secondaryDepts: any[] = profile?.secondaryDepartments ?? []
     const secondaryLabel =
-        secondaryDepts.length === 0
+        secondaryDeptIds.length === 0
             ? "None"
-            : secondaryDepts.map((d: any) => d.name).join(", ")
+            : departments
+                .filter(d => secondaryDeptIds.includes(d.id))
+                .map(d => d.name)
+                .join(", ") || "None"
+
+    const toggleSecondary = (id: string) => {
+        setSecondaryDeptIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        )
+    }
 
     return (
         <>
@@ -114,7 +140,7 @@ export function ProfileSettings() {
                 <DialogContent className="sm:max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>My Profile</DialogTitle>
-                        <DialogDescription>View your details. You can update your shift times and assigned manager.</DialogDescription>
+                        <DialogDescription>Update your profile details. Full name and corporate email cannot be changed.</DialogDescription>
                     </DialogHeader>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 py-4">
@@ -130,22 +156,63 @@ export function ProfileSettings() {
                             <Input value={profile?.email ?? ""} readOnly disabled className="h-11 bg-muted/40 cursor-not-allowed" />
                         </div>
 
-                        {/* Read-only: Primary Department */}
+                        {/* Editable: Primary Department */}
                         <div className="space-y-2">
                             <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Primary Department</Label>
-                            <Input value={profile?.department?.name ?? "Unassigned"} readOnly disabled className="h-11 bg-muted/40 cursor-not-allowed" />
+                            <Select value={primaryDeptId} onValueChange={setPrimaryDeptId}>
+                                <SelectTrigger className="h-11">
+                                    <SelectValue placeholder="Select Department" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                                    {departments.map((d: any) => (
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
 
-                        {/* Read-only: Secondary Departments */}
+                        {/* Editable: Secondary Departments */}
                         <div className="space-y-2">
                             <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Secondary Department(s)</Label>
-                            <Input value={secondaryLabel} readOnly disabled className="h-11 bg-muted/40 cursor-not-allowed" />
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" className="h-11 w-full justify-between font-normal text-sm">
+                                        <span className="truncate text-left">{secondaryLabel}</span>
+                                        <ChevronDown className="h-4 w-4 ml-2 opacity-50 shrink-0" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="w-64 p-2" align="start">
+                                    <DropdownMenuLabel className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Select Departments</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <div className="max-h-[220px] overflow-y-auto space-y-1 mt-1">
+                                        {departments.map((d: any) => (
+                                            <div
+                                                key={d.id}
+                                                className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-md cursor-pointer"
+                                                onClick={(e) => { e.preventDefault(); toggleSecondary(d.id) }}
+                                            >
+                                                <Checkbox id={`sec-${d.id}`} checked={secondaryDeptIds.includes(d.id)} />
+                                                <label htmlFor={`sec-${d.id}`} className="text-xs font-medium cursor-pointer flex-1">{d.name}</label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
 
-                        {/* Read-only: Employment Location */}
+                        {/* Editable: Employment Location */}
                         <div className="space-y-2">
                             <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Employment Location</Label>
-                            <Input value={profile?.employmentLocation ?? "—"} readOnly disabled className="h-11 bg-muted/40 cursor-not-allowed" />
+                            <Select value={employmentLocation} onValueChange={setEmploymentLocation}>
+                                <SelectTrigger className="h-11">
+                                    <SelectValue placeholder="Select Location" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Philippines">Philippines</SelectItem>
+                                    <SelectItem value="Australia">Australia</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         {/* Editable: Assigned Manager */}

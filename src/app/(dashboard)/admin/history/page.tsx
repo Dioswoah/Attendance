@@ -20,6 +20,8 @@ import {
     Clock,
     Check,
     ChevronDown,
+    ChevronUp,
+    ArrowUpDown,
     MapPin,
     ArrowRight,
     Loader2,
@@ -69,6 +71,11 @@ export default function HistoryPage() {
     const [includeArchived, setIncludeArchived] = useState(false)
     const [viewingStaff, setViewingStaff] = useState<any | null>(null)
 
+    // Daily Event Log column filters/sort
+    const [dailyStatusFilter, setDailyStatusFilter] = useState<string[]>([])
+    const [dailyAccessFilter, setDailyAccessFilter] = useState<string[]>([])
+    const [dailyDeptSort, setDailyDeptSort] = useState<'asc' | 'desc' | null>(null)
+
     // Refs so SSE handler always reads current filter values (avoids stale closure)
     const startDateRef = useRef(startDate)
     const endDateRef = useRef(endDate)
@@ -76,6 +83,13 @@ export default function HistoryPage() {
     useEffect(() => { startDateRef.current = startDate }, [startDate])
     useEffect(() => { endDateRef.current = endDate }, [endDate])
     useEffect(() => { selectedDeptRef.current = selectedDept }, [selectedDept])
+
+    // Auto-refresh when filters change (skip initial mount — fetchInitialData handles that)
+    const isFirstRender = useRef(true)
+    useEffect(() => {
+        if (isFirstRender.current) { isFirstRender.current = false; return }
+        refreshData(startDate, endDate, selectedDept)
+    }, [startDate, endDate, selectedDept])
 
     // Duration Helpers
     const calculateDurations = (recs: any[]) => {
@@ -697,29 +711,105 @@ export default function HistoryPage() {
                                     )}
                                 </TableBody>
                             </Table>
-                        ) : activeTab === 'daily' ? (
+                        ) : activeTab === 'daily' ? (() => {
+                            const dailyRows = employees
+                                .map(emp => {
+                                    const record = history.find(h => h.userId === emp.id && isSameDay(parseISO(h.date), parseISO(endDate)))
+                                    const status = record?.status || "absent"
+                                    const accessKey = record?.mode && status !== 'on-leave'
+                                        ? (record.mode === 'OFFICE' ? 'office' : 'wfh')
+                                        : 'offline'
+                                    return { emp, record, status, accessKey }
+                                })
+                                .filter(({ status, accessKey }) => {
+                                    if (dailyStatusFilter.length > 0 && !dailyStatusFilter.includes(status)) return false
+                                    if (dailyAccessFilter.length > 0 && !dailyAccessFilter.includes(accessKey)) return false
+                                    return true
+                                })
+                                .sort((a, b) => {
+                                    if (dailyDeptSort === 'asc') return a.emp.dept.localeCompare(b.emp.dept)
+                                    if (dailyDeptSort === 'desc') return b.emp.dept.localeCompare(a.emp.dept)
+                                    return 0
+                                })
+
+                            const statusOptions = [
+                                { value: 'clocked-in', label: 'Clocked In' },
+                                { value: 'on-break', label: 'On Break' },
+                                { value: 'on-leave', label: 'On Leave' },
+                                { value: 'clocked-out', label: 'Clocked Out' },
+                                { value: 'absent', label: 'Absent' },
+                            ]
+                            const accessOptions = [
+                                { value: 'office', label: 'In Office' },
+                                { value: 'wfh', label: 'WFH' },
+                                { value: 'offline', label: 'Offline' },
+                            ]
+                            const toggleFilter = (arr: string[], val: string, set: (v: string[]) => void) =>
+                                set(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val])
+
+                            return (
                             <Table>
                                 <TableHeader>
                                     <TableRow className="hover:bg-transparent">
                                         <TableHead className="py-4 px-6 font-medium text-muted-foreground">Personnel</TableHead>
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground">Department</TableHead>
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground text-center">Status</TableHead>
+
+                                        <TableHead className="py-4 px-6">
+                                            <button onClick={() => setDailyDeptSort(s => s === null ? 'asc' : s === 'asc' ? 'desc' : null)}
+                                                className="flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground transition-colors">
+                                                Department
+                                                {dailyDeptSort === 'asc' ? <ChevronUp className="h-3 w-3" /> : dailyDeptSort === 'desc' ? <ChevronDown className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+                                            </button>
+                                        </TableHead>
+
+                                        <TableHead className="py-4 px-6 text-center">
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <button className={cn("flex items-center gap-1 font-medium transition-colors mx-auto", dailyStatusFilter.length > 0 ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+                                                        Status <Filter className="h-3 w-3" />
+                                                        {dailyStatusFilter.length > 0 && <span className="text-[10px] bg-primary text-white rounded-full px-1.5 leading-4">{dailyStatusFilter.length}</span>}
+                                                    </button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-44 p-2" align="center">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2 px-1">Filter Status</p>
+                                                    {statusOptions.map(opt => (
+                                                        <div key={opt.value} className="flex items-center gap-2 p-1.5 hover:bg-muted rounded-md cursor-pointer"
+                                                            onClick={() => toggleFilter(dailyStatusFilter, opt.value, setDailyStatusFilter)}>
+                                                            <Checkbox checked={dailyStatusFilter.includes(opt.value)} />
+                                                            <span className="text-xs">{opt.label}</span>
+                                                        </div>
+                                                    ))}
+                                                    {dailyStatusFilter.length > 0 && <button onClick={() => setDailyStatusFilter([])} className="w-full text-[10px] text-primary font-bold mt-2 pt-1 border-t hover:underline">Clear all</button>}
+                                                </PopoverContent>
+                                            </Popover>
+                                        </TableHead>
+
                                         <TableHead className="py-4 px-6 font-medium text-muted-foreground">Metrics</TableHead>
-                                        <TableHead className="py-4 px-6 font-medium text-muted-foreground text-right">Access</TableHead>
+
+                                        <TableHead className="py-4 px-6 text-right">
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <button className={cn("flex items-center gap-1 font-medium transition-colors ml-auto", dailyAccessFilter.length > 0 ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+                                                        Access <Filter className="h-3 w-3" />
+                                                        {dailyAccessFilter.length > 0 && <span className="text-[10px] bg-primary text-white rounded-full px-1.5 leading-4">{dailyAccessFilter.length}</span>}
+                                                    </button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-36 p-2" align="end">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2 px-1">Filter Access</p>
+                                                    {accessOptions.map(opt => (
+                                                        <div key={opt.value} className="flex items-center gap-2 p-1.5 hover:bg-muted rounded-md cursor-pointer"
+                                                            onClick={() => toggleFilter(dailyAccessFilter, opt.value, setDailyAccessFilter)}>
+                                                            <Checkbox checked={dailyAccessFilter.includes(opt.value)} />
+                                                            <span className="text-xs">{opt.label}</span>
+                                                        </div>
+                                                    ))}
+                                                    {dailyAccessFilter.length > 0 && <button onClick={() => setDailyAccessFilter([])} className="w-full text-[10px] text-primary font-bold mt-2 pt-1 border-t hover:underline">Clear all</button>}
+                                                </PopoverContent>
+                                            </Popover>
+                                        </TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {employees.map((emp) => {
-                                        // For daily log, we likely want to show Today's data primarily, or list all days?
-                                        // Based on user request "daily dashboard or todays log", let's filter for just TODAY or the selected range's relevant "latest" status if range is 1 day.
-                                        // If range > 1 day, "Event Log" usually implies a list of events. But user said "daily dashboard... status of staff for today".
-
-                                        // Let's assume we show the latest status for each employee within the selected range, OR if the range is 'today', it shows exactly today's.
-                                        // Given the user wants "Todays log", but the date picker allows range... 
-                                        // We will iterate through employees and find their record for the *End Date* (usually "today" if default).
-
-                                        const record = history.find(h => h.userId === emp.id && isSameDay(parseISO(h.date), parseISO(endDate)))
-                                        const status = record?.status || "absent"
+                                    {dailyRows.map(({ emp, record, status }) => {
 
                                         return (
                                             <TableRow key={emp.id} className="hover:bg-muted/50 transition-all duration-200">
@@ -803,7 +893,8 @@ export default function HistoryPage() {
                                     })}
                                 </TableBody>
                             </Table>
-                        ) : (
+                            )
+                        })() : (
                             <div className="p-0">
                                 <Table>
                                     <TableHeader className="bg-muted/50">

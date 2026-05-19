@@ -160,9 +160,8 @@ export async function cleanupOldSessions() {
             reason = "reached the standard 9-hour limit";
         }
 
-        // Reminder at 5 mins past shift end; auto clock-out at 30 mins past shift end
-        const reminderTriggerTime = new Date(targetTime.getTime() + 5 * 60 * 1000);
-        const autoClockOutTriggerTime = new Date(targetTime.getTime() + 30 * 60 * 1000);
+        // Reminder at 10 mins past shift end; auto clock-out only at 9pm Sydney hard cutoff
+        const reminderTriggerTime = new Date(targetTime.getTime() + 10 * 60 * 1000);
 
         // 1. Calculate End of Day Barrier (Local 23:59 -> UTC)
         const isoString = `${sessionDateStr}T23:59:59.999${offsetStr}`;
@@ -176,11 +175,8 @@ export async function cleanupOldSessions() {
         } else if (sessionDateStr === userTodayStr && is14HoursPast) {
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && isSydney9pmOrLater && session.clockIn < sydney9pmUtc) {
-            // Hard 9pm AU cutoff — clock out anyone still in, stamp at exactly 9pm AU
-            shouldAutoClockOut = true;
-            targetTime = sydney9pmUtc;
-            reason = "end of business day (9:00 PM AU time)";
-        } else if (sessionDateStr === userTodayStr && now >= autoClockOutTriggerTime) {
+            // Hard 9pm AU cutoff — clock out anyone still in, stamp at their shift end time
+            // reason and targetTime already set above (shift end time / 9h limit); don't override them
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && now >= reminderTriggerTime) {
             shouldSendReminder = true;

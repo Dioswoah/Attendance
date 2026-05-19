@@ -6,22 +6,11 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
-    Plus,
     Search,
-    Trash2,
-    Edit2,
     Loader2,
     Download,
-    Calendar as CalendarIcon,
     Building2,
-    LayoutGrid,
-    ArrowRight,
-    ShieldCheck,
     Database,
-    Flame,
-    Zap,
-    Clock,
-    User,
     MapPin
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -548,45 +537,6 @@ export default function ExportPage() {
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                    <CardHeader className="p-6 border-b border-border bg-muted/20">
-                        <CardTitle className="text-base font-semibold text-foreground">Report Data Schema</CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-6 py-6">
-                        <div className="space-y-4">
-                            {[
-                                { label: 'IDENTITY', desc: 'Verified Employee Name', icon: User },
-                                { label: 'DEPARTMENT', desc: 'Assigned Business Unit', icon: Building2 },
-                                { label: 'LOG TIME', desc: 'Attendance Timestamp', icon: Clock },
-                                { label: 'EFFICIENCY', desc: 'Work Engagement Metrics', icon: Zap }
-                            ].map(item => (
-                                <div key={item.label} className="flex items-center gap-4 group">
-                                    <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
-                                        <item.icon className="h-4 w-4" />
-                                    </div>
-                                    <div className="space-y-0.5">
-                                        <p className="font-medium text-sm text-foreground">{item.label}</p>
-                                        <p className="text-xs text-muted-foreground">{item.desc}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-muted/30 relative p-8 flex flex-col justify-center">
-                    <div className="relative z-10 space-y-4">
-                        <div className="space-y-1">
-                            <h3 className="text-xl font-bold tracking-tight text-foreground">Data Integrity</h3>
-                            <p className="text-xs font-medium text-muted-foreground">Redadair Audit Compliance (RAC-01)</p>
-                        </div>
-                        <p className="text-sm leading-relaxed text-muted-foreground border-l-2 border-primary pl-4">
-                            All generated ledgers are cryptographically assigned to the current administrative session. Exported datasets comply with fire protection industry standards and workforce monitoring protocols.
-                        </p>
-                    </div>
-                </Card>
-            </div>
         </div >
     )
 }
