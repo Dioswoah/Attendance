@@ -10,14 +10,18 @@ export const dynamic = 'force-dynamic'; // Prevent static caching
 
 export async function GET(request: Request) {
     try {
-        // You might want to add a simple auth check here so only Cloud Scheduler can trigger it.
-        // For simplicity right now, and since we just moved it from background task, we leave it open.
-        // In production, checking for a secret token in the header or verifying standard GCP OIDC token is recommended.
+        // Guard: only the designated deployment (P2 prod SG) should run cron jobs.
+        // Without this, every deployed instance sharing the same DB would run duplicate crons.
+        if (process.env.ENABLE_CRON !== 'true') {
+            console.log("[Attendance Monitor] CRON disabled on this deployment - skipping.");
+            return NextResponse.json({ success: true, message: "Cron disabled on this deployment." });
+        }
+
         const authHeader = request.headers.get("authorization") || request.headers.get("x-cron-secret");
         const expectedSecret = process.env.CRON_SECRET;
 
         if (expectedSecret && authHeader !== `Bearer ${expectedSecret}` && authHeader !== expectedSecret) {
-            // Optional: return new NextResponse("Unauthorized", { status: 401 });
+            return new NextResponse("Unauthorized", { status: 401 });
         }
 
         console.log("[Attendance Monitor] CRON Job Triggered manually or by Scheduler");
