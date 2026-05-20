@@ -181,15 +181,22 @@ export default function ExportPage() {
 
             const targetIds = new Set(targetStaff.map(s => s.id))
 
-            // 2. Keep only attendance records belonging to target staff
-            const data = rawData.filter((r: any) => targetIds.has(r.userId))
+            // 2. Keep only attendance records belonging to target staff, excluding weekends
+            const data = rawData.filter((r: any) => {
+                if (!targetIds.has(r.userId)) return false
+                const day = new Date(r.date + 'T12:00:00Z').getUTCDay()
+                return day !== 0 && day !== 6 // drop Saturday (6) and Sunday (0)
+            })
 
-            // 3. Generate every date in the selected range
+            // 3. Generate every weekday in the selected range (no weekends)
             const allDates: string[] = []
             const cur = new Date(startDate + 'T12:00:00Z')
             const rangeEnd = new Date(endDate + 'T12:00:00Z')
             while (cur <= rangeEnd) {
-                allDates.push(cur.toISOString().split('T')[0])
+                const day = cur.getUTCDay()
+                if (day !== 0 && day !== 6) {
+                    allDates.push(cur.toISOString().split('T')[0])
+                }
                 cur.setUTCDate(cur.getUTCDate() + 1)
             }
 
