@@ -16,7 +16,7 @@ const typeConfig = {
     fix: { icon: Wrench, label: "Fixed", className: "bg-green-50 text-green-600 border-green-200" },
 }
 
-export function PatchNotesModal() {
+export function PatchNotesModal({ isAdmin }: { isAdmin?: boolean }) {
     const [open, setOpen] = useState(false)
 
     useEffect(() => {
@@ -41,6 +41,10 @@ export function PatchNotesModal() {
     const dismiss = () => setOpen(false)
 
     if (!open) return null
+
+    const visibleChanges = PATCH_NOTES.changes.filter(
+        c => !c.audience || c.audience === 'all' || (c.audience === 'admin' && isAdmin)
+    )
 
     return (
         <Dialog open={open} onOpenChange={val => { if (!val) dismiss() }}>
@@ -80,7 +84,7 @@ export function PatchNotesModal() {
 
                 {/* Change list */}
                 <div className="px-6 py-4 max-h-80 overflow-y-auto space-y-2">
-                    {PATCH_NOTES.changes.map((change, i) => {
+                    {visibleChanges.map((change, i) => {
                         const config = typeConfig[change.type]
                         const Icon = config.icon
                         return (

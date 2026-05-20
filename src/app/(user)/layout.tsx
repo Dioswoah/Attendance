@@ -270,7 +270,7 @@ function UserLayoutInner({
 
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans selection:bg-red-100 selection:text-red-900 w-full relative overflow-x-hidden">
-            <PatchNotesModal />
+            <PatchNotesModal isAdmin={isManagerOrAdmin} />
             {/* Soft background glow */}
             <div className="fixed top-0 left-0 h-[500px] w-[500px] bg-red-100/30 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
 
