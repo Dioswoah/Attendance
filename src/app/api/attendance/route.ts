@@ -804,104 +804,99 @@ export async function POST(req: Request) {
         // Sync to Google Calendar (non-blocking)
         const session = await auth() as any
         if (session?.accessToken) {
-            // User already fetched
             const timezone = user.selectedTimezone || 'UTC'
             syncStatusToCalendar(session.accessToken, 'AVAILABLE', mode || 'OFFICE', timezone)
                 .catch(err => console.error('[Calendar Sync] Failed on clock-in:', err))
         }
 
-        // Notify User if Admin created it
-        if (session && session.user.id !== userId) {
-            // User already fetched above as 'user'
-            if (user) {
-                // 1. Create In-App Notification
-                await prisma.notification.create({
-                    data: {
-                        userId: userId,
-                        title: "New Attendance Record Added",
-                        message: `An administrator (${session.user.name || 'Admin'}) has added a new attendance record for you on ${new Date(attendance.date).toLocaleDateString()}.`,
-                        type: "ADMIN_ACTION",
-                        link: "/user"
-                    }
-                })
-
-                // 2. Broadcast for real-time bell
-                broadcastUpdate('notification', { userId })
-
-                // 3. Send Email
-                const emailTz = user.selectedTimezone || 'Asia/Manila'
-                const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
-                    (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
-                    ` (${attendance.mode})`
-                if (user.email) {
-                    await sendAdminActionEmail({
-                        userName: user.name || "Employee",
-                        userEmail: user.email,
-                        adminName: session.user.name || "Administrator",
-                        adminEmail: session.user.email,
-                        adminAccessToken: session.accessToken || '',
-                        actionType: 'ATTENDANCE',
-                        details: details,
-                        date: new Date(attendance.date).toLocaleDateString(),
-                        adminRefreshToken: session.refreshToken
-                    })
-                }
-
-                // Notify manager
-                const fullUser = await prisma.user.findUnique({ where: { id: userId }, include: { manager: { include: { accounts: true } } } })
-                if (fullUser?.manager) {
-                    await prisma.notification.create({
-                        data: {
-                            userId: fullUser.manager.id,
-                            title: "Admin Added Attendance Record",
-                            message: `${session.user.name || 'An admin'} added an attendance record for ${user.name || 'a staff member'} on ${new Date(attendance.date).toLocaleDateString()}.`,
-                            type: "ADMIN_ACTION",
-                            link: "/user/manager?tab=history"
-                        }
-                    })
-                    broadcastUpdate('notification', { userId: fullUser.manager.id })
-                    const mgrAccount = fullUser.manager.accounts?.find((a: any) => a.provider === 'google')
-                    if (mgrAccount?.access_token) {
-                        await sendAdminActionEmail({
-                            userName: fullUser.manager.name || "Manager",
-                            userEmail: fullUser.manager.email,
-                            adminName: session.user.name || "Administrator",
-                            adminEmail: session.user.email,
-                            adminAccessToken: mgrAccount.access_token,
-                            actionType: 'ATTENDANCE',
-                            details: `Admin added an attendance record for ${user.name || 'a staff member'}: ${details}`,
-                            date: new Date(attendance.date).toLocaleDateString(),
-                            adminRefreshToken: mgrAccount.refresh_token || undefined
-                        })
-                    }
-                }
-            }
-        }
-
-
-        // Clear cache before broadcasting so any immediate refetch from SSE gets fresh data
+        // Invalidate cache + broadcast immediately so the dashboard updates right away
         await invalidateCache(CacheKeys.staffDashboard)
         broadcastUpdate('attendance', attendance)
 
-        // Fire-and-forget tail work — responds to user immediately
+        // Fire-and-forget: emails, notifications, summary, activity log — don't block the response
         const actorName = session?.user?.id !== userId ? (session?.user?.name || 'Admin') : undefined
-        updateAttendanceSummary(userId, targetDate).catch(e => console.error('[Clock-In] Summary failed:', e))
-        logActivity({
-            userId,
-            action: 'CLOCK_IN',
-            entityType: 'ATTENDANCE',
-            entityId: attendance.id,
-            details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockIn?.toISOString() || new Date().toISOString(), ...(actorName && { actor: actorName }) }
-        }).catch(e => console.error('[Clock-In] Log failed:', e))
-        if (attendance.clockOut) {
+        Promise.resolve().then(async () => {
+            try {
+                if (session && session.user.id !== userId && user) {
+                    const emailTz = user.selectedTimezone || 'Asia/Manila'
+                    const details = `Clock In: ${attendance.clockIn ? new Date(attendance.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz }) : 'N/A'}` +
+                        (attendance.clockOut ? `, Clock Out: ${new Date(attendance.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: emailTz })}` : '') +
+                        ` (${attendance.mode})`
+
+                    await prisma.notification.create({
+                        data: {
+                            userId,
+                            title: "New Attendance Record Added",
+                            message: `An administrator (${session.user.name || 'Admin'}) has added a new attendance record for you on ${new Date(attendance.date).toLocaleDateString()}.`,
+                            type: "ADMIN_ACTION",
+                            link: "/user"
+                        }
+                    })
+                    broadcastUpdate('notification', { userId })
+                    if (user.email) {
+                        await sendAdminActionEmail({
+                            userName: user.name || "Employee",
+                            userEmail: user.email,
+                            adminName: session.user.name || "Administrator",
+                            adminEmail: session.user.email,
+                            adminAccessToken: session.accessToken || '',
+                            actionType: 'ATTENDANCE',
+                            details,
+                            date: new Date(attendance.date).toLocaleDateString(),
+                            adminRefreshToken: session.refreshToken
+                        })
+                    }
+
+                    const fullUser = await prisma.user.findUnique({ where: { id: userId }, include: { manager: { include: { accounts: true } } } })
+                    if (fullUser?.manager) {
+                        await prisma.notification.create({
+                            data: {
+                                userId: fullUser.manager.id,
+                                title: "Admin Added Attendance Record",
+                                message: `${session.user.name || 'An admin'} added an attendance record for ${user.name || 'a staff member'} on ${new Date(attendance.date).toLocaleDateString()}.`,
+                                type: "ADMIN_ACTION",
+                                link: "/user/manager?tab=history"
+                            }
+                        })
+                        broadcastUpdate('notification', { userId: fullUser.manager.id })
+                        const mgrAccount = fullUser.manager.accounts?.find((a: any) => a.provider === 'google')
+                        if (mgrAccount?.access_token) {
+                            await sendAdminActionEmail({
+                                userName: fullUser.manager.name || "Manager",
+                                userEmail: fullUser.manager.email,
+                                adminName: session.user.name || "Administrator",
+                                adminEmail: session.user.email,
+                                adminAccessToken: mgrAccount.access_token,
+                                actionType: 'ATTENDANCE',
+                                details: `Admin added an attendance record for ${user.name || 'a staff member'}: ${details}`,
+                                date: new Date(attendance.date).toLocaleDateString(),
+                                adminRefreshToken: mgrAccount.refresh_token || undefined
+                            })
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Manual Entry] Notification failed:', e)
+            }
+
+            updateAttendanceSummary(userId, targetDate).catch(e => console.error('[Clock-In] Summary failed:', e))
             logActivity({
                 userId,
-                action: 'CLOCK_OUT',
+                action: 'CLOCK_IN',
                 entityType: 'ATTENDANCE',
                 entityId: attendance.id,
-                details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockOut.toISOString(), ...(actorName && { actor: actorName }) }
-            }).catch(e => console.error('[Clock-In] Log clock-out failed:', e))
-        }
+                details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockIn?.toISOString() || new Date().toISOString(), ...(actorName && { actor: actorName }) }
+            }).catch(e => console.error('[Clock-In] Log failed:', e))
+            if (attendance.clockOut) {
+                logActivity({
+                    userId,
+                    action: 'CLOCK_OUT',
+                    entityType: 'ATTENDANCE',
+                    entityId: attendance.id,
+                    details: { mode: mode || 'OFFICE', date: targetDate, time: attendance.clockOut.toISOString(), ...(actorName && { actor: actorName }) }
+                }).catch(e => console.error('[Clock-In] Log clock-out failed:', e))
+            }
+        }).catch(e => console.error('[Manual Entry] Background work failed:', e))
 
         return NextResponse.json(attendance)
     } catch (error) {

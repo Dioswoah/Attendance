@@ -241,32 +241,31 @@ export async function POST(req: Request) {
         }
 
 
-        // Notify Manager
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            include: { manager: true }
-        }) as any;
+        // Broadcast + cache bust immediately so the dashboard updates right away
+        broadcastUpdate('leaves', record)
+        void invalidateCachePattern('leaves:*')
+        void invalidateCache(CacheKeys.staffDashboard)
 
-        const session = await auth() as any;
+        // Fire-and-forget: emails, notifications, summary updates, activity log — don't block the response
+        Promise.resolve().then(async () => {
+            try {
+                const user = await prisma.user.findUnique({
+                    where: { id: userId },
+                    include: { manager: true }
+                }) as any;
+                const session = await auth() as any;
 
-        if (session && session.user.id !== userId) {
-            if (user && user.email) {
-                // 1. Create In-App Notification
-                await prisma.notification.create({
-                    data: {
-                        userId: userId,
-                        title: "New Leave Record Added",
-                        message: `An administrator (${session.user.name || 'Admin'}) has added a new leave record for you from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
-                        type: "ADMIN_ACTION",
-                        link: "/user"
-                    }
-                })
-
-                // 2. Broadcast for real-time bell
-                broadcastUpdate('notification', { userId })
-
-                // 3. Send Email
-                if (user.email) {
+                if (session && session.user.id !== userId && user?.email) {
+                    await prisma.notification.create({
+                        data: {
+                            userId,
+                            title: "New Leave Record Added",
+                            message: `An administrator (${session.user.name || 'Admin'}) has added a new leave record for you from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
+                            type: "ADMIN_ACTION",
+                            link: "/user"
+                        }
+                    })
+                    broadcastUpdate('notification', { userId })
                     await sendAdminActionEmail({
                         userName: user.name || "Employee",
                         userEmail: user.email,
@@ -279,116 +278,105 @@ export async function POST(req: Request) {
                         adminRefreshToken: session.refreshToken
                     })
                 }
-            }
-        }
 
-        const actorRoles: string[] = session?.user?.roles || []
-        const actorIsAdmin = actorRoles.includes('ADMIN')
-        const actorIsManager = session?.user?.id !== userId // someone other than the employee
+                const actorIsManager = session?.user?.id !== userId
 
-        if (user?.managerId && status === 'APPROVED' && actorIsManager) {
-            const managerIsActor = user.managerId === session?.user?.id
-
-            if (managerIsActor) {
-                // Manager granted leave — notify admins (in-app only)
-                await notifyRole("ADMIN", "Manager Granted Leave", `${session.user.name || 'A manager'} has granted ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`, "INFO")
-            } else {
-                // Admin granted leave — notify manager (in-app + email) for transparency
-                await prisma.notification.create({
-                    data: {
-                        userId: user.managerId,
-                        title: "Admin Granted Leave for Your Staff",
-                        message: `${session?.user?.name || 'An admin'} has directly approved ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
-                        type: "ADMIN_ACTION",
-                        link: "/user/manager?tab=calendar"
+                if (user?.managerId && status === 'APPROVED' && actorIsManager) {
+                    const managerIsActor = user.managerId === session?.user?.id
+                    if (managerIsActor) {
+                        await notifyRole("ADMIN", "Manager Granted Leave", `${session.user.name || 'A manager'} has granted ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`, "INFO")
+                    } else {
+                        await prisma.notification.create({
+                            data: {
+                                userId: user.managerId,
+                                title: "Admin Granted Leave for Your Staff",
+                                message: `${session?.user?.name || 'An admin'} has directly approved ${type} leave for ${user.name} from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}.`,
+                                type: "ADMIN_ACTION",
+                                link: "/user/manager?tab=calendar"
+                            }
+                        })
+                        broadcastUpdate('notification', { userId: user.managerId })
+                        if (user.manager?.email && session?.accessToken) {
+                            await sendAdminActionEmail({
+                                userName: user.manager.name || "Manager",
+                                userEmail: user.manager.email,
+                                adminName: session.user.name || "Administrator",
+                                adminEmail: session.user.email,
+                                adminAccessToken: session.accessToken,
+                                actionType: 'LEAVE',
+                                details: `Admin granted ${type} leave for ${user.name}: ${duration} (${reason || 'No reason'})`,
+                                date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
+                                adminRefreshToken: session.refreshToken
+                            })
+                        }
                     }
-                })
-                broadcastUpdate('notification', { userId: user.managerId })
-                if (user.manager?.email && session?.accessToken) {
-                    await sendAdminActionEmail({
-                        userName: user.manager.name || "Manager",
-                        userEmail: user.manager.email,
-                        adminName: session.user.name || "Administrator",
-                        adminEmail: session.user.email,
-                        adminAccessToken: session.accessToken,
-                        actionType: 'LEAVE',
-                        details: `Admin granted ${type} leave for ${user.name}: ${duration} (${reason || 'No reason'})`,
-                        date: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
-                        adminRefreshToken: session.refreshToken
+                }
+
+                if (user?.managerId && status !== 'APPROVED') {
+                    await prisma.notification.create({
+                        data: {
+                            userId: user.managerId,
+                            title: "New Leave Request",
+                            message: `${user.name} has requested leave from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}`,
+                            type: "LEAVE_REQUEST",
+                            link: "/admin/leaves"
+                        }
                     })
-                }
-            }
-        }
 
-        if (user?.managerId && status !== 'APPROVED') {
-            await prisma.notification.create({
-                data: {
-                    userId: user.managerId,
-                    title: "New Leave Request",
-                    message: `${user.name} has requested leave from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}`,
-                    type: "LEAVE_REQUEST",
-                    link: "/admin/leaves"
-                }
-            })
-
-            if (user.manager && user.manager.email && !(user.manager.roles || []).includes('VIEWER')) {
-                const accessToken = session?.accessToken;
-                if (accessToken) {
-                    let durationDisplay = duration;
-                    if (startTime && endTime) {
-                        const startObj = new Date(startTime);
-                        const endObj = new Date(endTime);
-                        const managerTz = user.manager?.selectedTimezone || 'Asia/Manila';
-                        const staffTz = user.selectedTimezone || (user.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila');
-
-                        const mStart = startObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: managerTz });
-                        const mEnd = endObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: managerTz });
-
-                        const sStart = startObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: staffTz });
-                        const sEnd = endObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: staffTz });
-
-                        durationDisplay = `${duration} (${mStart}-${mEnd} Local / ${sStart}-${sEnd} Staff)`;
+                    if (user.manager && user.manager.email && !(user.manager.roles || []).includes('VIEWER')) {
+                        const accessToken = session?.accessToken;
+                        if (accessToken) {
+                            let durationDisplay = duration;
+                            if (startTime && endTime) {
+                                const startObj = new Date(startTime);
+                                const endObj = new Date(endTime);
+                                const managerTz = user.manager?.selectedTimezone || 'Asia/Manila';
+                                const staffTz = user.selectedTimezone || (user.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'Asia/Manila');
+                                const mStart = startObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: managerTz });
+                                const mEnd = endObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: managerTz });
+                                const sStart = startObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: staffTz });
+                                const sEnd = endObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: staffTz });
+                                durationDisplay = `${duration} (${mStart}-${mEnd} Local / ${sStart}-${sEnd} Staff)`;
+                            }
+                            await sendLeaveRequestEmail({
+                                managerName: user.manager.name || 'Manager',
+                                managerEmail: user.manager.email,
+                                userName: user.name || 'Employee',
+                                userEmail: user.email,
+                                userAccessToken: accessToken,
+                                leaveType: type,
+                                startDate: new Date(startDate).toLocaleDateString(),
+                                endDate: new Date(endDate).toLocaleDateString(),
+                                duration: durationDisplay,
+                                reason,
+                                leaveId: record.id,
+                                refreshToken: accessToken === session.accessToken ? session.refreshToken : undefined
+                            });
+                        }
                     }
-
-                    await sendLeaveRequestEmail({
-                        managerName: user.manager.name || 'Manager',
-                        managerEmail: user.manager.email,
-                        userName: user.name || 'Employee',
-                        userEmail: user.email,
-                        userAccessToken: accessToken,
-                        leaveType: type,
-                        startDate: new Date(startDate).toLocaleDateString(),
-                        endDate: new Date(endDate).toLocaleDateString(),
-                        duration: durationDisplay,
-                        reason: reason,
-                        leaveId: record.id,
-                        refreshToken: accessToken === session.accessToken ? session.refreshToken : undefined
-                    });
                 }
+
+                // Summary updates for each day in range
+                const start = new Date(startDate)
+                const end = new Date(endDate)
+                const current = new Date(start)
+                while (current <= end) {
+                    await updateAttendanceSummary(userId, new Date(current))
+                    current.setDate(current.getDate() + 1)
+                }
+
+                await logActivity({
+                    userId,
+                    action: status === 'APPROVED' ? 'LEAVE_GRANTED_ADMIN' : 'LEAVE_SUBMIT',
+                    entityType: 'LEAVE',
+                    entityId: record.id,
+                    details: { type, startDate, endDate, duration, reason, status }
+                })
+            } catch (e) {
+                console.error('[Leave POST] Background work failed:', e)
             }
-        }
-
-        // Update Summaries for the date range
-        const start = new Date(startDate)
-        const end = new Date(endDate)
-        const current = new Date(start)
-        while (current <= end) {
-            await updateAttendanceSummary(userId, new Date(current))
-            current.setDate(current.getDate() + 1)
-        }
-
-        // Log Activity
-        await logActivity({
-            userId,
-            action: status === 'APPROVED' ? 'LEAVE_GRANTED_ADMIN' : 'LEAVE_SUBMIT',
-            entityType: 'LEAVE',
-            entityId: record.id,
-            details: { type, startDate, endDate, duration, reason, status }
         })
 
-        broadcastUpdate('leaves', record)
-        void invalidateCachePattern('leaves:*')
-        void invalidateCache(CacheKeys.staffDashboard)
         return NextResponse.json(record)
     } catch (error) {
         return NextResponse.json({ error: "Failed to create leave request" }, { status: 500 })
