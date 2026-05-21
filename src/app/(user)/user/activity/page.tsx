@@ -112,7 +112,20 @@ export default function ActivityLogsPage() {
         }, {})
     }, [filteredLogs])
 
-    const sortedDates = Object.keys(groupedLogs).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+    const allDatesInRange = useMemo(() => {
+        if (!startDate || !endDate) return Object.keys(groupedLogs).sort((a, b) => b.localeCompare(a))
+        const dates: string[] = []
+        const start = new Date(startDate + 'T12:00:00')
+        const end = new Date(endDate + 'T12:00:00')
+        const current = new Date(start)
+        while (current <= end) {
+            dates.push(format(current, "yyyy-MM-dd"))
+            current.setDate(current.getDate() + 1)
+        }
+        return dates.sort((a, b) => b.localeCompare(a))
+    }, [startDate, endDate, groupedLogs])
+
+    const sortedDates = allDatesInRange
 
     // Toggle Handlers
     const toggleFilter = (id: string) => {
@@ -127,7 +140,7 @@ export default function ActivityLogsPage() {
             return next
         })
     }
-    const expandAll = () => setExpandedDates(new Set(sortedDates))
+    const expandAll = () => setExpandedDates(new Set(sortedDates.filter(d => (groupedLogs[d]?.length ?? 0) > 0)))
     const collapseAll = () => setExpandedDates(new Set())
 
     return (
@@ -229,32 +242,47 @@ export default function ActivityLogsPage() {
                         </div>
                     ))
                 ) : sortedDates.map((dateStr) => {
-                    const dayLogs = groupedLogs[dateStr]
+                    const dayLogs = groupedLogs[dateStr] ?? []
+                    const isEmpty = dayLogs.length === 0
                     const isExpanded = expandedDates.has(dateStr)
 
                     return (
                         <div key={dateStr} className="space-y-2 pb-2">
-                            {/* Target Row for Date Header - Clickable for collapsing */}
-                            <button
-                                onClick={() => toggleDate(dateStr)}
-                                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-100/70 transition-colors group cursor-pointer border border-transparent hover:border-slate-200"
-                            >
-                                <div className={cn("h-8 w-8 rounded-xl flex items-center justify-center transition-colors", isExpanded ? "bg-[#8B2323] text-white" : "bg-slate-200 text-slate-500 group-hover:bg-slate-300")}>
-                                    <Calendar className="w-4 h-4" />
+                            {/* Date Header */}
+                            {isEmpty ? (
+                                <div className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-transparent">
+                                    <div className="h-8 w-8 rounded-xl flex items-center justify-center bg-slate-100 text-slate-300">
+                                        <Calendar className="w-4 h-4" />
+                                    </div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest flex-1 text-left text-slate-300">
+                                        {format(new Date(dateStr + 'T12:00:00'), "EEEE, MMM d, yyyy")}
+                                        <span className="ml-3 px-2 py-0.5 rounded-full bg-slate-100 text-slate-300 text-[9px] font-bold">
+                                            NO ACTIVITY
+                                        </span>
+                                    </h3>
                                 </div>
-                                <h3 className={cn("text-sm font-black uppercase tracking-widest flex-1 text-left", isExpanded ? "text-slate-900" : "text-slate-600")}>
-                                    {format(new Date(dateStr), "EEEE, MMM d, yyyy")}
-                                    <span className="ml-3 px-2 py-0.5 rounded-full bg-slate-200 text-slate-500 text-[9px] font-bold">
-                                        {dayLogs.length} EVENTS
-                                    </span>
-                                </h3>
-                                <div className="flex items-center justify-center p-1 rounded-full text-slate-400 bg-slate-100 group-hover:bg-white group-hover:text-slate-600">
-                                    {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                                </div>
-                            </button>
+                            ) : (
+                                <button
+                                    onClick={() => toggleDate(dateStr)}
+                                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-100/70 transition-colors group cursor-pointer border border-transparent hover:border-slate-200"
+                                >
+                                    <div className={cn("h-8 w-8 rounded-xl flex items-center justify-center transition-colors", isExpanded ? "bg-[#8B2323] text-white" : "bg-slate-200 text-slate-500 group-hover:bg-slate-300")}>
+                                        <Calendar className="w-4 h-4" />
+                                    </div>
+                                    <h3 className={cn("text-sm font-black uppercase tracking-widest flex-1 text-left", isExpanded ? "text-slate-900" : "text-slate-600")}>
+                                        {format(new Date(dateStr + 'T12:00:00'), "EEEE, MMM d, yyyy")}
+                                        <span className="ml-3 px-2 py-0.5 rounded-full bg-slate-200 text-slate-500 text-[9px] font-bold">
+                                            {dayLogs.length} EVENTS
+                                        </span>
+                                    </h3>
+                                    <div className="flex items-center justify-center p-1 rounded-full text-slate-400 bg-slate-100 group-hover:bg-white group-hover:text-slate-600">
+                                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                    </div>
+                                </button>
+                            )}
 
-                            {/* Collapsed/Expanded Content */}
-                            {isExpanded && (
+                            {/* Expanded Content */}
+                            {!isEmpty && isExpanded && (
                                 <div className="pl-5 lg:pl-[44px] animate-in slide-in-from-top-2 fade-in duration-200">
                                     <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden bg-white hover:shadow-md transition-shadow flex flex-col">
                                         <CardContent className="p-0">

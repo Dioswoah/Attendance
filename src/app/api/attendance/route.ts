@@ -239,7 +239,7 @@ export async function cleanupOldSessions() {
                 action: 'AUTO_CLOCK_OUT',
                 entityType: 'ATTENDANCE',
                 entityId: session.id,
-                details: { reason }
+                details: { reason, time: finalClockOut.toISOString() }
             })
 
             await prisma.break.updateMany({

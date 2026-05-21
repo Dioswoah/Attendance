@@ -17,7 +17,8 @@ import {
     Loader2,
     BellRing,
     Fingerprint,
-    BarChart2
+    BarChart2,
+    ScrollText
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -102,6 +103,7 @@ export default function AdminLayout({
         { href: "/admin/manual-entry", label: "Manual Entry", icon: Clock },
         { href: "/admin/history", label: "Record", icon: History },
         { href: "/admin/manager-activity", label: "Manager Activity", icon: ShieldCheck },
+        { href: "/admin/user-activity", label: "User Activity", icon: ScrollText },
         { href: "/admin/biometric", label: "Biometric", icon: Fingerprint },
         { href: "/admin/kpi", label: "KPI", icon: BarChart2 },
         { href: "/admin/reports", label: "Export", icon: FileText },
