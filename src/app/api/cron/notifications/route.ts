@@ -186,8 +186,7 @@ export async function GET(request: Request) {
             include: { accounts: true, department: true, manager: true }
         });
 
-        // Track late arrivals by manager for summary emails
-        const managerLateStaffMap = new Map<string, { managerId: string, managerName: string, managerEmail: string, managerTimezone: string, managerWorkingDays: string, lateStaff: { name: string, scheduledStart: string }[] }>();
+        const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
 
         for (const user of allActiveUsers) {
             const tz = user.selectedTimezone || 'Asia/Manila';
@@ -227,7 +226,6 @@ export async function GET(request: Request) {
             });
             if (approvedLeave) continue;
 
-            const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
             const alreadyNotified = await prisma.notification.findFirst({
                 where: {
                     userId: user.id,
@@ -247,7 +245,6 @@ export async function GET(request: Request) {
 
             // Trigger if 10+ minutes past scheduled start and less than 12 hours late
             if (nowTotalMins >= startTotalMins + 10 && nowTotalMins < startTotalMins + 720) {
-                const account = user.accounts.find(a => a.provider === 'google');
                 const magicLink = generateMagicLink(user.id, 'clock-in');
 
                 // Always create in-app notification (atomic lock against concurrent runs)
@@ -276,33 +273,62 @@ export async function GET(request: Request) {
 
                 if (sent) {
                     console.log(`[Late Check] Sent email to ${user.email}`);
-
-                    // Add to manager's daily report (skip Viewers — they don't receive notifications)
-                    if (user.manager?.email && user.manager.managerNotificationsEnabled !== false && !(user.manager.roles || []).includes('VIEWER')) {
-                        const mgrId = user.manager.id;
-                        if (!managerLateStaffMap.has(mgrId)) {
-                            managerLateStaffMap.set(mgrId, {
-                                managerId: mgrId,
-                                managerName: user.manager.name || "Manager",
-                                managerEmail: user.manager.email,
-                                managerTimezone: user.manager.selectedTimezone || 'Asia/Manila',
-                                managerWorkingDays: (user.manager as any).workingDays || 'MON,TUE,WED,THU,FRI',
-                                lateStaff: []
-                            });
-                        }
-                        managerLateStaffMap.get(mgrId)?.lateStaff.push({
-                            name: user.name || "Employee",
-                            scheduledStart: shiftStartStr
-                        });
-                    }
                 }
             }
         }
 
         // ============================================================
-        // 2b. Send Manager Daily Reports
+        // 2b. Send Manager Daily Reports (DB-driven)
+        // Groups ALL late staff from the DB so concurrent cron runs
+        // always see the full list, not just their own in-memory slice.
+        // A MANAGER_LATE_REPORT notification acts as a per-manager lock.
         // ============================================================
-        for (const [_, report] of managerLateStaffMap) {
+        const todayLateNotifications = await prisma.notification.findMany({
+            where: {
+                type: 'LATE_REMINDER',
+                createdAt: { gte: twelveHoursAgo }
+            },
+            include: {
+                user: { include: { manager: true, department: true } }
+            }
+        });
+
+        type ManagerReport = {
+            managerId: string;
+            managerName: string;
+            managerEmail: string;
+            managerTimezone: string;
+            managerWorkingDays: string;
+            lateStaff: { name: string; scheduledStart: string }[];
+        };
+        const managerReportMap = new Map<string, ManagerReport>();
+
+        for (const notif of todayLateNotifications) {
+            const user = notif.user;
+            const manager = user.manager;
+            if (!manager?.email) continue;
+            if (manager.managerNotificationsEnabled === false) continue;
+            if ((manager.roles || []).includes('VIEWER')) continue;
+
+            const mgrId = manager.id;
+            if (!managerReportMap.has(mgrId)) {
+                managerReportMap.set(mgrId, {
+                    managerId: mgrId,
+                    managerName: manager.name || "Manager",
+                    managerEmail: manager.email,
+                    managerTimezone: manager.selectedTimezone || 'Asia/Manila',
+                    managerWorkingDays: (manager as any).workingDays || 'MON,TUE,WED,THU,FRI',
+                    lateStaff: []
+                });
+            }
+            const shiftStartStr = user.shiftStartTime || user.department?.shiftStartTime || "09:00";
+            managerReportMap.get(mgrId)!.lateStaff.push({
+                name: user.name || "Employee",
+                scheduledStart: shiftStartStr
+            });
+        }
+
+        for (const [_, report] of managerReportMap) {
             const mgrTz = report.managerTimezone;
             const mgrLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: mgrTz });
 
@@ -328,6 +354,30 @@ export async function GET(request: Request) {
                 }
             });
             if (managerOnLeave) continue;
+
+            // Check if manager already received a report this cycle (lock)
+            const alreadySentReport = await prisma.notification.findFirst({
+                where: {
+                    userId: report.managerId,
+                    type: 'MANAGER_LATE_REPORT',
+                    createdAt: { gte: twelveHoursAgo }
+                }
+            });
+            if (alreadySentReport) continue;
+
+            // Create the lock before sending to prevent concurrent runs from double-sending
+            try {
+                await prisma.notification.create({
+                    data: {
+                        userId: report.managerId,
+                        title: "Late Arrival Report",
+                        message: `${report.lateStaff.length} staff member(s) have not clocked in.`,
+                        type: "MANAGER_LATE_REPORT"
+                    }
+                });
+            } catch {
+                continue; // Another concurrent run already claimed this
+            }
 
             try {
                 await sendManagerLateReportEmail({
