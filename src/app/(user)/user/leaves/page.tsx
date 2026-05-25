@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Calendar, Clock, FileText, X, Loader2, Pencil, Trash2, Archive, ArchiveRestore, Paperclip, Eye, Upload } from "lucide-react"
+import { XeroLeaveBalance } from "@/components/XeroLeaveBalance"
 import { format, isSameDay, subDays } from "date-fns"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
@@ -387,6 +388,8 @@ export default function LeaveRequestsPage() {
                                 {editingId ? "Update your leave details." : "Submit a new leave request for approval."}
                             </DialogDescription>
                         </DialogHeader>
+
+                        <XeroLeaveBalance email={(session?.user as any)?.email} className="px-1" />
 
                         <form onSubmit={handleSubmitRequest} className="space-y-6 pt-4">
                             {/* Leave Type */}

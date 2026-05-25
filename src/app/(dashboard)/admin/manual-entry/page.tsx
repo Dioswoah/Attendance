@@ -39,6 +39,7 @@ import { format, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useSession } from "next-auth/react"
 import { getBrowserTimezone } from "@/lib/timezone"
+import { XeroLeaveBalance } from "@/components/XeroLeaveBalance"
 
 type TabType = 'attendance' | 'leaves' | 'breaks'
 type ModeType = 'create' | 'list'
@@ -905,6 +906,13 @@ export default function ManualEntryPage() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {lvEmpId && (
+                                            <XeroLeaveBalance
+                                                email={employees.find(e => e.id === lvEmpId)?.email}
+                                            />
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Leave Type</Label>

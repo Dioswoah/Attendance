@@ -34,6 +34,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSepar
 import { Checkbox } from "@/components/ui/checkbox"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell } from 'recharts'
 import { Skeleton } from "@/components/ui/skeleton"
+import { XeroLeaveBalance } from "@/components/XeroLeaveBalance"
 
 interface LeaveHistoryEntry {
     id: string
@@ -2696,6 +2697,12 @@ export default function ManagerControlPage() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
+                                        {grantLeaveEmpId && (
+                                            <XeroLeaveBalance
+                                                email={myTeam.find((e: any) => e.id === grantLeaveEmpId)?.email}
+                                                className="mt-2"
+                                            />
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
