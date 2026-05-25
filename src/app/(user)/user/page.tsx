@@ -124,6 +124,7 @@ export default function UserPortal() {
     const [onboardingDepartment, setOnboardingDepartment] = useState("")
     const [onboardingShiftStart, setOnboardingShiftStart] = useState("")
     const [onboardingShiftEnd, setOnboardingShiftEnd] = useState("")
+    const [onboardingWorkingDays, setOnboardingWorkingDays] = useState<string[]>(["MON","TUE","WED","THU","FRI"])
     const [userRoles, setUserRoles] = useState<string[]>([])
     const [userId, setUserId] = useState<string>("")
     const [userDepartment, setUserDepartment] = useState<string>("")
@@ -517,7 +518,8 @@ export default function UserPortal() {
                     managerId: onboardingManager || 'unassigned',
                     departmentId: onboardingDepartment || null,
                     shiftStartTime: onboardingShiftStart,
-                    shiftEndTime: onboardingShiftEnd
+                    shiftEndTime: onboardingShiftEnd,
+                    workingDays: onboardingWorkingDays
                 })
             })
             if (res.ok) {
@@ -3728,6 +3730,34 @@ export default function UserPortal() {
                                             className="h-11 font-mono font-semibold"
                                         />
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-sm font-bold">Working Days</Label>
+                                <p className="text-xs text-muted-foreground">Select the days you work — notifications won't be sent on other days</p>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {(["MON","TUE","WED","THU","FRI","SAT","SUN"] as const).map(day => (
+                                        <button
+                                            key={day}
+                                            type="button"
+                                            onClick={() => setOnboardingWorkingDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
+                                                onboardingWorkingDays.includes(day)
+                                                    ? "bg-[#8B2323] text-white border-[#8B2323]"
+                                                    : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
+                                            }`}
+                                        >
+                                            {({ MON:"Mon",TUE:"Tue",WED:"Wed",THU:"Thu",FRI:"Fri",SAT:"Sat",SUN:"Sun" })[day]}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2 mt-1">
+                                    <button type="button" onClick={() => setOnboardingWorkingDays(["MON","TUE","WED","THU","FRI"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Fri</button>
+                                    <span className="text-slate-300 text-[10px]">·</span>
+                                    <button type="button" onClick={() => setOnboardingWorkingDays(["MON","TUE","WED","THU"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Thu</button>
+                                    <span className="text-slate-300 text-[10px]">·</span>
+                                    <button type="button" onClick={() => setOnboardingWorkingDays(["MON","TUE","WED","THU","FRI","SAT"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Sat</button>
                                 </div>
                             </div>
                         </div>

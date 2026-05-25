@@ -187,7 +187,7 @@ export async function GET(request: Request) {
         });
 
         // Track late arrivals by manager for summary emails
-        const managerLateStaffMap = new Map<string, { managerId: string, managerName: string, managerEmail: string, managerTimezone: string, lateStaff: { name: string, scheduledStart: string }[] }>();
+        const managerLateStaffMap = new Map<string, { managerId: string, managerName: string, managerEmail: string, managerTimezone: string, managerWorkingDays: string, lateStaff: { name: string, scheduledStart: string }[] }>();
 
         for (const user of allActiveUsers) {
             const tz = user.selectedTimezone || 'Asia/Manila';
@@ -195,9 +195,12 @@ export async function GET(request: Request) {
             const userLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
             const userStartOfDay = new Date(`${userLocalDateStr}T00:00:00Z`);
 
-            // Exclude Weekends
-            const todayInUserTz = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday: 'short' });
-            if (todayInUserTz === 'Sat' || todayInUserTz === 'Sun') continue;
+            // Exclude non-working days based on user's configured working days
+            const todayShort = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday: 'short' })
+            const dayAbbrMap: Record<string, string> = { Mon: 'MON', Tue: 'TUE', Wed: 'WED', Thu: 'THU', Fri: 'FRI', Sat: 'SAT', Sun: 'SUN' }
+            const todayAbbr = dayAbbrMap[todayShort] || todayShort.toUpperCase().slice(0, 3)
+            const userWorkingDays = (user.workingDays || 'MON,TUE,WED,THU,FRI').split(',')
+            if (!userWorkingDays.includes(todayAbbr)) continue;
 
             // Exclude NSW public holidays for Australian-timezone users
             if (isAustralianTimezone(tz) && isNSWPublicHoliday(userLocalDateStr)) continue;
@@ -283,6 +286,7 @@ export async function GET(request: Request) {
                                 managerName: user.manager.name || "Manager",
                                 managerEmail: user.manager.email,
                                 managerTimezone: user.manager.selectedTimezone || 'Asia/Manila',
+                                managerWorkingDays: (user.manager as any).workingDays || 'MON,TUE,WED,THU,FRI',
                                 lateStaff: []
                             });
                         }
@@ -302,9 +306,12 @@ export async function GET(request: Request) {
             const mgrTz = report.managerTimezone;
             const mgrLocalDateStr = new Date().toLocaleDateString('en-CA', { timeZone: mgrTz });
 
-            // Skip if it's a weekend in the manager's timezone
-            const mgrDayOfWeek = new Date().toLocaleDateString('en-US', { timeZone: mgrTz, weekday: 'short' });
-            if (mgrDayOfWeek === 'Sat' || mgrDayOfWeek === 'Sun') continue;
+            // Skip if it's a non-working day for the manager
+            const mgrDayShort = new Date().toLocaleDateString('en-US', { timeZone: mgrTz, weekday: 'short' })
+            const mgrDayAbbrMap: Record<string, string> = { Mon: 'MON', Tue: 'TUE', Wed: 'WED', Thu: 'THU', Fri: 'FRI', Sat: 'SAT', Sun: 'SUN' }
+            const mgrTodayAbbr = mgrDayAbbrMap[mgrDayShort] || mgrDayShort.toUpperCase().slice(0, 3)
+            const mgrWorkingDays = (report.managerWorkingDays || 'MON,TUE,WED,THU,FRI').split(',')
+            if (!mgrWorkingDays.includes(mgrTodayAbbr)) continue;
 
             // Skip if it's a NSW public holiday for the manager
             if (isAustralianTimezone(mgrTz) && isNSWPublicHoliday(mgrLocalDateStr)) continue;

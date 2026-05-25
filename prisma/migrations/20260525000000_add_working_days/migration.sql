@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "workingDays" TEXT NOT NULL DEFAULT 'MON,TUE,WED,THU,FRI';

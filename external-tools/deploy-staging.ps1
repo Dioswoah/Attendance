@@ -52,7 +52,8 @@ $RequiredVars = @(
     "AUTH_GOOGLE_ID","AUTH_GOOGLE_SECRET","ADMIN_PASSWORD","NEXTAUTH_SECRET",
     "SERVICE_URL","GOOGLE_GENERATIVE_AI_API_KEY","ALLOWED_WORKSPACE_DOMAINS",
     "ZEPTOMAIL_PASSWORD","BIOMETRIC_APPS_SCRIPT_URL",
-    "PROD_PROJECT_ID","PROD_CLOUD_SQL_INSTANCE","PROD_CLOUD_SQL_REGION","PROD_DATABASE_NAME"
+    "PROD_PROJECT_ID","PROD_CLOUD_SQL_INSTANCE","PROD_CLOUD_SQL_REGION","PROD_DATABASE_NAME",
+    "XERO_CLIENT_ID","XERO_CLIENT_SECRET","XERO_REDIRECT_URI"
 )
 foreach ($var in $RequiredVars) {
     if (-not (Get-Variable -Name $var -ErrorAction SilentlyContinue) -or
@@ -319,6 +320,9 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "BIOMETRIC_APPS_SCRIPT_URL=$BIOMETRIC_APPS_SCRIPT_URL" `
     --set-env-vars "DISABLE_EMAILS=true" `
     --set-env-vars "VERTEX_PROJECT_ID=$PROD_PROJECT_ID" `
+    --set-env-vars "XERO_CLIENT_ID=$XERO_CLIENT_ID" `
+    --set-env-vars "XERO_CLIENT_SECRET=$XERO_CLIENT_SECRET" `
+    --set-env-vars "XERO_REDIRECT_URI=$XERO_REDIRECT_URI" `
     --memory 1Gi `
     --cpu 1 `
     --concurrency 500 `

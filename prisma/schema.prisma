@@ -30,6 +30,7 @@ model User {
   useCurrentTimezone  Boolean             @default(true)
   shiftStartTime      String?             @default("09:00")
   shiftEndTime        String?             @default("17:00")
+  workingDays         String              @default("MON,TUE,WED,THU,FRI")
   managerNotificationsEnabled Boolean     @default(true)
   accounts            Account[]
   attendance                    Attendance[]

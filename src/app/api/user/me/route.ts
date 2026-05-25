@@ -24,9 +24,10 @@ export async function PATCH(req: Request) {
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
-    const { location, managerId, departmentId, secondaryDepartmentIds, shiftStartTime, shiftEndTime, managerNotificationsEnabled } = body
+    const { location, managerId, departmentId, secondaryDepartmentIds, shiftStartTime, shiftEndTime, managerNotificationsEnabled, workingDays } = body
 
     const updateData: any = {}
+    if (workingDays !== undefined) updateData.workingDays = Array.isArray(workingDays) ? workingDays.join(',') : workingDays
     if (location !== undefined) {
         updateData.employmentLocation = location
         if (location === 'Philippines') {

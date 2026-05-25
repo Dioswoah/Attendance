@@ -87,10 +87,15 @@ export default function AdminUserActivityPage() {
         [employees, staffSearch]
     )
 
+    const getLogTime = (log: any): string =>
+        log.action === 'AUTO_CLOCK_OUT'
+            ? (log.attendanceClockOut || log.details?.time || log.createdAt)
+            : (log.details?.time || log.createdAt)
+
     const filteredLogs = useMemo(() => {
         return logs.filter((log: any) => {
             if (startDate && endDate) {
-                const logDate = new Date(log.details?.time || log.createdAt)
+                const logDate = new Date(getLogTime(log))
                 if (logDate < startOfDay(new Date(startDate)) || logDate > endOfDay(new Date(endDate))) return false
             }
             if (selectedFilters.length === 0) return true
@@ -104,7 +109,7 @@ export default function AdminUserActivityPage() {
 
     const groupedLogs = useMemo(() => {
         return filteredLogs.reduce((acc: any, log: any) => {
-            const dateStr = format(new Date(log.details?.time || log.createdAt), "yyyy-MM-dd")
+            const dateStr = format(new Date(getLogTime(log)), "yyyy-MM-dd")
             if (!acc[dateStr]) acc[dateStr] = []
             acc[dateStr].push(log)
             return acc
@@ -427,7 +432,7 @@ export default function AdminUserActivityPage() {
                                                                 <div className="text-right flex flex-col items-end gap-0.5">
                                                                     <div className="flex items-center gap-1.5 text-xs font-black text-slate-900">
                                                                         <Clock className="w-3.5 h-3.5 text-slate-300" />
-                                                                        {format(new Date(log.details?.time || log.createdAt), "h:mm a")}
+                                                                        {format(new Date(getLogTime(log)), "h:mm a")}
                                                                     </div>
                                                                     <div className="text-[9px] font-black text-slate-300 uppercase tracking-widest">
                                                                         {(selectedUser?.selectedTimezone || 'UTC').split('/').pop()}

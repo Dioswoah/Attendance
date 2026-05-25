@@ -62,7 +62,8 @@ import {
     LogOut,
     ChevronDown,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    FileText
 } from "lucide-react"
 import { format, parseISO, subDays, eachDayOfInterval } from "date-fns"
 import { toast } from "sonner"
@@ -89,6 +90,8 @@ export default function ManagerActivityPage() {
     const [declineReason, setDeclineReason] = useState("")
     const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false)
     const [selectedLeafForAction, setSelectedLeafForAction] = useState<any>(null)
+    const [selectedLeafForDetails, setSelectedLeafForDetails] = useState<any>(null)
+    const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
     const [attendanceRequests, setAttendanceRequests] = useState<any[]>([])
 
     const [startDate] = useState(format(subDays(new Date(), 365 * 5), "yyyy-MM-dd"))
@@ -575,6 +578,18 @@ export default function ManagerActivityPage() {
                     </Button>
                 </div>
             )}
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700 hover:bg-slate-50 px-2"
+                onClick={() => {
+                    setSelectedLeafForDetails(leaf)
+                    setIsDetailsDialogOpen(true)
+                }}
+                title="View Details"
+            >
+                Details
+            </Button>
             <Button
                 size="icon"
                 variant="outline"
@@ -1623,6 +1638,97 @@ export default function ManagerActivityPage() {
                         >
                             {processingId ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Decline"}
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Request Details Dialog */}
+            <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <FileText className="h-5 w-5 text-primary" />
+                            Request Details
+                        </DialogTitle>
+                        <DialogDescription>
+                            Full details of this {selectedLeafForDetails?.kind === 'ATTENDANCE' ? 'attendance correction' : 'leave'} request.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {selectedLeafForDetails && (
+                        <div className="space-y-4 py-2">
+                            {/* Staff */}
+                            <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
+                                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
+                                    {selectedLeafForDetails.userName?.charAt(0)}
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-foreground">{selectedLeafForDetails.userName}</p>
+                                    <p className="text-xs text-muted-foreground">{selectedLeafForDetails.department || '—'}</p>
+                                </div>
+                                <div className="ml-auto">
+                                    <Badge className={
+                                        selectedLeafForDetails.status === 'APPROVED' ? "bg-green-100 text-green-700 hover:bg-green-100" :
+                                        selectedLeafForDetails.status === 'PENDING' ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
+                                        "bg-red-100 text-red-700 hover:bg-red-100"
+                                    }>
+                                        {selectedLeafForDetails.status}
+                                    </Badge>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div className="space-y-0.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Manager</p>
+                                    <p className="font-medium">{getManagerOfUser(selectedLeafForDetails.userId)?.name || 'Unassigned'}</p>
+                                </div>
+                                <div className="space-y-0.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Type</p>
+                                    <p className="font-medium">{selectedLeafForDetails.type}</p>
+                                </div>
+                                {selectedLeafForDetails.kind === 'LEAVE' ? (
+                                    <>
+                                        <div className="space-y-0.5">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Start Date</p>
+                                            <p className="font-medium">{selectedLeafForDetails.startDate ? format(parseISO(selectedLeafForDetails.startDate.split('T')[0]), 'MMM dd, yyyy') : '—'}</p>
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">End Date</p>
+                                            <p className="font-medium">{selectedLeafForDetails.endDate ? format(parseISO(selectedLeafForDetails.endDate.split('T')[0]), 'MMM dd, yyyy') : '—'}</p>
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Duration</p>
+                                            <p className="font-medium">{selectedLeafForDetails.duration || '—'}</p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-0.5">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Date</p>
+                                        <p className="font-medium">{selectedLeafForDetails.date ? format(parseISO(selectedLeafForDetails.date.split('T')[0]), 'MMM dd, yyyy') : '—'}</p>
+                                    </div>
+                                )}
+                                <div className="space-y-0.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Submitted</p>
+                                    <p className="font-medium">{selectedLeafForDetails.createdAt ? new Date(selectedLeafForDetails.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: userTimeZone }) : '—'}</p>
+                                </div>
+                            </div>
+
+                            {selectedLeafForDetails.reason && (
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Reason</p>
+                                    <p className="text-sm text-foreground bg-muted/40 rounded-lg px-3 py-2 leading-relaxed">{selectedLeafForDetails.reason}</p>
+                                </div>
+                            )}
+
+                            {selectedLeafForDetails.status === 'DECLINED' && selectedLeafForDetails.declineReason && (
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-red-500">Decline Reason</p>
+                                    <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2 leading-relaxed">{selectedLeafForDetails.declineReason}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsDetailsDialogOpen(false)}>Close</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

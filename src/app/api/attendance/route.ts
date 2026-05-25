@@ -82,6 +82,7 @@ export async function cleanupOldSessions() {
                     employmentLocation: true,
                     shiftStartTime: true,
                     shiftEndTime: true,
+                    workingDays: true,
                 }
             }
         }
@@ -180,6 +181,13 @@ export async function cleanupOldSessions() {
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && now >= reminderTriggerTime) {
             shouldSendReminder = true;
+        }
+
+        // Suppress reminders (not auto-clockout) on days the user doesn't work
+        if (shouldSendReminder) {
+            const todayAbbr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][now.getDay()]
+            const userWorkingDays = (session.user?.workingDays || 'MON,TUE,WED,THU,FRI').split(',')
+            if (!userWorkingDays.includes(todayAbbr)) shouldSendReminder = false
         }
 
         if (shouldAutoClockOut) {

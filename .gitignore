@@ -47,6 +47,13 @@ next-env.d.ts
 /test-scripts/
 /test-results/
 test_*.js
+build_output.log
+ts_errors.txt
+
+# GCP service account keys (never commit)
+cr_service.json
+*_service_account.json
+*-service-account.json
 
 # Claude Code local settings
 .claude/settings.local.json

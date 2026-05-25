@@ -11,7 +11,13 @@ import {
     Download,
     Building2,
     Database,
-    MapPin
+    MapPin,
+    UserCog,
+    FileSpreadsheet,
+    CalendarDays,
+    ToggleLeft,
+    CalendarOff,
+    ChevronRight
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -29,6 +35,7 @@ export default function ExportPage() {
     const [generating, setGenerating] = useState(false)
     const [departments, setDepartments] = useState<any[]>([])
     const [allStaff, setAllStaff] = useState<any[]>([])
+    const [managers, setManagers] = useState<any[]>([])
 
     // Filters
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
@@ -37,8 +44,24 @@ export default function ExportPage() {
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [selectedLocation, setSelectedLocation] = useState("all")
+    const [selectedManagerId, setSelectedManagerId] = useState("all")
+    const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
+    const [includeWeekends, setIncludeWeekends] = useState(false)
+    const [exportSheets, setExportSheets] = useState<string[]>(['ledger', 'summary'])
     const [reportTimezone, setReportTimezone] = useState("Australia/Sydney")
     const { data: session } = useSession()
+
+    // Leave Records state
+    const [leaveStartDate, setLeaveStartDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), "yyyy-MM-dd"))
+    const [leaveEndDate, setLeaveEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [leaveRecords, setLeaveRecords] = useState<any[]>([])
+    const [leaveLoading, setLeaveLoading] = useState(false)
+    const [leaveExporting, setLeaveExporting] = useState(false)
+    const [leaveStatus, setLeaveStatus] = useState("APPROVED")
+    const [leaveDept, setLeaveDept] = useState("all")
+    const [leaveStaffIds, setLeaveStaffIds] = useState<string[]>([])
+    const [leaveStaffSearch, setLeaveStaffSearch] = useState("")
+    const [leaveLoaded, setLeaveLoaded] = useState(false)
 
     useEffect(() => {
         if (session?.user) {
@@ -61,7 +84,16 @@ export default function ExportPage() {
             ])
 
             if (deptRes.ok) setDepartments(await deptRes.json())
-            if (staffRes.ok) setAllStaff(await staffRes.json())
+            if (staffRes.ok) {
+                const staffData = await staffRes.json()
+                setAllStaff(staffData)
+                const mgrs = staffData.filter((e: any) =>
+                    e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') ||
+                    staffData.some((sub: any) => sub.managerId === e.id)
+                )
+                setManagers(Array.from(new Map(mgrs.map((m: any) => [m.id, m])).values())
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name)))
+            }
         } catch (error) {
             console.error("Fetch data error:", error)
         }
@@ -108,17 +140,52 @@ export default function ExportPage() {
         )
     }
 
-    const setQuickRange = (range: 'today' | '7days' | '30days' | 'month') => {
-        const end = new Date()
-        const start = new Date()
+    const setQuickRange = (range: string) => {
+        const today = new Date()
+        let start = new Date()
+        let end = new Date()
+
         if (range === 'today') {
-            // Both start and end are already today
-        } else if (range === '7days') start.setDate(end.getDate() - 7)
-        else if (range === '30days') start.setDate(end.getDate() - 30)
-        else if (range === 'month') start.setDate(1)
+            // both today
+        } else if (range === '7days') {
+            start.setDate(today.getDate() - 7)
+        } else if (range === '30days') {
+            start.setDate(today.getDate() - 30)
+        } else if (range === 'month') {
+            start.setDate(1)
+        } else if (range === 'lastweek') {
+            const day = today.getDay()
+            const diffToMon = (day === 0 ? -6 : 1 - day) - 7
+            start = new Date(today)
+            start.setDate(today.getDate() + diffToMon)
+            end = new Date(start)
+            end.setDate(start.getDate() + 6)
+        } else if (range === 'thismonth') {
+            start = new Date(today.getFullYear(), today.getMonth(), 1)
+            end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+        } else if (range === 'lastmonth') {
+            start = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+            end = new Date(today.getFullYear(), today.getMonth(), 0)
+        } else if (range === 'ytd') {
+            start = new Date(today.getFullYear(), 0, 1)
+        }
 
         setStartDate(format(start, "yyyy-MM-dd"))
         setEndDate(format(end, "yyyy-MM-dd"))
+    }
+
+    const toggleStatus = (status: string) => {
+        setSelectedStatuses(prev =>
+            prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
+        )
+    }
+
+    const toggleSheet = (sheet: string) => {
+        setExportSheets(prev =>
+            prev.includes(sheet)
+                ? prev.length > 1 ? prev.filter(s => s !== sheet) : prev
+                : [...prev, sheet]
+        )
     }
 
     const calculateDurations = (recs: any[]) => {
@@ -177,24 +244,30 @@ export default function ExportPage() {
                 if (selectedLocation !== 'all') {
                     targetStaff = targetStaff.filter(s => s.employmentLocation === selectedLocation)
                 }
+                if (selectedManagerId !== 'all') {
+                    targetStaff = targetStaff.filter(s => s.managerId === selectedManagerId)
+                }
             }
 
             const targetIds = new Set(targetStaff.map(s => s.id))
 
-            // 2. Keep only attendance records belonging to target staff, excluding weekends
+            // 2. Keep only attendance records belonging to target staff, optionally excluding weekends
             const data = rawData.filter((r: any) => {
                 if (!targetIds.has(r.userId)) return false
-                const day = new Date(r.date + 'T12:00:00Z').getUTCDay()
-                return day !== 0 && day !== 6 // drop Saturday (6) and Sunday (0)
+                if (!includeWeekends) {
+                    const day = new Date(r.date + 'T12:00:00Z').getUTCDay()
+                    if (day === 0 || day === 6) return false
+                }
+                return true
             })
 
-            // 3. Generate every weekday in the selected range (no weekends)
+            // 3. Generate dates in the selected range
             const allDates: string[] = []
             const cur = new Date(startDate + 'T12:00:00Z')
             const rangeEnd = new Date(endDate + 'T12:00:00Z')
             while (cur <= rangeEnd) {
                 const day = cur.getUTCDay()
-                if (day !== 0 && day !== 6) {
+                if (includeWeekends || (day !== 0 && day !== 6)) {
                     allDates.push(cur.toISOString().split('T')[0])
                 }
                 cur.setUTCDate(cur.getUTCDate() + 1)
@@ -299,15 +372,33 @@ export default function ExportPage() {
                 }
             }).sort((a, b) => a.Employee.localeCompare(b.Employee))
 
+            // Apply status filter to Master Ledger rows
+            const filteredLogData = selectedStatuses.length === 0 ? logData : logData.filter((row: any) => {
+                const rowStatus = row['Attendance Status']
+                if (selectedStatuses.includes('PRESENT') && rowStatus === 'PRESENT') return true
+                if (selectedStatuses.includes('ABSENT') && rowStatus === 'ABSENT') return true
+                if (selectedStatuses.includes('LEAVE') && rowStatus === 'LEAVE') return true
+                return false
+            })
+
             const wb = XLSX.utils.book_new()
 
-            const wsLogs = XLSX.utils.json_to_sheet(logData)
-            wsLogs['!cols'] = Object.keys(logData[0] || {}).map(key => ({ wch: Math.max(key.length, 15) }))
-            XLSX.utils.book_append_sheet(wb, wsLogs, "Master Ledger")
+            if (exportSheets.includes('ledger') && filteredLogData.length > 0) {
+                const wsLogs = XLSX.utils.json_to_sheet(filteredLogData)
+                wsLogs['!cols'] = Object.keys(filteredLogData[0] || {}).map(key => ({ wch: Math.max(key.length, 15) }))
+                XLSX.utils.book_append_sheet(wb, wsLogs, "Master Ledger")
+            }
 
-            const wsSummary = XLSX.utils.json_to_sheet(summaryData)
-            wsSummary['!cols'] = Object.keys(summaryData[0] || {}).map(key => ({ wch: Math.max(key.length, 18) }))
-            XLSX.utils.book_append_sheet(wb, wsSummary, "Finance Summary")
+            if (exportSheets.includes('summary') && summaryData.length > 0) {
+                const wsSummary = XLSX.utils.json_to_sheet(summaryData)
+                wsSummary['!cols'] = Object.keys(summaryData[0] || {}).map(key => ({ wch: Math.max(key.length, 18) }))
+                XLSX.utils.book_append_sheet(wb, wsSummary, "Finance Summary")
+            }
+
+            if (wb.SheetNames.length === 0) {
+                toast.error("No data to export with the current filters.")
+                return
+            }
 
             XLSX.writeFile(wb, `REDADAIR_MASTER_PAYROLL_${startDate}_${endDate}.xlsx`)
         } catch (error) {
@@ -317,6 +408,57 @@ export default function ExportPage() {
             setGenerating(false)
         }
     }
+
+    const fetchLeaveRecords = async () => {
+        setLeaveLoading(true)
+        setLeaveLoaded(true)
+        try {
+            const params = new URLSearchParams({ startDate: leaveStartDate, endDate: leaveEndDate })
+            if (leaveStatus !== 'all') params.set('status', leaveStatus)
+            if (leaveDept !== 'all') params.set('departmentId', leaveDept)
+            if (leaveStaffIds.length > 0) params.set('userIds', leaveStaffIds.join(','))
+            const res = await fetch(`/api/leaves?${params}`)
+            if (!res.ok) throw new Error('Failed to fetch')
+            const data = await res.json()
+            setLeaveRecords(data.leaves || [])
+        } catch {
+            toast.error('Failed to load leave records')
+        } finally {
+            setLeaveLoading(false)
+        }
+    }
+
+    const handleLeaveExport = async () => {
+        if (leaveRecords.length === 0) { toast.error('No records to export'); return }
+        setLeaveExporting(true)
+        try {
+            const rows = leaveRecords.map((r: any) => ({
+                'Employee': r.user?.name || '-',
+                'Department': r.user?.department?.name || 'Unassigned',
+                'Leave Type': r.type || '-',
+                'Status': r.status || '-',
+                'Start Date': r.startDate ? format(new Date(r.startDate), 'yyyy-MM-dd') : '-',
+                'End Date': r.endDate ? format(new Date(r.endDate), 'yyyy-MM-dd') : '-',
+                'Duration': r.duration || '-',
+                'Reason': r.reason || '-',
+            }))
+            const wb = XLSX.utils.book_new()
+            const ws = XLSX.utils.json_to_sheet(rows)
+            ws['!cols'] = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length, 16) }))
+            XLSX.utils.book_append_sheet(wb, ws, 'Leave Records')
+            XLSX.writeFile(wb, `REDADAIR_LEAVE_RECORDS_${leaveStartDate}_${leaveEndDate}.xlsx`)
+        } catch {
+            toast.error('Export failed')
+        } finally {
+            setLeaveExporting(false)
+        }
+    }
+
+    const leaveFilteredStaff = allStaff.filter(s => {
+        const matchesDept = leaveDept === 'all' || s.departmentId === leaveDept
+        const matchesSearch = s.name.toLowerCase().includes(leaveStaffSearch.toLowerCase())
+        return matchesDept && matchesSearch && !s.isArchived
+    })
 
     return (
         <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
@@ -407,7 +549,94 @@ export default function ExportPage() {
                             label="Report Timezone"
                             className=""
                         />
+                        <div className="space-y-2">
+                            <Label>Manager</Label>
+                            <Select value={selectedManagerId} onValueChange={(val) => {
+                                setSelectedManagerId(val)
+                                setSelectedStaffIds([])
+                            }}>
+                                <SelectTrigger className="h-10">
+                                    <div className="flex items-center gap-2">
+                                        <UserCog className="h-4 w-4 text-muted-foreground" />
+                                        <SelectValue placeholder="All Managers" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Managers</SelectItem>
+                                    {managers.map((m: any) => (
+                                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
+
+                    {/* Status Filter */}
+                    <div className="space-y-2">
+                        <Label>Attendance Status Filter</Label>
+                        <p className="text-xs text-muted-foreground">Select which statuses to include in the Master Ledger. Leave all unchecked to include everything.</p>
+                        <div className="flex flex-wrap gap-3 pt-1">
+                            {[
+                                { id: 'PRESENT', label: 'Present', color: 'text-green-700 bg-green-50 border-green-200' },
+                                { id: 'ABSENT', label: 'Absent', color: 'text-red-700 bg-red-50 border-red-200' },
+                                { id: 'LEAVE', label: 'On Leave', color: 'text-blue-700 bg-blue-50 border-blue-200' },
+                            ].map(s => (
+                                <div
+                                    key={s.id}
+                                    onClick={() => toggleStatus(s.id)}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all text-sm font-medium select-none ${selectedStatuses.includes(s.id) ? s.color + ' shadow-sm' : 'border-border text-muted-foreground bg-white hover:bg-muted/40'}`}
+                                >
+                                    <Checkbox
+                                        checked={selectedStatuses.includes(s.id)}
+                                        onCheckedChange={() => toggleStatus(s.id)}
+                                        className="pointer-events-none"
+                                    />
+                                    {s.label}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Include Weekends + Sheet Selector */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <Label>Weekend Rows</Label>
+                            <div
+                                onClick={() => setIncludeWeekends(p => !p)}
+                                className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all select-none ${includeWeekends ? 'bg-primary/5 border-primary/30 text-primary' : 'bg-white border-border text-muted-foreground hover:bg-muted/40'}`}
+                            >
+                                <ToggleLeft className="h-4 w-4 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium">{includeWeekends ? 'Weekends included' : 'Weekends excluded'}</p>
+                                    <p className="text-xs opacity-70">Click to toggle Sat &amp; Sun rows</p>
+                                </div>
+                                <Checkbox checked={includeWeekends} onCheckedChange={() => setIncludeWeekends(p => !p)} className="ml-auto pointer-events-none" />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Export Sheets</Label>
+                            <div className="flex gap-3">
+                                {[
+                                    { id: 'ledger', label: 'Master Ledger', icon: FileSpreadsheet },
+                                    { id: 'summary', label: 'Finance Summary', icon: CalendarDays },
+                                ].map(sheet => {
+                                    const Icon = sheet.icon
+                                    return (
+                                        <div
+                                            key={sheet.id}
+                                            onClick={() => toggleSheet(sheet.id)}
+                                            className={`flex items-center gap-2 flex-1 px-3 py-3 rounded-lg border cursor-pointer transition-all select-none text-sm font-medium ${exportSheets.includes(sheet.id) ? 'bg-primary/5 border-primary/30 text-primary shadow-sm' : 'bg-white border-border text-muted-foreground hover:bg-muted/40'}`}
+                                        >
+                                            <Checkbox checked={exportSheets.includes(sheet.id)} onCheckedChange={() => toggleSheet(sheet.id)} className="pointer-events-none" />
+                                            <Icon className="h-4 w-4 shrink-0" />
+                                            {sheet.label}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="space-y-2">
                         <Label>Staff Filter</Label>
                         <Popover>
@@ -512,11 +741,15 @@ export default function ExportPage() {
                                 { id: 'today', label: 'Today' },
                                 { id: '7days', label: 'Last 7 Days' },
                                 { id: '30days', label: 'Last 30 Days' },
-                                { id: 'month', label: 'Month to Date' }
+                                { id: 'lastweek', label: 'Last Week' },
+                                { id: 'month', label: 'Month to Date' },
+                                { id: 'thismonth', label: 'This Month' },
+                                { id: 'lastmonth', label: 'Last Month' },
+                                { id: 'ytd', label: 'Year to Date' },
                             ].map(range => (
                                 <Button
                                     key={range.id}
-                                    onClick={() => setQuickRange(range.id as any)}
+                                    onClick={() => setQuickRange(range.id)}
                                     variant="outline"
                                     size="sm"
                                     className="h-8 text-xs font-medium"
@@ -544,6 +777,178 @@ export default function ExportPage() {
                 </CardContent>
             </Card>
 
+            {/* Leave Records */}
+            <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                <CardHeader className="p-6 border-b border-border bg-muted/20">
+                    <div className="flex items-center gap-3">
+                        <CalendarOff className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                            <CardTitle className="text-lg font-semibold text-foreground">Leave Records</CardTitle>
+                            <CardDescription className="text-sm text-muted-foreground">View and export approved leave records by date range</CardDescription>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                    {/* Filters */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                            <Label>Start Date</Label>
+                            <Input type="date" value={leaveStartDate} onChange={e => setLeaveStartDate(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>End Date</Label>
+                            <Input type="date" value={leaveEndDate} onChange={e => {
+                                if (e.target.value < leaveStartDate) { toast.error('End date cannot be before start date'); return }
+                                setLeaveEndDate(e.target.value)
+                            }} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Status</Label>
+                            <Select value={leaveStatus} onValueChange={setLeaveStatus}>
+                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Statuses</SelectItem>
+                                    <SelectItem value="APPROVED">Approved</SelectItem>
+                                    <SelectItem value="PENDING">Pending</SelectItem>
+                                    <SelectItem value="DECLINED">Declined</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Department</Label>
+                            <Select value={leaveDept} onValueChange={v => { setLeaveDept(v); setLeaveStaffIds([]) }}>
+                                <SelectTrigger className="h-10">
+                                    <div className="flex items-center gap-2">
+                                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                                        <SelectValue placeholder="All Departments" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Departments</SelectItem>
+                                    {departments.map((d: any) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    {/* Staff filter */}
+                    <div className="space-y-2">
+                        <Label>Staff Filter</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full justify-between h-10 font-normal">
+                                    <div className="flex items-center gap-2">
+                                        <Users className="h-4 w-4 text-muted-foreground" />
+                                        {leaveStaffIds.length === 0 ? <span className="text-muted-foreground">All Staff</span> : <span>{leaveStaffIds.length} Selected</span>}
+                                    </div>
+                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[280px] p-0" align="start">
+                                <div className="p-2 border-b">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                        <Input placeholder="Search staff..." className="pl-8 h-8 text-xs" value={leaveStaffSearch} onChange={e => setLeaveStaffSearch(e.target.value)} />
+                                    </div>
+                                </div>
+                                <div className="max-h-[260px] overflow-y-auto p-1">
+                                    {leaveFilteredStaff.map(s => (
+                                        <div key={s.id} className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer" onClick={() => setLeaveStaffIds(prev => prev.includes(s.id) ? prev.filter(i => i !== s.id) : [...prev, s.id])}>
+                                            <Checkbox checked={leaveStaffIds.includes(s.id)} />
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-sm font-medium truncate">{s.name}</span>
+                                                <span className="text-[10px] text-muted-foreground truncate">{s.department?.name || 'No Dept'}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {leaveStaffIds.length > 0 && (
+                                    <div className="p-2 border-t">
+                                        <Button variant="ghost" size="sm" className="w-full h-8 text-xs text-primary" onClick={() => setLeaveStaffIds([])}>Clear Selection</Button>
+                                    </div>
+                                )}
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+
+                    {/* Quick presets */}
+                    <div className="flex flex-wrap gap-2">
+                        {[
+                            { id: 'thismonth', label: 'This Month' },
+                            { id: 'lastmonth', label: 'Last Month' },
+                            { id: 'ytd', label: 'Year to Date' },
+                            { id: '30days', label: 'Last 30 Days' },
+                        ].map(r => (
+                            <Button key={r.id} variant="outline" size="sm" className="h-8 text-xs"
+                                onClick={() => {
+                                    const today = new Date()
+                                    let s = new Date(), e = new Date()
+                                    if (r.id === 'thismonth') { s = new Date(today.getFullYear(), today.getMonth(), 1); e = new Date(today.getFullYear(), today.getMonth() + 1, 0) }
+                                    else if (r.id === 'lastmonth') { s = new Date(today.getFullYear(), today.getMonth() - 1, 1); e = new Date(today.getFullYear(), today.getMonth(), 0) }
+                                    else if (r.id === 'ytd') { s = new Date(today.getFullYear(), 0, 1) }
+                                    else if (r.id === '30days') { s.setDate(today.getDate() - 30) }
+                                    setLeaveStartDate(format(s, 'yyyy-MM-dd'))
+                                    setLeaveEndDate(format(e, 'yyyy-MM-dd'))
+                                }}>
+                                {r.label}
+                            </Button>
+                        ))}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-3 pt-2 border-t border-border">
+                        <Button onClick={fetchLeaveRecords} disabled={leaveLoading} className="bg-[#8B2323] hover:bg-[#701c1c]">
+                            {leaveLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ChevronRight className="h-4 w-4 mr-2" />}
+                            {leaveLoading ? 'Loading...' : 'Load Records'}
+                        </Button>
+                        {leaveRecords.length > 0 && (
+                            <Button variant="outline" onClick={handleLeaveExport} disabled={leaveExporting}>
+                                {leaveExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                                Export to Sheet ({leaveRecords.length})
+                            </Button>
+                        )}
+                    </div>
+
+                    {/* Table */}
+                    {leaveLoaded && !leaveLoading && (
+                        <div className="rounded-lg border border-border overflow-hidden">
+                            {leaveRecords.length === 0 ? (
+                                <div className="p-8 text-center text-sm text-muted-foreground">No leave records found for the selected filters.</div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-muted/40 border-b border-border">
+                                            <tr>
+                                                {['Employee', 'Department', 'Type', 'Status', 'Start Date', 'End Date', 'Duration', 'Reason'].map(h => (
+                                                    <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                            {leaveRecords.map((r: any) => (
+                                                <tr key={r.id} className="hover:bg-muted/20 transition-colors">
+                                                    <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{r.user?.name || '-'}</td>
+                                                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{r.user?.department?.name || 'Unassigned'}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap">
+                                                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">{r.type}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap">
+                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${r.status === 'APPROVED' ? 'bg-green-50 text-green-700 border-green-200' : r.status === 'DECLINED' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{r.status}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{r.startDate ? format(new Date(r.startDate), 'dd MMM yyyy') : '-'}</td>
+                                                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{r.endDate ? format(new Date(r.endDate), 'dd MMM yyyy') : '-'}</td>
+                                                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{r.duration || '-'}</td>
+                                                    <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">{r.reason || '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </div >
     )
 }

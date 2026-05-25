@@ -41,7 +41,15 @@ export function ProfileSettings() {
     const [primaryDeptId, setPrimaryDeptId] = useState("")
     const [secondaryDeptIds, setSecondaryDeptIds] = useState<string[]>([])
     const [employmentLocation, setEmploymentLocation] = useState("")
+    const [workingDays, setWorkingDays] = useState<string[]>(["MON","TUE","WED","THU","FRI"])
     const [saving, setSaving] = useState(false)
+
+    const ALL_DAYS = ["MON","TUE","WED","THU","FRI","SAT","SUN"]
+    const DAY_LABELS: Record<string,string> = { MON:"Mon", TUE:"Tue", WED:"Wed", THU:"Thu", FRI:"Fri", SAT:"Sat", SUN:"Sun" }
+
+    const toggleDay = (day: string) => {
+        setWorkingDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+    }
 
     useEffect(() => {
         if (!open) return
@@ -61,6 +69,7 @@ export function ProfileSettings() {
                     setPrimaryDeptId(data.departmentId || "unassigned")
                     setSecondaryDeptIds((data.secondaryDepartments ?? []).map((d: any) => d.id))
                     setEmploymentLocation(data.employmentLocation || "")
+                    setWorkingDays(data.workingDays ? data.workingDays.split(',') : ["MON","TUE","WED","THU","FRI"])
                 }
                 if (managersRes.ok) setManagers(await managersRes.json())
                 if (deptsRes.ok) setDepartments(await deptsRes.json())
@@ -88,6 +97,7 @@ export function ProfileSettings() {
                     departmentId: primaryDeptId || "unassigned",
                     secondaryDepartmentIds: secondaryDeptIds,
                     location: employmentLocation || undefined,
+                    workingDays,
                 }),
             })
             if (res.ok) {
@@ -252,6 +262,35 @@ export function ProfileSettings() {
                                 onChange={(e) => setShiftEnd(e.target.value)}
                                 className="h-11"
                             />
+                        </div>
+
+                        {/* Editable: Working Days */}
+                        <div className="space-y-2 md:col-span-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Working Days</Label>
+                            <p className="text-[10px] text-muted-foreground uppercase font-medium">Notifications are only sent on your working days</p>
+                            <div className="flex gap-1.5 flex-wrap">
+                                {ALL_DAYS.map(day => (
+                                    <button
+                                        key={day}
+                                        type="button"
+                                        onClick={() => toggleDay(day)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
+                                            workingDays.includes(day)
+                                                ? "bg-[#8B2323] text-white border-[#8B2323]"
+                                                : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
+                                        }`}
+                                    >
+                                        {DAY_LABELS[day]}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="flex gap-2 mt-1">
+                                <button type="button" onClick={() => setWorkingDays(["MON","TUE","WED","THU","FRI"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Fri</button>
+                                <span className="text-slate-300 text-[10px]">·</span>
+                                <button type="button" onClick={() => setWorkingDays(["MON","TUE","WED","THU"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Thu</button>
+                                <span className="text-slate-300 text-[10px]">·</span>
+                                <button type="button" onClick={() => setWorkingDays(["MON","TUE","WED","THU","FRI","SAT"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Sat</button>
+                            </div>
                         </div>
                     </div>
 
