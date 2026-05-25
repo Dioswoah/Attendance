@@ -41,6 +41,25 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location "$PSScriptRoot/.."
 
+# ── Branch Safety Check ────────────────────────────────────
+$currentBranch = git rev-parse --abbrev-ref HEAD 2>$null
+if ($currentBranch -ne "main") {
+    Write-Host ""
+    Write-Host "============================================" -ForegroundColor Red
+    Write-Host " PROD DEPLOY BLOCKED" -ForegroundColor Red
+    Write-Host "============================================" -ForegroundColor Red
+    Write-Host " You are on branch: $currentBranch" -ForegroundColor Yellow
+    Write-Host " Prod SG must be deployed from: main" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host " To deploy to prod SG:" -ForegroundColor Cyan
+    Write-Host "   1. git checkout main" -ForegroundColor Cyan
+    Write-Host "   2. git merge marc" -ForegroundColor Cyan
+    Write-Host "   3. Re-run this script" -ForegroundColor Cyan
+    Write-Host "============================================" -ForegroundColor Red
+    Write-Host ""
+    exit 1
+}
+
 $SG_REGION          = "asia-southeast1"
 $VPC_CONNECTOR_NAME = "attendance-vpc-sg"
 $REDIS_INSTANCE     = "attendance-redis-sg"
