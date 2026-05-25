@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     // mode=test uses only basic scopes to verify OAuth works without payroll access
     const scopes = mode === 'test'
         ? ['openid', 'profile', 'email', 'offline_access', 'accounting.settings.read']
-        : ['openid', 'profile', 'email', 'offline_access', 'payroll.employees.read', 'payroll.payruns.read']
+        : ['openid', 'profile', 'email', 'offline_access', 'payroll.employees', 'payroll.payruns', 'payroll.timesheets']
 
     const authUrl = new URL('https://login.xero.com/identity/connect/authorize')
     authUrl.searchParams.set('response_type', 'code')
