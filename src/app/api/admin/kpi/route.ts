@@ -274,13 +274,27 @@ export async function GET(req: Request) {
         attendanceRate: v.expected > 0 ? Math.round((v.present / v.expected) * 100) : 0
     }))
 
-    // --- Per-staff KPI (only computed when specific staff are selected) ---
+    // --- Leave type lookup (for daily trend enrichment) ---
+    type LeaveEntry = { startDateStr: string; endDateStr: string; type: string }
+    const leaveTypeLookup: Record<string, LeaveEntry[]> = {}
+    for (const leave of leavesApproved) {
+        if (!leaveTypeLookup[leave.userId]) leaveTypeLookup[leave.userId] = []
+        leaveTypeLookup[leave.userId].push({
+            startDateStr: new Date(leave.startDate).toISOString().split('T')[0],
+            endDateStr: new Date(leave.endDate).toISOString().split('T')[0],
+            type: leave.type || 'OTHER'
+        })
+    }
+    function getLeaveTypeForDay(userId: string, dayStr: string): string | undefined {
+        return (leaveTypeLookup[userId] || []).find(l => dayStr >= l.startDateStr && dayStr <= l.endDateStr)?.type
+    }
+
+    // --- Per-staff KPI ---
     const staffKPI = users.map(user => {
         const userSummaries = summaries.filter(s => s.userId === user.id)
         const userPresent = userSummaries.filter(s => s.status !== 'ABSENT' && s.status !== 'LEAVE')
         const userAbsent = userSummaries.filter(s => s.status === 'ABSENT')
         const userLeave = userSummaries.filter(s => s.status === 'LEAVE')
-        const userLate = userSummaries.filter(s => s.status === 'LATE')
         const userWfh = userPresent.filter(s => s.mode === 'WFH')
 
         const userLateDetails = userPresent.filter(s => s.clockIn && calculateTardiness(s, s.user) > 0)
@@ -290,12 +304,24 @@ export async function GET(req: Request) {
         const totalWorkMin = userPresent.reduce((acc, s) => acc + s.totalWorkDuration, 0)
         const totalBreakMin = userPresent.reduce((acc, s) => acc + s.totalBreakDuration, 0)
 
-        // Daily trend for this staff member
+        // Leave type breakdown per day
+        const leavesByType: Record<string, number> = { SICK: 0, VACATION: 0, BIRTHDAY: 0, MATERNITY: 0, OTHER: 0 }
+        for (const dayStr of workingDays) {
+            const rec = userSummaries.find(s => s.date.toISOString().split('T')[0] === dayStr)
+            if (rec?.status === 'LEAVE') {
+                const lt = getLeaveTypeForDay(user.id, dayStr) || 'OTHER'
+                leavesByType[lt] = (leavesByType[lt] || 0) + 1
+            }
+        }
+
+        // Daily trend with leave type
         const dailyTrend = workingDays.map(dayStr => {
             const rec = userSummaries.find(s => s.date.toISOString().split('T')[0] === dayStr)
+            const leaveType = rec?.status === 'LEAVE' ? getLeaveTypeForDay(user.id, dayStr) : undefined
             return {
                 date: dayStr,
                 status: rec?.status || 'ABSENT',
+                leaveType,
                 mode: rec?.mode || null,
                 workMin: rec?.totalWorkDuration || 0,
                 clockIn: rec?.clockIn ? rec.clockIn.toISOString() : null,
@@ -323,6 +349,11 @@ export async function GET(req: Request) {
             avgBreakMinutes: userPresent.length > 0 ? Math.round(totalBreakMin / userPresent.length) : 0,
             avgTardiness: userLateDetails.length > 0 ? Math.round(totalTardinessMin / userLateDetails.length) : 0,
             wfhRate: userPresent.length > 0 ? Math.round((userWfh.length / userPresent.length) * 100) : 0,
+            sickLeaveDays: leavesByType.SICK,
+            vacationDays: leavesByType.VACATION,
+            birthdayDays: leavesByType.BIRTHDAY,
+            maternityDays: leavesByType.MATERNITY,
+            otherLeaveDays: leavesByType.OTHER,
             dailyTrend,
         }
     })

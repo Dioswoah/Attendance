@@ -18,7 +18,8 @@ import {
     BellRing,
     Fingerprint,
     BarChart2,
-    ScrollText
+    ScrollText,
+    Sparkles
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -105,7 +106,7 @@ export default function AdminLayout({
         { href: "/admin/manager-activity", label: "Manager Activity", icon: ShieldCheck },
         { href: "/admin/user-activity", label: "User Activity", icon: ScrollText },
         { href: "/admin/biometric", label: "Biometric", icon: Fingerprint },
-        { href: "/admin/kpi", label: "KPI", icon: BarChart2 },
+        { href: "/admin/ai-insights", label: "AI Insights", icon: Sparkles },
         { href: "/admin/reports", label: "Export", icon: FileText },
         { href: "/admin/notifications", label: "Notifications", icon: BellRing },
         { href: "/admin/settings", label: "Settings", icon: Settings },
