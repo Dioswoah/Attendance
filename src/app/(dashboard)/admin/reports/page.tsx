@@ -40,7 +40,8 @@ export default function ExportPage() {
     // Filters
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
-    const [selectedDept, setSelectedDept] = useState("all")
+    const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([])
+    const [deptSearchQuery, setDeptSearchQuery] = useState("")
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [selectedLocation, setSelectedLocation] = useState("all")
@@ -58,7 +59,8 @@ export default function ExportPage() {
     const [leaveLoading, setLeaveLoading] = useState(false)
     const [leaveExporting, setLeaveExporting] = useState(false)
     const [leaveStatus, setLeaveStatus] = useState("APPROVED")
-    const [leaveDept, setLeaveDept] = useState("all")
+    const [leaveDeptIds, setLeaveDeptIds] = useState<string[]>([])
+    const [leaveDeptSearch, setLeaveDeptSearch] = useState("")
     const [leaveStaffIds, setLeaveStaffIds] = useState<string[]>([])
     const [leaveStaffSearch, setLeaveStaffSearch] = useState("")
     const [leaveLoaded, setLeaveLoaded] = useState(false)
@@ -101,20 +103,24 @@ export default function ExportPage() {
 
     const filteredStaffForDropdown = allStaff
         .filter(s => {
-            const selectedDeptData = departments.find(d => d.id === selectedDept)
-            const normalizedSelectedName = selectedDeptData?.name?.toLowerCase().trim()
-
-            const matchesDept = selectedDept === 'all' ||
-                s.departmentId === selectedDept ||
-                (normalizedSelectedName && (
-                    s.department?.name?.toLowerCase().trim() === normalizedSelectedName ||
-                    s.departmentName?.toLowerCase().trim() === normalizedSelectedName
-                ))
-
+            const matchesDept = selectedDeptIds.length === 0 ||
+                selectedDeptIds.some(deptId => {
+                    const deptData = departments.find(d => d.id === deptId)
+                    return s.departmentId === deptId ||
+                        (deptData?.name && (
+                            s.department?.name?.toLowerCase().trim() === deptData.name.toLowerCase().trim() ||
+                            s.departmentName?.toLowerCase().trim() === deptData.name.toLowerCase().trim()
+                        ))
+                })
             const matchesLocation = selectedLocation === 'all' || s.employmentLocation === selectedLocation
             const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
             return matchesDept && matchesLocation && matchesQuery
         })
+
+    const toggleDept = (id: string) => {
+        setSelectedDeptIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
+        setSelectedStaffIds([])
+    }
 
     const toggleAllStaff = () => {
         const visibleIds = filteredStaffForDropdown.map(s => s.id)
@@ -222,7 +228,8 @@ export default function ExportPage() {
     const handleExport = async () => {
         setGenerating(true)
         try {
-            const res = await fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}`)
+            const deptParam = selectedDeptIds.length === 1 ? `&departmentId=${selectedDeptIds[0]}` : ''
+            const res = await fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}${deptParam}`)
             if (!res.ok) throw new Error("Failed to fetch attendance data")
             const rawData = await res.json()
 
@@ -233,12 +240,13 @@ export default function ExportPage() {
                 // Individual selection overrides all other filters
                 targetStaff = allStaff.filter(s => selectedStaffIds.includes(s.id))
             } else {
-                if (selectedDept !== 'all') {
-                    const deptData = departments.find(d => d.id === selectedDept)
-                    const normalizedName = deptData?.name?.toLowerCase().trim()
+                if (selectedDeptIds.length > 0) {
                     targetStaff = targetStaff.filter(s =>
-                        s.departmentId === selectedDept ||
-                        (normalizedName && s.department?.name?.toLowerCase().trim() === normalizedName)
+                        selectedDeptIds.some(deptId => {
+                            const deptData = departments.find(d => d.id === deptId)
+                            return s.departmentId === deptId ||
+                                (deptData?.name && s.department?.name?.toLowerCase().trim() === deptData.name.toLowerCase().trim())
+                        })
                     )
                 }
                 if (selectedLocation !== 'all') {
@@ -415,7 +423,7 @@ export default function ExportPage() {
         try {
             const params = new URLSearchParams({ startDate: leaveStartDate, endDate: leaveEndDate })
             if (leaveStatus !== 'all') params.set('status', leaveStatus)
-            if (leaveDept !== 'all') params.set('departmentId', leaveDept)
+            if (leaveDeptIds.length === 1) params.set('departmentId', leaveDeptIds[0])
             if (leaveStaffIds.length > 0) params.set('userIds', leaveStaffIds.join(','))
             const res = await fetch(`/api/leaves?${params}`)
             if (!res.ok) throw new Error('Failed to fetch')
@@ -455,7 +463,7 @@ export default function ExportPage() {
     }
 
     const leaveFilteredStaff = allStaff.filter(s => {
-        const matchesDept = leaveDept === 'all' || s.departmentId === leaveDept
+        const matchesDept = leaveDeptIds.length === 0 || leaveDeptIds.includes(s.departmentId)
         const matchesSearch = s.name.toLowerCase().includes(leaveStaffSearch.toLowerCase())
         return matchesDept && matchesSearch && !s.isArchived
     })
@@ -504,29 +512,70 @@ export default function ExportPage() {
                         </div>
                         <div className="space-y-2">
                             <Label>Department</Label>
-                            <Select value={selectedDept} onValueChange={(val) => {
-                                setSelectedDept(val)
-                                setSelectedStaffIds([])
-                            }}>
-                                <SelectTrigger className="h-10">
-                                    <div className="flex items-center gap-2">
-                                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                                        <SelectValue placeholder="All Departments" />
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between h-10 font-normal">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                                            {selectedDeptIds.length === 0 ? (
+                                                <span className="text-muted-foreground">All Departments</span>
+                                            ) : selectedDeptIds.length === 1 ? (
+                                                <span className="truncate">{departments.find(d => d.id === selectedDeptIds[0])?.name}</span>
+                                            ) : (
+                                                <span>{selectedDeptIds.length} Departments</span>
+                                            )}
+                                        </div>
+                                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[260px] p-0" align="start">
+                                    <div className="p-2 border-b border-border">
+                                        <div className="relative">
+                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Search departments..."
+                                                className="pl-8 h-8 text-xs"
+                                                value={deptSearchQuery}
+                                                onChange={e => setDeptSearchQuery(e.target.value)}
+                                            />
+                                        </div>
                                     </div>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Departments</SelectItem>
-                                    {departments.map((dept: any) => (
-                                        <SelectItem key={dept.id} value={dept.id}>
-                                            {dept.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                    <div className="max-h-[240px] overflow-y-auto p-1">
+                                        {departments
+                                            .filter(d => d.name?.toLowerCase().includes(deptSearchQuery.toLowerCase()))
+                                            .map(dept => (
+                                                <div
+                                                    key={dept.id}
+                                                    className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors"
+                                                    onClick={() => toggleDept(dept.id)}
+                                                >
+                                                    <Checkbox
+                                                        checked={selectedDeptIds.includes(dept.id)}
+                                                        onCheckedChange={() => toggleDept(dept.id)}
+                                                        className="pointer-events-none"
+                                                    />
+                                                    <span className="text-sm font-medium truncate">{dept.name}</span>
+                                                </div>
+                                            ))}
+                                    </div>
+                                    {selectedDeptIds.length > 0 && (
+                                        <div className="p-2 border-t border-border">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="w-full h-8 text-xs text-primary hover:text-primary"
+                                                onClick={() => { setSelectedDeptIds([]); setSelectedStaffIds([]) }}
+                                            >
+                                                Clear Selection
+                                            </Button>
+                                        </div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         <div className="space-y-2">
                             <Label>Employment Location</Label>
-                            <Select value={selectedLocation} onValueChange={(val) => {
+                            <Select value={selectedLocation} onValueChange={val => {
                                 setSelectedLocation(val)
                                 setSelectedStaffIds([])
                             }}>
@@ -551,7 +600,7 @@ export default function ExportPage() {
                         />
                         <div className="space-y-2">
                             <Label>Manager</Label>
-                            <Select value={selectedManagerId} onValueChange={(val) => {
+                            <Select value={selectedManagerId} onValueChange={val => {
                                 setSelectedManagerId(val)
                                 setSelectedStaffIds([])
                             }}>
@@ -816,18 +865,72 @@ export default function ExportPage() {
                         </div>
                         <div className="space-y-2">
                             <Label>Department</Label>
-                            <Select value={leaveDept} onValueChange={v => { setLeaveDept(v); setLeaveStaffIds([]) }}>
-                                <SelectTrigger className="h-10">
-                                    <div className="flex items-center gap-2">
-                                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                                        <SelectValue placeholder="All Departments" />
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between h-10 font-normal">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                                            {leaveDeptIds.length === 0 ? (
+                                                <span className="text-muted-foreground">All Departments</span>
+                                            ) : leaveDeptIds.length === 1 ? (
+                                                <span className="truncate">{departments.find(d => d.id === leaveDeptIds[0])?.name}</span>
+                                            ) : (
+                                                <span>{leaveDeptIds.length} Departments</span>
+                                            )}
+                                        </div>
+                                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[260px] p-0" align="start">
+                                    <div className="p-2 border-b border-border">
+                                        <div className="relative">
+                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Search departments..."
+                                                className="pl-8 h-8 text-xs"
+                                                value={leaveDeptSearch}
+                                                onChange={e => setLeaveDeptSearch(e.target.value)}
+                                            />
+                                        </div>
                                     </div>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Departments</SelectItem>
-                                    {departments.map((d: any) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                                    <div className="max-h-[240px] overflow-y-auto p-1">
+                                        {departments
+                                            .filter(d => d.name?.toLowerCase().includes(leaveDeptSearch.toLowerCase()))
+                                            .map(dept => (
+                                                <div
+                                                    key={dept.id}
+                                                    className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors"
+                                                    onClick={() => {
+                                                        setLeaveDeptIds(prev => prev.includes(dept.id) ? prev.filter(i => i !== dept.id) : [...prev, dept.id])
+                                                        setLeaveStaffIds([])
+                                                    }}
+                                                >
+                                                    <Checkbox
+                                                        checked={leaveDeptIds.includes(dept.id)}
+                                                        onCheckedChange={() => {
+                                                            setLeaveDeptIds(prev => prev.includes(dept.id) ? prev.filter(i => i !== dept.id) : [...prev, dept.id])
+                                                            setLeaveStaffIds([])
+                                                        }}
+                                                        className="pointer-events-none"
+                                                    />
+                                                    <span className="text-sm font-medium truncate">{dept.name}</span>
+                                                </div>
+                                            ))}
+                                    </div>
+                                    {leaveDeptIds.length > 0 && (
+                                        <div className="p-2 border-t border-border">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="w-full h-8 text-xs text-primary hover:text-primary"
+                                                onClick={() => { setLeaveDeptIds([]); setLeaveStaffIds([]) }}
+                                            >
+                                                Clear Selection
+                                            </Button>
+                                        </div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
                         </div>
                     </div>
 

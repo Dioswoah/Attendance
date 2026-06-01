@@ -1012,7 +1012,7 @@ export default function AIInsightsPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow className="bg-muted/20 hover:bg-muted/20">
-                                    {['Department', 'Headcount', 'Attendance', 'Late Rate', 'Avg Hours', 'Leave Days', 'WFH Rate'].map(h => (
+                                    {['Department', 'Headcount', 'Attendance', 'Late Rate', 'Avg Hours', 'Leave Days'].map(h => (
                                         <TableHead key={h} className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">{h}</TableHead>
                                     ))}
                                 </TableRow>
@@ -1041,14 +1041,8 @@ export default function AIInsightsPage() {
                                             </TableCell>
                                             <TableCell className="px-4 py-3 text-center text-sm font-medium">{d.avgHours}h</TableCell>
                                             <TableCell className="px-4 py-3 text-center text-sm text-muted-foreground">{d.leaveDays}</TableCell>
-                                            <TableCell className="px-4 py-3 text-center">
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    <Home className="h-3 w-3 text-blue-400" />
-                                                    <span className="text-sm tabular-nums">{d.wfhRate}%</span>
-                                                </div>
-                                            </TableCell>
                                         </TableRow>
-                                    )) : <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground text-xs py-10">No department data</TableCell></TableRow>
+                                    )) : <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-10">No department data</TableCell></TableRow>
                                 }
                             </TableBody>
                         </Table>
@@ -1114,59 +1108,6 @@ export default function AIInsightsPage() {
                                 })}
                             </div>
                         ) : <div className="flex items-center justify-center h-48 text-muted-foreground text-xs">No data</div>}
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* ── Peak Clock-In + Location ─────────────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border border-border shadow-sm bg-white">
-                    <CardHeader className="p-5 border-b border-border bg-muted/20">
-                        <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
-                            <Zap className="h-4 w-4 text-amber-500" />Peak Clock-In Hours
-                        </CardTitle>
-                        <CardDescription className="text-xs">When staff typically clock in (06:00–17:00)</CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-4">
-                        {loading ? <SkeletonChart height={220} /> : data?.peakClockInHour?.some((h: any) => h.count > 0) ? (
-                            <ResponsiveContainer width="100%" height={220}>
-                                <BarChart data={data.peakClockInHour} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                                    <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
-                                    <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0' }} />
-                                    <Bar dataKey="count" name="Clock-Ins" fill={CHART_COLORS.primary} radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : <div className="flex items-center justify-center h-56 text-muted-foreground text-xs">No data</div>}
-                    </CardContent>
-                </Card>
-
-                <Card className="border border-border shadow-sm bg-white">
-                    <CardHeader className="p-5 border-b border-border bg-muted/20">
-                        <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-primary" />By Employment Location
-                        </CardTitle>
-                        <CardDescription className="text-xs">Headcount and attendance rate per region</CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-4 space-y-4">
-                        {loading ? <SkeletonChart height={150} /> : data?.locationBreakdown?.length > 0 ? data.locationBreakdown.map((loc: any, i: number) => (
-                            <div key={loc.location} className="space-y-1.5">
-                                <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-2.5 w-2.5 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                                        <span className="font-semibold text-foreground">{loc.location}</span>
-                                        <Badge variant="outline" className="text-[10px] font-bold px-1.5 py-0">{loc.count} staff</Badge>
-                                    </div>
-                                    <span className={cn("font-bold", loc.attendanceRate >= 80 ? 'text-green-600' : loc.attendanceRate >= 60 ? 'text-amber-600' : 'text-red-600')}>
-                                        {loc.attendanceRate}%
-                                    </span>
-                                </div>
-                                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                                    <div className="h-full rounded-full transition-all" style={{ width: `${loc.attendanceRate}%`, background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                                </div>
-                            </div>
-                        )) : <div className="flex items-center justify-center h-48 text-muted-foreground text-xs">No data</div>}
                     </CardContent>
                 </Card>
             </div>

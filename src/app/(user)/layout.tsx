@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2 } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2, Fingerprint } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { PatchNotesModal } from "@/components/PatchNotesModal"
 import { Button } from "@/components/ui/button"
@@ -212,6 +212,7 @@ function UserLayoutInner({
         { name: "Leave Requests", href: "/user/leaves", icon: CalendarDays, badge: pendingLeaveCount },
         { name: "Amend Records", href: "/user/amend-records", icon: Edit, badge: pendingAmendCount },
         { name: "Activity Logs", href: "/user/activity", icon: FileText },
+        ...((session?.user as any)?.location === 'Philippines' ? [{ name: "Biometric Records", href: "/user/biometric", icon: Fingerprint }] : []),
         ...(isManagerOrAdmin ? [{
             name: "Manager Control",
             href: "/user/manager",
