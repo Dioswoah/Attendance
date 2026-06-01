@@ -46,7 +46,7 @@ export default function AdminLayout({
         if (status === "loading") return
 
         const roles = (session?.user as any)?.roles || []
-        if (!roles.includes("ADMIN")) {
+        if (!roles.includes("ADMIN") && !roles.includes("DEVELOPER")) {
             router.push("/")
         } else {
             setIsChecking(false)

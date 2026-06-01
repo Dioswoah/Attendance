@@ -299,6 +299,7 @@ model ChatMessage {
 }
 
 enum Role {
+  DEVELOPER
   ADMIN
   MANAGER
   VIEWER

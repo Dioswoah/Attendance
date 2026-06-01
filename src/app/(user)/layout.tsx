@@ -62,7 +62,8 @@ function UserLayoutInner({
 
     // Determine user roles
     const userRoles = (session?.user as any)?.roles || []
-    const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
+    const isDeveloper = userRoles.includes('DEVELOPER')
+    const isManagerOrAdmin = isDeveloper || userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
 
     // Fetch pending counts
     const fetchCounts = async () => {
@@ -227,7 +228,7 @@ function UserLayoutInner({
                 { name: "Grant Leave", href: "/user/manager?tab=grant-leave", icon: FilePlus2 }
             ]
         }] : []),
-        ...(userRoles.includes('ADMIN') ? [{
+        ...((isDeveloper || userRoles.includes('ADMIN')) ? [{
             name: "Admin Portal",
             href: "/admin",
             icon: Shield
@@ -264,14 +265,15 @@ function UserLayoutInner({
     }
 
     const displayName = session?.user?.name || "User"
-    const userRole = userRoles.includes('ADMIN') ? 'Admin'
+    const userRole = isDeveloper ? 'Developer'
+        : userRoles.includes('ADMIN') ? 'Admin'
         : userRoles.includes('MANAGER') ? 'Manager'
         : userRoles.includes('VIEWER') ? 'Viewer'
         : 'Staff'
 
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans selection:bg-red-100 selection:text-red-900 w-full relative overflow-x-hidden">
-            <PatchNotesModal isAdmin={isManagerOrAdmin} />
+            <PatchNotesModal isAdmin={isManagerOrAdmin} isDeveloper={isDeveloper} />
             {/* Soft background glow */}
             <div className="fixed top-0 left-0 h-[500px] w-[500px] bg-red-100/30 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
 

@@ -16,9 +16,9 @@ const typeConfig = {
     fix: { icon: Wrench, label: "Fixed", className: "bg-green-50 text-green-600 border-green-200" },
 }
 
-export function PatchNotesModal({ isAdmin }: { isAdmin?: boolean }) {
+export function PatchNotesModal({ isAdmin, isDeveloper }: { isAdmin?: boolean; isDeveloper?: boolean }) {
     const [open, setOpen] = useState(false)
-    const blocking = PATCH_NOTES.blocking ?? false
+    const blocking = (PATCH_NOTES.blocking ?? false) && !isDeveloper
 
     useEffect(() => {
         try {
