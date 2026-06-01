@@ -1767,10 +1767,16 @@ export default function UserPortal() {
         const otherStaff: any[] = []
 
         for (const staff of sortedStaff) {
-            const dept = getPrimaryDept(staff)
-            if (selectedSet.size > 0 && selectedSet.has(dept)) {
-                if (!selectedGroups[dept]) selectedGroups[dept] = []
-                selectedGroups[dept].push(staff)
+            const primaryDept = getPrimaryDept(staff)
+            const secondaryDepts = (staff.secondaryDepartments || []).map((d: any) => d.name || '').filter(Boolean)
+            const allDepts = [primaryDept, ...secondaryDepts]
+            const matchedDepts = allDepts.filter(d => selectedSet.has(d))
+
+            if (selectedSet.size > 0 && matchedDepts.length > 0) {
+                for (const dept of matchedDepts) {
+                    if (!selectedGroups[dept]) selectedGroups[dept] = []
+                    selectedGroups[dept].push(staff)
+                }
             } else {
                 otherStaff.push(staff)
             }
