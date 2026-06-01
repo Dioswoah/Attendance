@@ -1770,7 +1770,7 @@ export default function UserPortal() {
             const primaryDept = getPrimaryDept(staff)
             const secondaryDepts = (staff.secondaryDepartments || []).map((d: any) => d.name || '').filter(Boolean)
             const allDepts = [primaryDept, ...secondaryDepts]
-            const matchedDepts = allDepts.filter(d => selectedSet.has(d))
+            const matchedDepts = [...new Set(allDepts.filter(d => selectedSet.has(d)))]
 
             if (selectedSet.size > 0 && matchedDepts.length > 0) {
                 for (const dept of matchedDepts) {
