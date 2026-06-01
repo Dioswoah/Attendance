@@ -66,11 +66,18 @@ export default function AdminDashboard() {
                     setAttendanceRecords(atts)
 
                     // Calculate stats for active employees only
+                    // Deduplicate by userId — keep first (latest) record per user since API sorts clockIn desc
                     const activeAtts = atts.filter((a: any) => activeEmpIds.has(a.userId))
+                    const latestAtts: any[] = Array.from(
+                        activeAtts.reduce((map: Map<string, any>, a: any) => {
+                            if (!map.has(a.userId)) map.set(a.userId, a)
+                            return map
+                        }, new Map<string, any>()).values()
+                    )
 
-                    const clockedIn = activeAtts.filter((a: any) => a.status === 'clocked-in').length
-                    const onBreak = activeAtts.filter((a: any) => a.status === 'on-break').length
-                    const onLeave = activeAtts.filter((a: any) => a.status === 'on-leave').length
+                    const clockedIn = latestAtts.filter((a: any) => a.status === 'clocked-in').length
+                    const onBreak = latestAtts.filter((a: any) => a.status === 'on-break').length
+                    const onLeave = latestAtts.filter((a: any) => a.status === 'on-leave').length
                     const totalStaff = activeEmps.length
 
                     setStats({
