@@ -2733,7 +2733,7 @@ export default function UserPortal() {
                                                                         ? pendingAttendanceToday.find((pr: any) => pr.userId === staff.id)
                                                                         : undefined
                                                                     return (
-                                                                        <TableRow key={staff.id} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
+                                                                        <TableRow key={`${staff.id}-${dept}`} className="group hover:bg-slate-50/80 transition-colors cursor-default border-b-slate-100">
                                                                             <TableCell className="pl-6 py-4">
                                                                                 <div className="flex items-center gap-3">
                                                                                     <div className="relative">
