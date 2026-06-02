@@ -32,7 +32,7 @@ import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/
 import { useSession } from "next-auth/react"
 
 export default function ExportPage() {
-    const [activeTab, setActiveTab] = useState<'attendance' | 'leave'>('attendance')
+    const [selectedReport, setSelectedReport] = useState<'attendance' | 'leave' | null>(null)
     const [generating, setGenerating] = useState(false)
     const [departments, setDepartments] = useState<any[]>([])
     const [allStaff, setAllStaff] = useState<any[]>([])
@@ -469,45 +469,82 @@ export default function ExportPage() {
         return matchesDept && matchesSearch && !s.isArchived
     })
 
+    const REPORTS = [
+        {
+            id: 'attendance' as const,
+            icon: FileSpreadsheet,
+            name: 'Attendance Report',
+            description: 'Daily attendance ledger with clock-in/out times, work hours, work location, and absence records. Includes a Finance Summary sheet for payroll.',
+        },
+        {
+            id: 'leave' as const,
+            icon: CalendarOff,
+            name: 'Leave Records',
+            description: 'View and export leave requests by date range. Filter by status, department, and staff. Supports approved, pending, and declined records.',
+        },
+    ]
+
     return (
-        <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div className="space-y-1">
-                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Export</h1>
-                    <p className="text-muted-foreground text-sm">Workforce reports and leave records</p>
+        <div className="w-full mx-auto animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
+
+            {/* ── Report Index ─────────────────────────────────────── */}
+            {!selectedReport && (
+                <div className="space-y-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-foreground tracking-tight">Reports</h1>
+                        <p className="text-muted-foreground text-sm mt-1">Select a report to configure filters and generate an export</p>
+                    </div>
+
+                    <div className="rounded-xl border border-border overflow-hidden bg-white shadow-sm">
+                        <div className="grid grid-cols-[1fr_2fr_auto] text-xs font-bold uppercase tracking-widest text-muted-foreground bg-muted/30 border-b border-border px-6 py-3 gap-6">
+                            <span>Report</span>
+                            <span>Description</span>
+                            <span></span>
+                        </div>
+                        {REPORTS.map((report, i) => {
+                            const Icon = report.icon
+                            return (
+                                <div key={report.id} className={`grid grid-cols-[1fr_2fr_auto] items-center gap-6 px-6 py-5 hover:bg-muted/20 transition-colors ${i < REPORTS.length - 1 ? 'border-b border-border' : ''}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-primary/10 rounded-lg">
+                                            <Icon className="h-4 w-4 text-primary" />
+                                        </div>
+                                        <span className="font-semibold text-sm text-foreground">{report.name}</span>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">{report.description}</p>
+                                    <Button
+                                        size="sm"
+                                        onClick={() => setSelectedReport(report.id)}
+                                        className="bg-primary hover:bg-primary/90 text-white gap-1.5 whitespace-nowrap"
+                                    >
+                                        <ChevronRight className="h-3.5 w-3.5" />
+                                        Run Report
+                                    </Button>
+                                </div>
+                            )
+                        })}
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* Sub-tabs */}
-            <div className="flex gap-1 p-1 bg-muted/40 rounded-xl border border-border w-fit">
-                {[
-                    { id: 'attendance', label: 'Attendance', icon: FileSpreadsheet },
-                    { id: 'leave', label: 'Leave Records', icon: CalendarOff },
-                ].map(tab => {
-                    const Icon = tab.icon
-                    return (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                                activeTab === tab.id
-                                    ? 'bg-white text-foreground shadow-sm border border-border'
-                                    : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                        >
-                            <Icon className="h-4 w-4" />
-                            {tab.label}
-                        </button>
-                    )
-                })}
-            </div>
+            {/* ── Attendance Report ─────────────────────────────────── */}
+            {selectedReport === 'attendance' && (
+            <div className="space-y-0">
+                {/* Page header */}
+                <div className="flex items-center gap-4 mb-6">
+                    <button onClick={() => setSelectedReport(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors font-medium">
+                        ← All Reports
+                    </button>
+                    <span className="text-muted-foreground">/</span>
+                    <span className="text-sm font-semibold text-foreground">Attendance Report</span>
+                </div>
 
-            {activeTab === 'attendance' && (
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                <CardHeader className="p-6 border-b border-border bg-muted/20">
-                    <CardTitle className="text-lg font-semibold text-foreground">Export Configuration</CardTitle>
-                    <CardDescription className="text-sm text-muted-foreground">Configure chronological and structural parameters</CardDescription>
+                <CardHeader className="p-0 border-b border-border">
+                    <div className="bg-primary px-6 py-4">
+                        <CardTitle className="text-base font-bold text-white">Report Filters</CardTitle>
+                        <CardDescription className="text-white/70 text-xs mt-0.5">Configure filters then generate your report</CardDescription>
+                    </div>
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -849,17 +886,25 @@ export default function ExportPage() {
                 </CardContent>
             </Card>
 
+            </div>
             )}
 
-            {activeTab === 'leave' && (
+            {/* ── Leave Records Report ──────────────────────────────── */}
+            {selectedReport === 'leave' && (
+            <div className="space-y-0">
+                <div className="flex items-center gap-4 mb-6">
+                    <button onClick={() => setSelectedReport(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors font-medium">
+                        ← All Reports
+                    </button>
+                    <span className="text-muted-foreground">/</span>
+                    <span className="text-sm font-semibold text-foreground">Leave Records</span>
+                </div>
+
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
-                <CardHeader className="p-6 border-b border-border bg-muted/20">
-                    <div className="flex items-center gap-3">
-                        <CalendarOff className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                            <CardTitle className="text-lg font-semibold text-foreground">Leave Records</CardTitle>
-                            <CardDescription className="text-sm text-muted-foreground">View and export approved leave records by date range</CardDescription>
-                        </div>
+                <CardHeader className="p-0 border-b border-border">
+                    <div className="bg-primary px-6 py-4">
+                        <CardTitle className="text-base font-bold text-white">Report Filters</CardTitle>
+                        <CardDescription className="text-white/70 text-xs mt-0.5">Configure filters then load and export records</CardDescription>
                     </div>
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
@@ -1077,6 +1122,7 @@ export default function ExportPage() {
                     )}
                 </CardContent>
             </Card>
+            </div>
             )}
         </div>
     )
