@@ -228,6 +228,8 @@ export async function GET(req: Request) {
     }
 
     // --- Department stats ---
+    // Built per-user (same logic as staffKPI) so scheduled days, paid leave, and
+    // calculateTardiness are all applied consistently — prevents rates above 100%.
     const deptMap: Record<string, {
         deptId: string; dept: string; headcount: number;
         present: number; expected: number; late: number;
@@ -239,29 +241,47 @@ export async function GET(req: Request) {
         const name = user.department?.name || 'Unassigned'
         if (!deptMap[key]) deptMap[key] = { deptId: key, dept: name, headcount: 0, present: 0, expected: 0, late: 0, totalWorkMin: 0, leaveDays: 0, wfhDays: 0 }
         deptMap[key].headcount++
-        deptMap[key].expected += workingDays.length
-    }
-    for (const s of summaries) {
-        const key = s.user.departmentId || '__none'
-        if (!deptMap[key]) continue
-        if (s.status !== 'ABSENT' && s.status !== 'LEAVE') {
+
+        const userSummaries = summaries.filter(s => s.userId === user.id)
+        const userScheduledDays = workingDays.filter(d => isUserScheduledDay(user.workingDays, d))
+
+        // Expected = scheduled days minus approved paid leave days
+        const userPaidLeaveDaysCount = userScheduledDays.filter(dayStr => {
+            const lt = getLeaveTypeForDay(user.id, dayStr)
+            return lt && PAID_LEAVE_TYPES.has(lt)
+        }).length
+        deptMap[key].expected += Math.max(0, userScheduledDays.length - userPaidLeaveDaysCount)
+
+        // Only count present summaries that fall on this user's scheduled working days
+        for (const dayStr of userScheduledDays) {
+            const rec = userSummaries.find(s => s.date.toISOString().split('T')[0] === dayStr)
+            if (!rec || rec.status === 'ABSENT' || rec.status === 'LEAVE') continue
+            // Skip paid leave days
+            const lt = getLeaveTypeForDay(user.id, dayStr)
+            if (lt && PAID_LEAVE_TYPES.has(lt)) continue
+
             deptMap[key].present++
-            deptMap[key].totalWorkMin += s.totalWorkDuration
-            if (s.mode === 'WFH') deptMap[key].wfhDays++
+            deptMap[key].totalWorkMin += rec.totalWorkDuration
+            if (rec.mode === 'WFH') deptMap[key].wfhDays++
+            if (rec.clockIn && calculateTardiness(rec, user) > 0) deptMap[key].late++
         }
-        if (s.status === 'LEAVE') deptMap[key].leaveDays++
-        if (s.status === 'LATE') deptMap[key].late++
+
+        // Leave days: count approved leaves on scheduled days using the approved-only lookup
+        for (const dayStr of userScheduledDays) {
+            if (getLeaveTypeForDay(user.id, dayStr)) deptMap[key].leaveDays++
+        }
     }
+
     const departmentStats = Object.values(deptMap)
         .map(d => ({
             deptId: d.deptId,
             dept: d.dept,
             headcount: d.headcount,
-            attendanceRate: d.expected > 0 ? Math.round((d.present / d.expected) * 100) : 0,
-            lateRate: d.present > 0 ? Math.round((d.late / d.present) * 100) : 0,
+            attendanceRate: d.expected > 0 ? Math.min(100, Math.round((d.present / d.expected) * 100)) : 0,
+            lateRate: d.present > 0 ? Math.min(100, Math.round((d.late / d.present) * 100)) : 0,
             avgHours: d.present > 0 ? Math.round((d.totalWorkMin / d.present / 60) * 10) / 10 : 0,
             leaveDays: d.leaveDays,
-            wfhRate: d.present > 0 ? Math.round((d.wfhDays / d.present) * 100) : 0,
+            wfhRate: d.present > 0 ? Math.min(100, Math.round((d.wfhDays / d.present) * 100)) : 0,
         }))
         .sort((a, b) => b.attendanceRate - a.attendanceRate)
 
