@@ -58,6 +58,10 @@ export default function ExportPage() {
     const [attendanceSummary, setAttendanceSummary] = useState<any[]>([])
     const [attendanceLoading, setAttendanceLoading] = useState(false)
     const [attendanceLoaded, setAttendanceLoaded] = useState(false)
+    const [attendanceFiltersOpen, setAttendanceFiltersOpen] = useState(true)
+
+    // Leave filters collapsed state
+    const [leaveFiltersOpen, setLeaveFiltersOpen] = useState(true)
 
     // Leave Records state
     const [leaveStartDate, setLeaveStartDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), "yyyy-MM-dd"))
@@ -320,6 +324,7 @@ export default function ExportPage() {
 
             setAttendanceRows(filtered)
             setAttendanceSummary(summary)
+            setAttendanceFiltersOpen(false)
         } catch {
             toast.error("Failed to load attendance data")
         } finally {
@@ -380,6 +385,7 @@ export default function ExportPage() {
     const fetchLeaveRecords = async () => {
         setLeaveLoading(true)
         setLeaveLoaded(true)
+        setLeaveFiltersOpen(false)
         try {
             const params = new URLSearchParams({ startDate: leaveStartDate, endDate: leaveEndDate })
             if (leaveStatus !== 'all') params.set('status', leaveStatus)
@@ -500,12 +506,20 @@ export default function ExportPage() {
 
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardHeader className="p-0 border-b border-border">
-                    <div className="bg-primary px-6 py-4">
-                        <CardTitle className="text-base font-bold text-white">Report Filters</CardTitle>
-                        <CardDescription className="text-white/70 text-xs mt-0.5">Configure filters then generate your report</CardDescription>
-                    </div>
+                    <button
+                        onClick={() => setAttendanceFiltersOpen(v => !v)}
+                        className="w-full bg-primary px-6 py-4 text-left flex items-center justify-between"
+                    >
+                        <div>
+                            <CardTitle className="text-base font-bold text-white">Report Filters</CardTitle>
+                            <CardDescription className="text-white/70 text-xs mt-0.5">
+                                {attendanceFiltersOpen ? 'Configure filters then run report' : 'Click to expand filters'}
+                            </CardDescription>
+                        </div>
+                        <ChevronDown className={`h-4 w-4 text-white/80 transition-transform ${attendanceFiltersOpen ? '' : '-rotate-90'}`} />
+                    </button>
                 </CardHeader>
-                <CardContent className="p-6 space-y-6">
+                {attendanceFiltersOpen && <CardContent className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
                             <Label>Start Date</Label>
@@ -828,17 +842,19 @@ export default function ExportPage() {
                         </div>
                     </div>
 
-                    <div className="pt-4 border-t border-border">
-                        <Button
-                            onClick={handleRunAttendance}
-                            disabled={attendanceLoading}
-                            className="bg-primary hover:bg-primary/90 text-white gap-2"
-                        >
-                            {attendanceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                            {attendanceLoading ? 'Loading...' : 'Run Report'}
-                        </Button>
-                    </div>
-                </CardContent>
+                </CardContent>}
+
+                {/* Run button always visible */}
+                <div className="flex items-center gap-3 px-6 py-4 border-t border-border bg-muted/10">
+                    <Button
+                        onClick={handleRunAttendance}
+                        disabled={attendanceLoading}
+                        className="bg-primary hover:bg-primary/90 text-white gap-2"
+                    >
+                        {attendanceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                        {attendanceLoading ? 'Loading...' : 'Run Report'}
+                    </Button>
+                </div>
             </Card>
 
             {/* Results table */}
@@ -910,12 +926,20 @@ export default function ExportPage() {
 
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardHeader className="p-0 border-b border-border">
-                    <div className="bg-primary px-6 py-4">
-                        <CardTitle className="text-base font-bold text-white">Report Filters</CardTitle>
-                        <CardDescription className="text-white/70 text-xs mt-0.5">Configure filters then load and export records</CardDescription>
-                    </div>
+                    <button
+                        onClick={() => setLeaveFiltersOpen(v => !v)}
+                        className="w-full bg-primary px-6 py-4 text-left flex items-center justify-between"
+                    >
+                        <div>
+                            <CardTitle className="text-base font-bold text-white">Report Filters</CardTitle>
+                            <CardDescription className="text-white/70 text-xs mt-0.5">
+                                {leaveFiltersOpen ? 'Configure filters then load records' : 'Click to expand filters'}
+                            </CardDescription>
+                        </div>
+                        <ChevronDown className={`h-4 w-4 text-white/80 transition-transform ${leaveFiltersOpen ? '' : '-rotate-90'}`} />
+                    </button>
                 </CardHeader>
-                <CardContent className="p-6 space-y-6">
+                {leaveFiltersOpen && <CardContent className="p-6 space-y-6">
                     {/* Filters */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div className="space-y-2">
@@ -1076,21 +1100,35 @@ export default function ExportPage() {
                         ))}
                     </div>
 
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-3 pt-2 border-t border-border">
-                        <Button onClick={fetchLeaveRecords} disabled={leaveLoading} className="bg-[#8B2323] hover:bg-[#701c1c]">
-                            {leaveLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ChevronRight className="h-4 w-4 mr-2" />}
-                            {leaveLoading ? 'Loading...' : 'Load Records'}
-                        </Button>
-                        {leaveRecords.length > 0 && (
-                            <Button variant="outline" onClick={handleLeaveExport} disabled={leaveExporting}>
-                                {leaveExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-                                Export to Sheet ({leaveRecords.length})
-                            </Button>
-                        )}
-                    </div>
+                </CardContent>}
 
-                    {/* Table */}
+                {/* Run button always visible */}
+                <div className="flex items-center gap-3 px-6 py-4 border-t border-border bg-muted/10">
+                    <Button onClick={fetchLeaveRecords} disabled={leaveLoading} className="bg-primary hover:bg-primary/90 text-white gap-2">
+                        {leaveLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                        {leaveLoading ? 'Loading...' : 'Run Report'}
+                    </Button>
+                </div>
+            </Card>
+
+            {/* Results table */}
+            {leaveLoaded && !leaveLoading && (
+                <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white mt-6">
+                    <CardHeader className="p-4 border-b border-border bg-muted/20">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="text-sm font-bold text-foreground">Report Results</CardTitle>
+                                <CardDescription className="text-xs mt-0.5">{leaveRecords.length} records · {leaveStartDate} to {leaveEndDate}</CardDescription>
+                            </div>
+                            {leaveRecords.length > 0 && (
+                                <Button variant="outline" size="sm" onClick={handleLeaveExport} disabled={leaveExporting} className="gap-1.5">
+                                    {leaveExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                                    Export to Excel
+                                </Button>
+                            )}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
                     {leaveLoaded && !leaveLoading && (
                         <div className="rounded-lg border border-border overflow-hidden">
                             {leaveRecords.length === 0 ? (
@@ -1128,8 +1166,9 @@ export default function ExportPage() {
                             )}
                         </div>
                     )}
-                </CardContent>
-            </Card>
+                    </CardContent>
+                </Card>
+            )}
             </div>
             )}
         </div>
