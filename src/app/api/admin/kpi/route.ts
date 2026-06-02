@@ -283,7 +283,10 @@ export async function GET(req: Request) {
             leaveDays: d.leaveDays,
             wfhRate: d.present > 0 ? Math.round((d.wfhDays / d.present) * 100) : 0,
         }))
-        .sort((a, b) => b.attendanceRate - a.attendanceRate)
+        .sort((a, b) => {
+            if (b.attendanceRate !== a.attendanceRate) return b.attendanceRate - a.attendanceRate
+            return a.lateRate - b.lateRate // lower late rate wins when attendance is tied
+        })
 
     // --- WFH vs Office (weekly buckets) ---
     const wfhTrendMap: Record<string, { office: number; wfh: number; other: number }> = {}
