@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -594,17 +594,7 @@ export default function AIInsightsPage() {
         } finally { setLoading(false); setRefreshing(false) }
     }, [startDate, endDate, selectedDeptIds, selectedLocation, selectedStaffIds])
 
-    // Initial mount — full loading skeleton
-    const isFirstLoad = useRef(true)
-    useEffect(() => {
-        if (isFirstLoad.current) {
-            isFirstLoad.current = false
-            fetchData()
-        } else {
-            // Filter changes — keep existing data visible, only show refresh spinner
-            fetchData(true)
-        }
-    }, [fetchData])
+    useEffect(() => { fetchData() }, [fetchData])
 
     const applyPreset = (preset: typeof PRESETS[0]) => {
         const { start, end } = preset.getValue()
