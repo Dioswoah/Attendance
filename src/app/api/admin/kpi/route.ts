@@ -277,11 +277,11 @@ export async function GET(req: Request) {
             deptId: d.deptId,
             dept: d.dept,
             headcount: d.headcount,
-            attendanceRate: d.expected > 0 ? Math.min(100, Math.round((d.present / d.expected) * 100)) : 0,
-            lateRate: d.present > 0 ? Math.min(100, Math.round((d.late / d.present) * 100)) : 0,
+            attendanceRate: d.expected > 0 ? Math.round((d.present / d.expected) * 100) : 0,
+            lateRate: d.present > 0 ? Math.round((d.late / d.present) * 100) : 0,
             avgHours: d.present > 0 ? Math.round((d.totalWorkMin / d.present / 60) * 10) / 10 : 0,
             leaveDays: d.leaveDays,
-            wfhRate: d.present > 0 ? Math.min(100, Math.round((d.wfhDays / d.present) * 100)) : 0,
+            wfhRate: d.present > 0 ? Math.round((d.wfhDays / d.present) * 100) : 0,
         }))
         .sort((a, b) => b.attendanceRate - a.attendanceRate)
 
