@@ -563,6 +563,8 @@ export default function AIInsightsPage() {
     const [selectedLocation, setSelectedLocation] = useState(() =>
         typeof window !== 'undefined' ? localStorage.getItem('kpi_location') || 'all' : 'all'
     )
+    const [includeLeavesInTrend, setIncludeLeavesInTrend] = useState(false)
+    const [showPendingInTrend, setShowPendingInTrend] = useState(false)
 
     useEffect(() => { localStorage.setItem('kpi_preset', activePreset) }, [activePreset])
     useEffect(() => { localStorage.setItem('kpi_startDate', startDate) }, [startDate])
@@ -623,6 +625,31 @@ export default function AIInsightsPage() {
     const selectedStaffNames = useMemo(() =>
         allStaff.filter(s => selectedStaffIds.includes(s.id)).map(s => s.name)
     , [allStaff, selectedStaffIds])
+
+    const trendData = useMemo(() => {
+        if (!data?.attendanceTrend) return []
+        return data.attendanceTrend.map((d: any) => {
+            const present = d.present ?? 0
+            const paidLeave = d.paidLeave ?? 0
+            const unpaidOrSick = d.unpaidOrSickLeave ?? 0
+            const pending = d.pendingLeave ?? 0
+            const absent = d.absent ?? 0
+
+            // Base denominator excludes paid leave (they're not expected at work)
+            // When showPending is ON, also exclude pending from absent count
+            const effectiveAbsent = showPendingInTrend ? Math.max(0, absent - pending) : absent
+
+            if (includeLeavesInTrend) {
+                // All leaves included — paid leave back in denominator
+                const denominator = present + paidLeave + unpaidOrSick + (showPendingInTrend ? 0 : pending) + effectiveAbsent
+                return { ...d, rate: denominator > 0 ? Math.round((present / denominator) * 100) : 0 }
+            }
+
+            // Default — paid leave excluded from denominator
+            const denominator = present + unpaidOrSick + (showPendingInTrend ? 0 : pending) + effectiveAbsent
+            return { ...d, rate: denominator > 0 ? Math.round((present / denominator) * 100) : 0 }
+        })
+    }, [data?.attendanceTrend, includeLeavesInTrend, showPendingInTrend])
 
     const exportToExcel = () => {
         if (!data) return
@@ -929,15 +956,45 @@ export default function AIInsightsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <Card className="lg:col-span-2 border border-border shadow-sm bg-white">
                     <CardHeader className="p-5 border-b border-border bg-muted/20">
-                        <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
-                            <Activity className="h-4 w-4 text-primary" />Attendance Trend
-                        </CardTitle>
-                        <CardDescription className="text-xs">Daily attendance rate over the selected period</CardDescription>
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                                    <Activity className="h-4 w-4 text-primary" />Attendance Trend
+                                </CardTitle>
+                                <CardDescription className="text-xs mt-0.5">
+                                    {includeLeavesInTrend
+                                        ? 'Rate includes all leave types in the calculation'
+                                        : 'Rate excludes paid leave (vacation, birthday, maternity)'}
+                                </CardDescription>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowPendingInTrend(v => !v)}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors whitespace-nowrap ${
+                                        showPendingInTrend
+                                            ? 'bg-amber-500 text-white border-amber-500'
+                                            : 'bg-white text-muted-foreground border-border hover:border-amber-400 hover:text-amber-600'
+                                    }`}
+                                >
+                                    <span>{showPendingInTrend ? 'Pending On' : 'Pending Off'}</span>
+                                </button>
+                                <button
+                                    onClick={() => setIncludeLeavesInTrend(v => !v)}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors whitespace-nowrap ${
+                                        includeLeavesInTrend
+                                            ? 'bg-primary text-white border-primary'
+                                            : 'bg-white text-muted-foreground border-border hover:border-primary/40 hover:text-primary'
+                                    }`}
+                                >
+                                    <span>{includeLeavesInTrend ? 'All Leaves On' : 'All Leaves Off'}</span>
+                                </button>
+                            </div>
+                        </div>
                     </CardHeader>
                     <CardContent className="p-4">
-                        {loading ? <SkeletonChart height={260} /> : data?.attendanceTrend?.length > 0 ? (
+                        {loading ? <SkeletonChart height={260} /> : trendData.length > 0 ? (
                             <ResponsiveContainer width="100%" height={260}>
-                                <AreaChart data={data.attendanceTrend} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                                <AreaChart data={trendData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="rateGrad" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor={CHART_COLORS.primary} stopOpacity={0.15} />
@@ -947,10 +1004,11 @@ export default function AIInsightsPage() {
                                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }}
                                         tickFormatter={v => { const d = new Date(v + 'T00:00:00'); return `${d.getDate()}/${d.getMonth() + 1}` }}
-                                        interval={data.attendanceTrend.length > 30 ? Math.floor(data.attendanceTrend.length / 10) : 0} />
+                                        interval={trendData.length > 30 ? Math.floor(trendData.length / 10) : 0} />
                                     <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} domain={[0, 100]} tickFormatter={v => `${v}%`} />
                                     <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0' }}
-                                        formatter={(v: any) => [`${v}%`, 'Rate']} labelFormatter={l => `Date: ${l}`} />
+                                        formatter={(v: any) => [`${v}%`, 'Rate']}
+                                        labelFormatter={l => `Date: ${l}`} />
                                     <Area type="monotone" dataKey="rate" stroke={CHART_COLORS.primary} strokeWidth={2} fill="url(#rateGrad)" dot={false} name="Attendance %" />
                                 </AreaChart>
                             </ResponsiveContainer>

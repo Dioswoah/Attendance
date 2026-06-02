@@ -31,10 +31,17 @@ export function isNonWorkingDay(date: Date | string): boolean {
 }
 
 /**
- * Convert time string (HH:MM) or Date to minutes since midnight
+ * Convert time string (HH:MM) or Date to minutes since midnight.
+ * When a Date is provided, an optional timezone is used to extract the
+ * local hours/minutes — critical for correct tardiness on Cloud Run (UTC server).
  */
-export function timeToMinutes(time: string | Date): number {
+export function timeToMinutes(time: string | Date, timezone?: string): number {
     if (time instanceof Date) {
+        if (timezone) {
+            const localStr = time.toLocaleTimeString('en-US', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false })
+            const [h, m] = localStr.split(':').map(Number)
+            return h * 60 + m
+        }
         return time.getHours() * 60 + time.getMinutes()
     }
     // time is "HH:MM" format
@@ -66,8 +73,12 @@ export function calculateTardiness(
     const expectedStart = attendance.scheduledStart || user.shiftStartTime || "09:00"
     if (!expectedStart) return 0
 
+    const userTimezone = user.selectedTimezone ||
+        (user.employmentLocation === 'Philippines' ? 'Asia/Manila' :
+         user.employmentLocation === 'Australia' ? 'Australia/Sydney' : 'UTC')
+
     const expectedMinutes = timeToMinutes(expectedStart)
-    const actualMinutes = timeToMinutes(new Date(attendance.clockIn))
+    const actualMinutes = timeToMinutes(new Date(attendance.clockIn), userTimezone)
 
     const difference = actualMinutes - expectedMinutes
 

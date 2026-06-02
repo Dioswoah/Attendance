@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { xeroFetch, getXeroToken } from '@/lib/xero'
+import { prisma } from '@/lib/prisma'
+import { getXeroToken } from '@/lib/xero'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,44 +18,32 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'email parameter required' }, { status: 400 })
     }
 
+    // Check if Xero is connected
     try {
-        // Check if Xero is connected
         await getXeroToken()
     } catch {
         return NextResponse.json({ connected: false })
     }
 
-    try {
-        const data = await xeroFetch('/payroll.xro/1.0/Employees')
-        const employees: any[] = data.Employees || []
+    // Look up user and their cached balances from DB
+    const user = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, xeroLeaveBalances: { select: { leaveName: true, hours: true, syncedAt: true } } },
+    })
 
-        const match = employees.find((emp: any) =>
-            (emp.Email || '').toLowerCase() === email
-        )
+    if (!user) return NextResponse.json({ connected: true, found: false, email })
 
-        if (!match) {
-            return NextResponse.json({ connected: true, found: false, email })
-        }
+    const balances = user.xeroLeaveBalances
+    if (!balances.length) return NextResponse.json({ connected: true, found: false, email })
 
-        // Fetch individual employee for full leave balance details
-        const detail = await xeroFetch(`/payroll.xro/1.0/Employees/${match.EmployeeID}`)
-        const emp = detail.Employees?.[0] || match
-
-        const leaveBalances = (emp.LeaveBalances || []).map((lb: any) => ({
-            name: lb.LeaveName,
-            units: lb.NumberOfUnits,
-            typeOfUnits: lb.TypeOfUnits || 'Hours',
-        }))
-
-        return NextResponse.json({
-            connected: true,
-            found: true,
-            xeroId: match.EmployeeID,
-            name: `${match.FirstName} ${match.LastName}`,
-            leaveBalances,
-        })
-    } catch (err: any) {
-        console.error('[Xero leave-balance]', err.message)
-        return NextResponse.json({ connected: false })
-    }
+    return NextResponse.json({
+        connected: true,
+        found: true,
+        syncedAt: balances[0].syncedAt,
+        leaveBalances: balances.map(b => ({
+            name: b.leaveName,
+            units: b.hours,
+            typeOfUnits: 'Hours',
+        })),
+    })
 }

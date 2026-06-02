@@ -27,12 +27,12 @@ export async function GET(req: Request) {
         delete userWhere.employmentLocation
     }
 
-    const [users, summaries, leavesApproved, leaveRequests] = await Promise.all([
+    const [users, summaries, leavesApproved, leaveRequests, leavesPending] = await Promise.all([
         prisma.user.findMany({
             where: userWhere,
             select: {
                 id: true, name: true, departmentId: true, employmentLocation: true,
-                shiftStartTime: true, shiftEndTime: true,
+                shiftStartTime: true, shiftEndTime: true, workingDays: true,
                 department: { select: { name: true } }
             }
         }),
@@ -48,7 +48,8 @@ export async function GET(req: Request) {
                 user: {
                     select: {
                         id: true, name: true, departmentId: true, employmentLocation: true,
-                        shiftStartTime: true, shiftEndTime: true,
+                        shiftStartTime: true, shiftEndTime: true, workingDays: true,
+                        selectedTimezone: true,
                         department: { select: { name: true } }
                     }
                 }
@@ -71,9 +72,18 @@ export async function GET(req: Request) {
             },
             select: { id: true, userId: true, status: true, type: true, startDate: true, endDate: true, createdAt: true, updatedAt: true }
         }),
+        prisma.leaveRequest.findMany({
+            where: {
+                deletedAt: null, status: 'PENDING',
+                startDate: { lte: new Date(endDate + 'T23:59:59.999Z') },
+                endDate: { gte: new Date(startDate) },
+                user: userWhere,
+            },
+            select: { id: true, userId: true, type: true, startDate: true, endDate: true }
+        }),
     ])
 
-    // Working days in range
+    // Working days in range (global — excludes weekends & public holidays)
     const start = new Date(startDate)
     const end = new Date(endDate)
     const workingDays: string[] = []
@@ -81,6 +91,45 @@ export async function GET(req: Request) {
         if (!isNonWorkingDay(new Date(d))) {
             workingDays.push(d.toISOString().split('T')[0])
         }
+    }
+
+    // Day-name lookup for per-staff schedule checking
+    const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+    function isUserScheduledDay(userWorkingDays: string | null, dayStr: string): boolean {
+        if (!userWorkingDays) return true // default: works all global working days
+        const scheduled = new Set(userWorkingDays.split(',').map(d => d.trim().toUpperCase()))
+        const dayName = DAY_NAMES[new Date(dayStr + 'T00:00:00Z').getUTCDay()]
+        return scheduled.has(dayName)
+    }
+
+    // Leave type lookup must be built before trend/rate calculations so paid leaves
+    // can be identified and excluded from the absence penalty.
+    const PAID_LEAVE_TYPES = new Set(['VACATION', 'BIRTHDAY', 'MATERNITY'])
+    type LeaveEntry = { startDateStr: string; endDateStr: string; type: string }
+    const leaveTypeLookup: Record<string, LeaveEntry[]> = {}
+    for (const leave of leavesApproved) {
+        if (!leaveTypeLookup[leave.userId]) leaveTypeLookup[leave.userId] = []
+        leaveTypeLookup[leave.userId].push({
+            startDateStr: new Date(leave.startDate).toISOString().split('T')[0],
+            endDateStr: new Date(leave.endDate).toISOString().split('T')[0],
+            type: leave.type || 'OTHER'
+        })
+    }
+    function getLeaveTypeForDay(userId: string, dayStr: string): string | undefined {
+        return (leaveTypeLookup[userId] || []).find(l => dayStr >= l.startDateStr && dayStr <= l.endDateStr)?.type
+    }
+
+    // Pending leave lookup — staff with a pending request on a given day should not be marked absent
+    const pendingLeaveLookup: Record<string, { startDateStr: string; endDateStr: string }[]> = {}
+    for (const leave of leavesPending) {
+        if (!pendingLeaveLookup[leave.userId]) pendingLeaveLookup[leave.userId] = []
+        pendingLeaveLookup[leave.userId].push({
+            startDateStr: new Date(leave.startDate).toISOString().split('T')[0],
+            endDateStr: new Date(leave.endDate).toISOString().split('T')[0],
+        })
+    }
+    function hasPendingLeaveOnDay(userId: string, dayStr: string): boolean {
+        return (pendingLeaveLookup[userId] || []).some(l => dayStr >= l.startDateStr && dayStr <= l.endDateStr)
     }
 
     const totalActiveStaff = users.length
@@ -91,13 +140,20 @@ export async function GET(req: Request) {
     const absentSummaries = summaries.filter(s => s.status === 'ABSENT')
     const lateSummaries = summaries.filter(s => s.status === 'LATE')
 
+    // Paid leave staff are excluded from the denominator entirely — not expected at work
+    const paidLeaveSummaries = leaveSummaries.filter(s => {
+        const lt = getLeaveTypeForDay(s.userId, s.date.toISOString().split('T')[0])
+        return lt && PAID_LEAVE_TYPES.has(lt)
+    })
+    const effectiveExpected = expectedAttendances - paidLeaveSummaries.length
+
     // On-time: use calculateTardiness for accuracy
     const onTimeSummaries = presentSummaries.filter(s => {
         if (!s.clockIn) return false
         return calculateTardiness(s, s.user) === 0
     })
 
-    const attendanceRate = expectedAttendances > 0 ? Math.round((presentSummaries.length / expectedAttendances) * 100) : 0
+    const attendanceRate = effectiveExpected > 0 ? Math.round((presentSummaries.length / effectiveExpected) * 100) : 0
     const onTimeRate = presentSummaries.length > 0 ? Math.round((onTimeSummaries.length / presentSummaries.length) * 100) : 0
     const absentRate = expectedAttendances > 0 ? Math.round((absentSummaries.length / expectedAttendances) * 100) : 0
     const wfhSummaries = presentSummaries.filter(s => s.mode === 'WFH')
@@ -111,16 +167,42 @@ export async function GET(req: Request) {
 
     // --- Attendance trend (daily) ---
     const attendanceTrend = workingDays.map(dayStr => {
-        const dayRecords = summaries.filter(s => s.date.toISOString().split('T')[0] === dayStr)
+        // Only count staff who are scheduled to work on this specific day
+        const scheduledStaff = users.filter(u => isUserScheduledDay(u.workingDays, dayStr))
+        const scheduledCount = scheduledStaff.length
+        const scheduledIds = new Set(scheduledStaff.map(u => u.id))
+
+        const dayRecords = summaries.filter(s =>
+            s.date.toISOString().split('T')[0] === dayStr && scheduledIds.has(s.userId)
+        )
         const present = dayRecords.filter(s => s.status !== 'ABSENT' && s.status !== 'LEAVE').length
-        const onLeave = dayRecords.filter(s => s.status === 'LEAVE').length
-        const absent = Math.max(0, totalActiveStaff - present - onLeave)
+        const leaveRecords = dayRecords.filter(s => s.status === 'LEAVE')
+        // Paid leave (vacation/birthday/maternity) is authorised — counts toward effective attendance
+        const paidLeave = leaveRecords.filter(s => {
+            const lt = getLeaveTypeForDay(s.userId, dayStr)
+            return lt && PAID_LEAVE_TYPES.has(lt)
+        }).length
+        const unpaidOrSickLeave = leaveRecords.length - paidLeave
+        const noWork = totalActiveStaff - scheduledCount
+        // Pending leave: staff absent on this day but with a pending leave request
+        const pendingLeave = scheduledStaff.filter(u => {
+            const rec = summaries.find(s => s.userId === u.id && s.date.toISOString().split('T')[0] === dayStr)
+            const isAbsent = !rec || rec.status === 'ABSENT'
+            return isAbsent && hasPendingLeaveOnDay(u.id, dayStr)
+        }).length
+
+        const absent = Math.max(0, scheduledCount - present - leaveRecords.length - pendingLeave)
+        // Paid leave staff excluded from denominator — not expected at work
+        const denominator = scheduledCount - paidLeave
         return {
             date: dayStr,
             present,
-            onLeave,
+            paidLeave,
+            unpaidOrSickLeave,
+            pendingLeave,
             absent,
-            rate: totalActiveStaff > 0 ? Math.round((present / totalActiveStaff) * 100) : 0
+            noWork,
+            rate: denominator > 0 ? Math.round((present / denominator) * 100) : 0
         }
     })
 
@@ -197,8 +279,18 @@ export async function GET(req: Request) {
         .map(([date, v]) => ({ date, ...v }))
 
     // --- Tardiness buckets ---
+    // Use same filtered pool as attendance: only scheduled working days, exclude paid leave days
     const tardinessValues = presentSummaries
-        .filter(s => s.clockIn)
+        .filter(s => {
+            if (!s.clockIn) return false
+            const dayStr = s.date.toISOString().split('T')[0]
+            // Exclude no-work days for this user
+            if (!isUserScheduledDay(s.user.workingDays ?? null, dayStr)) return false
+            // Exclude paid leave days (shouldn't be in presentSummaries but guard anyway)
+            const lt = getLeaveTypeForDay(s.userId, dayStr)
+            if (lt && PAID_LEAVE_TYPES.has(lt)) return false
+            return true
+        })
         .map(s => calculateTardiness(s, s.user))
 
     const tardinessBuckets = [
@@ -274,28 +366,23 @@ export async function GET(req: Request) {
         attendanceRate: v.expected > 0 ? Math.round((v.present / v.expected) * 100) : 0
     }))
 
-    // --- Leave type lookup (for daily trend enrichment) ---
-    type LeaveEntry = { startDateStr: string; endDateStr: string; type: string }
-    const leaveTypeLookup: Record<string, LeaveEntry[]> = {}
-    for (const leave of leavesApproved) {
-        if (!leaveTypeLookup[leave.userId]) leaveTypeLookup[leave.userId] = []
-        leaveTypeLookup[leave.userId].push({
-            startDateStr: new Date(leave.startDate).toISOString().split('T')[0],
-            endDateStr: new Date(leave.endDate).toISOString().split('T')[0],
-            type: leave.type || 'OTHER'
-        })
-    }
-    function getLeaveTypeForDay(userId: string, dayStr: string): string | undefined {
-        return (leaveTypeLookup[userId] || []).find(l => dayStr >= l.startDateStr && dayStr <= l.endDateStr)?.type
-    }
-
     // --- Per-staff KPI ---
     const staffKPI = users.map(user => {
         const userSummaries = summaries.filter(s => s.userId === user.id)
+
+        // Split working days into scheduled vs no-work based on the user's own schedule
+        const userScheduledDays = workingDays.filter(d => isUserScheduledDay(user.workingDays, d))
+        const userNoWorkDays = workingDays.filter(d => !isUserScheduledDay(user.workingDays, d))
+
         const userPresent = userSummaries.filter(s => s.status !== 'ABSENT' && s.status !== 'LEAVE')
-        const userAbsent = userSummaries.filter(s => s.status === 'ABSENT')
         const userLeave = userSummaries.filter(s => s.status === 'LEAVE')
         const userWfh = userPresent.filter(s => s.mode === 'WFH')
+
+        // Absent = scheduled day with no record or ABSENT record
+        const userAbsentDays = userScheduledDays.filter(dayStr => {
+            const rec = userSummaries.find(s => s.date.toISOString().split('T')[0] === dayStr)
+            return !rec || rec.status === 'ABSENT'
+        })
 
         const userLateDetails = userPresent.filter(s => s.clockIn && calculateTardiness(s, s.user) > 0)
         const totalTardinessMin = userLateDetails.reduce((acc, s) => acc + calculateTardiness(s, s.user), 0)
@@ -304,9 +391,15 @@ export async function GET(req: Request) {
         const totalWorkMin = userPresent.reduce((acc, s) => acc + s.totalWorkDuration, 0)
         const totalBreakMin = userPresent.reduce((acc, s) => acc + s.totalBreakDuration, 0)
 
-        // Leave type breakdown per day
+        // Paid leave days (don't count against attendance rate)
+        const userPaidLeaveDays = userLeave.filter(s => {
+            const lt = getLeaveTypeForDay(user.id, s.date.toISOString().split('T')[0])
+            return lt && PAID_LEAVE_TYPES.has(lt)
+        })
+
+        // Leave type breakdown per scheduled day
         const leavesByType: Record<string, number> = { SICK: 0, VACATION: 0, BIRTHDAY: 0, MATERNITY: 0, OTHER: 0 }
-        for (const dayStr of workingDays) {
+        for (const dayStr of userScheduledDays) {
             const rec = userSummaries.find(s => s.date.toISOString().split('T')[0] === dayStr)
             if (rec?.status === 'LEAVE') {
                 const lt = getLeaveTypeForDay(user.id, dayStr) || 'OTHER'
@@ -314,8 +407,11 @@ export async function GET(req: Request) {
             }
         }
 
-        // Daily trend with leave type
+        // Daily trend — includes NO_WORK status for unscheduled days
         const dailyTrend = workingDays.map(dayStr => {
+            if (!isUserScheduledDay(user.workingDays, dayStr)) {
+                return { date: dayStr, status: 'NO_WORK', leaveType: undefined, mode: null, workMin: 0, clockIn: null, clockOut: null, tardiness: 0 }
+            }
             const rec = userSummaries.find(s => s.date.toISOString().split('T')[0] === dayStr)
             const leaveType = rec?.status === 'LEAVE' ? getLeaveTypeForDay(user.id, dayStr) : undefined
             return {
@@ -330,6 +426,9 @@ export async function GET(req: Request) {
             }
         })
 
+        // Paid leave days excluded from denominator — staff not expected at work on those days
+        const userEffectiveExpected = userScheduledDays.length - userPaidLeaveDays.length
+
         return {
             id: user.id,
             name: user.name || 'Unknown',
@@ -337,13 +436,14 @@ export async function GET(req: Request) {
             location: user.employmentLocation || 'Unknown',
             shiftStart: user.shiftStartTime || '09:00',
             shiftEnd: user.shiftEndTime || '17:00',
-            expectedDays: workingDays.length,
+            expectedDays: userScheduledDays.length,
+            noWorkDays: userNoWorkDays.length,
             presentDays: userPresent.length,
-            absentDays: userAbsent.length,
+            absentDays: userAbsentDays.length,
             leaveDays: userLeave.length,
             lateDays: userLateDetails.length,
             wfhDays: userWfh.length,
-            attendanceRate: workingDays.length > 0 ? Math.round((userPresent.length / workingDays.length) * 100) : 0,
+            attendanceRate: userEffectiveExpected > 0 ? Math.round((userPresent.length / userEffectiveExpected) * 100) : 0,
             onTimeRate: userPresent.length > 0 ? Math.round((userOnTime.length / userPresent.length) * 100) : 0,
             avgWorkHours: userPresent.length > 0 ? Math.round((totalWorkMin / userPresent.length / 60) * 10) / 10 : 0,
             avgBreakMinutes: userPresent.length > 0 ? Math.round(totalBreakMin / userPresent.length) : 0,

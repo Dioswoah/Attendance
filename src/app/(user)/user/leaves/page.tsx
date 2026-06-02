@@ -389,7 +389,9 @@ export default function LeaveRequestsPage() {
                             </DialogDescription>
                         </DialogHeader>
 
-                        <XeroLeaveBalance email={(session?.user as any)?.email} className="px-1" />
+                        {(session?.user as any)?.location === 'Australia' && (
+                            <XeroLeaveBalance email={(session?.user as any)?.email} className="px-1" />
+                        )}
 
                         <form onSubmit={handleSubmitRequest} className="space-y-6 pt-4">
                             {/* Leave Type */}
@@ -575,6 +577,13 @@ export default function LeaveRequestsPage() {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            {/* Xero Leave Balance — Australia staff only */}
+            {(session?.user as any)?.location === 'Australia' && (
+                <div className="rounded-xl border border-[#13B5EA]/20 bg-[#13B5EA]/5 px-4 py-3">
+                    <XeroLeaveBalance email={(session?.user as any)?.email} />
+                </div>
+            )}
 
             {/* Filter */}
             <div id="tour-leaves-filter" className="flex flex-col sm:flex-row sm:items-center gap-4">

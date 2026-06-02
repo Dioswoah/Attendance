@@ -54,6 +54,7 @@ model User {
   overriddenSummaries  AttendanceSummary[] @relation("OverrideManager")
   secondaryDepartments Department[]        @relation("UserSecondaryDepartments")
   leaveHistoryActed    LeaveRequestHistory[] @relation("LeaveHistoryActor")
+  xeroLeaveBalances    XeroLeaveBalance[]
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
@@ -390,4 +391,18 @@ model ActivityLog {
 
   @@index([userId, createdAt])
   @@index([action])
+}
+
+model XeroLeaveBalance {
+  id        String   @id @default(cuid())
+  userId    String
+  xeroId    String?
+  leaveName String
+  hours     Float
+  syncedAt  DateTime @default(now()) @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, leaveName])
+  @@index([userId])
 }
