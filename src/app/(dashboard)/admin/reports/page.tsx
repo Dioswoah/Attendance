@@ -32,6 +32,7 @@ import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/
 import { useSession } from "next-auth/react"
 
 export default function ExportPage() {
+    const [activeTab, setActiveTab] = useState<'attendance' | 'leave'>('attendance')
     const [generating, setGenerating] = useState(false)
     const [departments, setDepartments] = useState<any[]>([])
     const [allStaff, setAllStaff] = useState<any[]>([])
@@ -470,17 +471,39 @@ export default function ExportPage() {
 
     return (
         <div className="w-full mx-auto space-y-6 animate-in fade-in duration-500 pb-10 px-4 lg:px-8">
+            {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
-                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Export Ledger</h1>
-                    <p className="text-muted-foreground text-sm">Workforce Intelligence & Industrial Reports</p>
-                </div>
-                <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-full border border-border">
-                    <Database className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">Ledger Stream Active</span>
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Export</h1>
+                    <p className="text-muted-foreground text-sm">Workforce reports and leave records</p>
                 </div>
             </div>
 
+            {/* Sub-tabs */}
+            <div className="flex gap-1 p-1 bg-muted/40 rounded-xl border border-border w-fit">
+                {[
+                    { id: 'attendance', label: 'Attendance', icon: FileSpreadsheet },
+                    { id: 'leave', label: 'Leave Records', icon: CalendarOff },
+                ].map(tab => {
+                    const Icon = tab.icon
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                                activeTab === tab.id
+                                    ? 'bg-white text-foreground shadow-sm border border-border'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            <Icon className="h-4 w-4" />
+                            {tab.label}
+                        </button>
+                    )
+                })}
+            </div>
+
+            {activeTab === 'attendance' && (
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardHeader className="p-6 border-b border-border bg-muted/20">
                     <CardTitle className="text-lg font-semibold text-foreground">Export Configuration</CardTitle>
@@ -826,7 +849,9 @@ export default function ExportPage() {
                 </CardContent>
             </Card>
 
-            {/* Leave Records */}
+            )}
+
+            {activeTab === 'leave' && (
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardHeader className="p-6 border-b border-border bg-muted/20">
                     <div className="flex items-center gap-3">
@@ -1052,6 +1077,7 @@ export default function ExportPage() {
                     )}
                 </CardContent>
             </Card>
-        </div >
+            )}
+        </div>
     )
 }
