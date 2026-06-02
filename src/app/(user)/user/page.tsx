@@ -75,7 +75,11 @@ function patchStaffWithAttendance(staffCurrent: any, attData: any): any {
         summaryStatus: existingRecord?.summaryStatus || 'PRESENT',
     }
 
-    const existingIdx = allToday.findIndex((r: any) => r.id === attData.id)
+    // Match by record id first, then fall back to userId so a new clock-in
+    // record for the same person replaces their old entry rather than appending.
+    const existingIdx = allToday.findIndex(
+        (r: any) => r.id === attData.id || r.userId === attData.userId
+    )
     const newAllToday = existingIdx >= 0
         ? allToday.map((r: any, i: number) => i === existingIdx ? formatted : r)
         : [formatted, ...allToday]
