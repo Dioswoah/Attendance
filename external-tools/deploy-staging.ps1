@@ -22,6 +22,24 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location "$PSScriptRoot/.."
 
+# ── Branch Safety Check ────────────────────────────────────
+$currentBranch = git rev-parse --abbrev-ref HEAD 2>$null
+if ($currentBranch -ne "marc") {
+    Write-Host ""
+    Write-Host "============================================" -ForegroundColor Red
+    Write-Host " STAGING DEPLOY BLOCKED" -ForegroundColor Red
+    Write-Host "============================================" -ForegroundColor Red
+    Write-Host " You are on branch: $currentBranch" -ForegroundColor Yellow
+    Write-Host " Staging must be deployed from: marc" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host " To deploy to staging:" -ForegroundColor Cyan
+    Write-Host "   1. git checkout marc" -ForegroundColor Cyan
+    Write-Host "   2. Re-run this script" -ForegroundColor Cyan
+    Write-Host "============================================" -ForegroundColor Red
+    Write-Host ""
+    exit 1
+}
+
 # ── Helpers ────────────────────────────────────────────────
 function Get-EnvVar {
     param($File = ".env.staging")
