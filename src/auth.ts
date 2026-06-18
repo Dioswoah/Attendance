@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig,
     secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
-    debug: process.env.NODE_ENV === 'development' || true, // Force debug logs in production temporarily
+    debug: process.env.NODE_ENV === 'development',
     trustHost: true,
     session: {
         strategy: "jwt",

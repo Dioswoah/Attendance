@@ -16,7 +16,7 @@ const TTL = {
     employees: 600,        // 10 min — changes only on hire/fire/edit
     managers: 1800,        // 30 min — role changes are rare
     departments: 3600,     // 1 hour — almost never changes
-    staffDashboard: 15,    // 15 sec — near real-time attendance state
+    staffDashboard: 300,   // 5 min — invalidated immediately on every write event
     attendanceSummary: 120, // 2 min — historical summaries
     leaves: 120,           // 2 min — leave lists
     attendanceRequests: 60, // 1 min — pending requests

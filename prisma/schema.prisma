@@ -157,6 +157,7 @@ model Attendance {
   @@index([userId, date])
   @@index([summaryId])
   @@index([clockOut])
+  @@index([userId, clockOut])
 }
 
 model Leave {
