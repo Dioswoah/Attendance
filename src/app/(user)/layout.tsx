@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react"
+import { SSEProvider, useSSE } from "@/contexts/SSEContext"
 import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2 } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { PatchNotesModal } from "@/components/PatchNotesModal"
@@ -148,8 +149,8 @@ function UserLayoutInner({
         // Initial Sync
         syncStatus()
 
-        // Poll every 60 seconds
-        const interval = setInterval(syncStatus, 60000)
+        // Poll every 5 minutes — SSE handles instant attendance/leave updates
+        const interval = setInterval(syncStatus, 300000)
 
         // Also sync on window focus (user comes back to tab)
         const onFocus = () => syncStatus()
@@ -163,28 +164,6 @@ function UserLayoutInner({
 
     useEffect(() => {
         fetchCounts()
-
-        // Initialize Realtime Server-Sent Events for Global Sidebar Updates
-        let eventSource: EventSource | null = null;
-        if (typeof EventSource !== 'undefined' && session?.user?.id) {
-            eventSource = new EventSource('/api/stream');
-            eventSource.onmessage = (event) => {
-                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
-                try {
-                    const payload = JSON.parse(event.data);
-                    // Refresh counts if attendance or leaves change anywhere
-                    if (payload.type === 'attendance' || payload.type === 'leaves') {
-                        fetchCounts();
-                    }
-                } catch (e) {
-                    // Silently fail parse
-                }
-            };
-        }
-
-        return () => {
-            if (eventSource) eventSource.close();
-        }
     }, [session?.user?.id])
 
     // Block all interaction while an attendance action is processing
@@ -269,6 +248,8 @@ function UserLayoutInner({
         : 'Staff'
 
     return (
+        <SSEProvider userId={session?.user?.id}>
+        <UserLayoutSSEHandler onCountsRefresh={fetchCounts} />
         <div className="min-h-screen bg-background flex flex-col font-sans selection:bg-red-100 selection:text-red-900 w-full relative overflow-x-hidden">
             <PatchNotesModal isAdmin={isManagerOrAdmin} />
             {/* Soft background glow */}
@@ -763,5 +744,15 @@ function UserLayoutInner({
             <ScrollIndicator variant="maroon" offset="bottom-24" />
             <UserOnboardingTour mode="logic" />
         </div >
+        </SSEProvider>
     )
+}
+
+function UserLayoutSSEHandler({ onCountsRefresh }: { onCountsRefresh: () => void }) {
+    useSSE((payload) => {
+        if (payload.type === 'attendance' || payload.type === 'leaves') {
+            onCountsRefresh()
+        }
+    })
+    return null
 }

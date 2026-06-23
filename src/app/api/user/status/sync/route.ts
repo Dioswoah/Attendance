@@ -74,7 +74,11 @@ export async function POST(req: Request) {
             }
         })
 
-        broadcastUpdate('staff')
+        broadcastUpdate('staff', {
+            userId: session.user.id,
+            availabilityStatus: googleStatus,
+            customStatusMessage: customMessage || null
+        })
 
         return NextResponse.json({
             status: googleStatus,

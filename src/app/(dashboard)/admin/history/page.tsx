@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import { useSSE } from "@/contexts/SSEContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -139,25 +140,14 @@ export default function HistoryPage() {
 
     useEffect(() => {
         fetchInitialData()
-
-        // Realtime Subscription via SSE
-        let eventSource: EventSource | null = null;
-
-        if (typeof EventSource !== 'undefined') {
-            eventSource = new EventSource('/api/stream');
-            eventSource.onmessage = (event) => {
-                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
-
-                // For history/dashboard, ANY attendance update should trigger a refresh
-                // We can be optimistic and simple here
-                refreshData();
-            };
-        }
-
-        return () => {
-            if (eventSource) eventSource.close();
-        }
     }, [])
+
+    // Only refresh history on actual attendance or leave changes, not calendar status updates
+    useSSE((payload) => {
+        if (payload.type === 'attendance' || payload.type === 'leaves') {
+            refreshData()
+        }
+    })
 
     const fetchInitialData = async () => {
         setLoading(true)

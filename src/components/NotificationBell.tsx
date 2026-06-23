@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSSE } from "@/contexts/SSEContext"
 import { Bell, Check, Info, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -61,30 +62,13 @@ export function NotificationBell({ role, userId: propUserId }: NotificationBellP
 
     useEffect(() => {
         fetchNotifications()
-
-        // Realtime Subscription via SSE
-        let eventSource: EventSource | null = null;
-        if (typeof EventSource !== 'undefined') {
-            eventSource = new EventSource('/api/stream');
-            eventSource.onmessage = (event) => {
-                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
-                try {
-                    const payload = JSON.parse(event.data);
-                    // Refresh if notification event (we broadcast 'notification' in some places)
-                    // Or generically refresh on any data update relevant to the user
-                    if (payload.type === 'notification' || payload.type === 'attendance' || payload.type === 'leaves') {
-                        fetchNotifications();
-                    }
-                } catch (e) {
-                    // Parse error
-                }
-            };
-        }
-
-        return () => {
-            if (eventSource) eventSource.close();
-        }
     }, [session, role, propUserId])
+
+    useSSE((payload) => {
+        if (payload.type === 'notification' || payload.type === 'attendance' || payload.type === 'leaves') {
+            fetchNotifications()
+        }
+    })
 
     const markAsRead = async (id?: string) => {
         try {

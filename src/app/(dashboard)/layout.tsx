@@ -21,6 +21,7 @@ import {
     ScrollText
 } from "lucide-react"
 import { useState, useEffect } from "react"
+import { SSEProvider } from "@/contexts/SSEContext"
 import { useRouter } from "next/navigation"
 import { TimezoneSettings } from "@/components/TimezoneSettings"
 import { ScrollIndicator } from "@/components/ScrollIndicator"
@@ -68,8 +69,8 @@ export default function AdminLayout({
         // Initial Sync
         syncStatus()
 
-        // Poll every 60 seconds
-        const interval = setInterval(syncStatus, 60000)
+        // Poll every 5 minutes — SSE handles instant attendance/leave updates
+        const interval = setInterval(syncStatus, 300000)
 
         // Also sync on window focus (user comes back to tab)
         const onFocus = () => syncStatus()
@@ -112,6 +113,7 @@ export default function AdminLayout({
     ]
 
     return (
+        <SSEProvider userId={session?.user?.id}>
         <div className="flex min-h-screen w-full bg-muted/20">
             {/* Sidebar */}
             <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col bg-white border-r border-border sm:flex">
@@ -246,5 +248,6 @@ export default function AdminLayout({
                 <ScrollIndicator variant="maroon" />
             </div>
         </div>
+        </SSEProvider>
     )
 }

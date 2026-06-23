@@ -89,7 +89,7 @@ Write-Host ""
 # ── STEP 1 — Get Redis IP ──────────────────────────────────
 if (-not $SkipInfrastructure) {
     Write-Host "Step 1: Fetching Redis IP from P2 Memorystore..." -ForegroundColor Yellow
-    $REDIS_HOST = gcloud redis instances describe attendance-redis `
+    $REDIS_HOST = gcloud redis instances describe attendance-redis-sg `
         --region=$REGION --project=$PROJECT_ID --format="value(host)" 2>&1
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($REDIS_HOST)) {
         Write-Warning "Could not fetch Redis IP - REDIS_URL will be empty."
@@ -151,7 +151,7 @@ gcloud run deploy $SERVICE_NAME `
     --region $REGION `
     --allow-unauthenticated `
     --add-cloudsql-instances $CLOUD_SQL_CONN `
-    --vpc-connector attendance-vpc-connector `
+    --vpc-connector attendance-vpc-sg `
     --vpc-egress private-ranges-only `
     --set-env-vars "NODE_ENV=production" `
     --set-env-vars "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" `

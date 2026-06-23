@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
+import { useSSE } from "@/contexts/SSEContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -44,74 +45,67 @@ export default function AdminDashboard() {
         ? getBrowserTimezone()
         : (session?.user as any)?.selectedTimezone || getBrowserTimezone()
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [empRes, deptRes, attRes] = await Promise.all([
-                    fetch('/api/employees'),
-                    fetch('/api/departments'),
-                    fetch('/api/attendance')
-                ])
+    const fetchData = async () => {
+        try {
+            const [empRes, deptRes, attRes] = await Promise.all([
+                fetch('/api/employees'),
+                fetch('/api/departments'),
+                fetch('/api/attendance')
+            ])
 
-                if (empRes.ok && deptRes.ok && attRes.ok) {
-                    const emps = await empRes.json()
-                    const depts = await deptRes.json()
-                    const atts = await attRes.json()
+            if (empRes.ok && deptRes.ok && attRes.ok) {
+                const emps = await empRes.json()
+                const depts = await deptRes.json()
+                const atts = await attRes.json()
 
-                    const activeEmps = emps.filter((e: any) => !e.isArchived)
-                    const activeEmpIds = new Set(activeEmps.map((e: any) => e.id))
+                const activeEmps = emps.filter((e: any) => !e.isArchived)
+                const activeEmpIds = new Set(activeEmps.map((e: any) => e.id))
 
-                    setEmployees(activeEmps)
-                    setDepartments(depts)
-                    setAttendanceRecords(atts)
+                setEmployees(activeEmps)
+                setDepartments(depts)
+                setAttendanceRecords(atts)
 
-                    // Calculate stats for active employees only
-                    const activeAtts = atts.filter((a: any) => activeEmpIds.has(a.userId))
+                // Calculate stats for active employees only
+                const activeAtts = atts.filter((a: any) => activeEmpIds.has(a.userId))
 
-                    const clockedIn = activeAtts.filter((a: any) => a.status === 'clocked-in').length
-                    const onBreak = activeAtts.filter((a: any) => a.status === 'on-break').length
-                    const onLeave = activeAtts.filter((a: any) => a.status === 'on-leave').length
-                    const totalStaff = activeEmps.length
+                const clockedIn = activeAtts.filter((a: any) => a.status === 'clocked-in').length
+                const onBreak = activeAtts.filter((a: any) => a.status === 'on-break').length
+                const onLeave = activeAtts.filter((a: any) => a.status === 'on-leave').length
+                const totalStaff = activeEmps.length
 
-                    setStats({
-                        totalStaff,
-                        clockedIn,
-                        onBreak,
-                        onLeave,
-                        absent: totalStaff - (clockedIn + onBreak + onLeave)
-                    })
-                }
-            } catch (error) {
-                console.error("Failed to fetch dashboard data")
-            } finally {
-                setLoading(false)
+                setStats({
+                    totalStaff,
+                    clockedIn,
+                    onBreak,
+                    onLeave,
+                    absent: totalStaff - (clockedIn + onBreak + onLeave)
+                })
             }
+        } catch (error) {
+            console.error("Failed to fetch dashboard data")
+        } finally {
+            setLoading(false)
         }
+    }
 
+    useEffect(() => {
         fetchData()
-
-        // Realtime Updates via SSE
-        let eventSource: EventSource | null = null;
-        if (typeof EventSource !== 'undefined') {
-            eventSource = new EventSource('/api/stream');
-            eventSource.onmessage = (event) => {
-                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
-                try {
-                    const payload = JSON.parse(event.data);
-                    // Refresh if attendance, leaves, or STAFF status changes
-                    if (['attendance', 'leaves', 'staff'].includes(payload.type)) {
-                        fetchData();
-                    }
-                } catch (e) {
-                    // Silently fail parse
-                }
-            };
-        }
-
-        return () => {
-            if (eventSource) eventSource.close();
-        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // SSE: attendance/leaves → full refetch; staff → local patch of availability only (no API call)
+    useSSE((payload) => {
+        if (payload.type === 'attendance' || payload.type === 'leaves') {
+            fetchData()
+        } else if (payload.type === 'staff' && payload.data?.userId) {
+            const { userId, availabilityStatus, customStatusMessage } = payload.data
+            setEmployees(prev => prev.map((emp: any) =>
+                emp.id === userId
+                    ? { ...emp, availabilityStatus, customStatusMessage }
+                    : emp
+            ))
+        }
+    })
 
     const activityFeed = useMemo(() => {
         const feed: any[] = []

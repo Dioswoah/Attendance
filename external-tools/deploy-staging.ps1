@@ -103,8 +103,6 @@ gcloud services enable `
     sqladmin.googleapis.com `
     run.googleapis.com `
     cloudbuild.googleapis.com `
-    redis.googleapis.com `
-    vpcaccess.googleapis.com `
     storage.googleapis.com `
     secretmanager.googleapis.com `
     containerregistry.googleapis.com `
@@ -115,47 +113,6 @@ Write-Host "  APIs enabled." -ForegroundColor Green
 if (-not $SkipInfrastructure) {
     Write-Host ""
     Write-Host "Step 2: Setting up staging infrastructure..." -ForegroundColor Yellow
-
-    # VPC Connector
-    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $vpcExists = gcloud compute networks vpc-access connectors describe attendance-vpc-connector `
-        --region=$REGION --project=$PROJECT_ID --quiet 2>$null
-    $ErrorActionPreference = $prevEAP
-    if (-not $vpcExists) {
-        Write-Host "  Creating VPC connector..." -ForegroundColor Cyan
-        gcloud compute networks vpc-access connectors create attendance-vpc-connector `
-            --region=$REGION `
-            --network=default `
-            --range=10.9.0.0/28 `
-            --min-instances=2 `
-            --max-instances=3 `
-            --machine-type=e2-micro `
-            --project=$PROJECT_ID `
-            --quiet
-        Write-Host "  VPC connector created." -ForegroundColor Green
-    } else {
-        Write-Host "  VPC connector already exists, skipping." -ForegroundColor DarkGray
-    }
-
-    # Redis (Memorystore)
-    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $redisExists = gcloud redis instances describe attendance-redis `
-        --region=$REGION --project=$PROJECT_ID --quiet 2>$null
-    $ErrorActionPreference = $prevEAP
-    if (-not $redisExists) {
-        Write-Host "  Creating Redis instance (this takes ~5 min)..." -ForegroundColor Cyan
-        gcloud redis instances create attendance-redis `
-            --size=1 `
-            --region=$REGION `
-            --tier=BASIC `
-            --redis-version=redis_7_0 `
-            --network=default `
-            --project=$PROJECT_ID `
-            --quiet
-        Write-Host "  Redis instance created." -ForegroundColor Green
-    } else {
-        Write-Host "  Redis instance already exists, skipping." -ForegroundColor DarkGray
-    }
 
     # Cloud SQL Instance
     $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"

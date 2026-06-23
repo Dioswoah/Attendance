@@ -3,6 +3,7 @@
 import { actionLock, setActionLock } from "@/lib/actionLock"
 
 import { useState, useEffect, useMemo, useRef } from "react"
+import { useSSE } from "@/contexts/SSEContext"
 import { createPortal } from "react-dom"
 import { useSession, signIn, signOut } from "next-auth/react"
 import useSWR from "swr"
@@ -249,7 +250,7 @@ export default function UserPortal() {
             revalidateOnFocus: false,
             revalidateIfStale: false,
             dedupingInterval: 2000,
-            refreshInterval: 15000, // Safety net: re-fetch every 15s to recover from missed SSE events or stale cache
+            refreshInterval: 60000, // Safety net: re-fetch every 60s to recover from missed SSE events or stale cache
             keepPreviousData: true
         }
     )
@@ -676,71 +677,50 @@ export default function UserPortal() {
             fetchDashboardData()
             mutateCurrentState()
         }
-
-        // Initialize Realtime Server-Sent Events
-        // This replaces the polling mechanism with a permanent connection
-        let eventSource: EventSource | null = null;
-
-        if (typeof EventSource !== 'undefined') {
-            eventSource = new EventSource('/api/stream');
-
-            eventSource.onmessage = (event) => {
-                // Heartbeat or connection message
-                if (event.data === ': heartbeat' || event.data.includes('connected')) return;
-
-                try {
-                    const payload = JSON.parse(event.data);
-
-                    if (payload.type === 'attendance') {
-                        // Instantly patch the staff overview from the SSE payload.
-                        // revalidate: false prevents out-of-order re-fetch responses from
-                        // overwriting a newer patch with stale data during rapid actions.
-                        // The 15s refreshInterval on staffData SWR acts as the safety net.
-                        if (payload.data) {
-                            mutateStaff(
-                                (current: any) => {
-                                    // If staffData hasn't loaded yet, don't patch — returning undefined
-                                    // from the updater would wipe the SWR cache and block loading.
-                                    // Fall through to a normal revalidation fetch instead.
-                                    if (!current) return current
-                                    return patchStaffWithAttendance(current, payload.data)
-                                },
-                                { revalidate: false }
-                            )
-                            // If staff wasn't loaded yet, trigger a normal fetch now
-                            if (!staffData) mutateStaff()
-                        }
-                        // Only re-fetch own dashboard if this event is about the current user
-                        // (e.g. admin clocked them in, or auto clock-out fired)
-                        if (payload.data?.userId === session?.user?.id) {
-                            mutateDashboard()
-                        }
-                    }
-                    else if (payload.type === 'staff') {
-                        mutateStaff()
-                    }
-                    else if (payload.type === 'leaves') {
-                        fetchMyLeaveRequests()
-                    }
-                } catch (e) {
-                    console.error("SSE Parse Error", e);
-                }
-            };
-
-            eventSource.onerror = (e) => {
-
-            };
-        }
-
-        return () => {
-            if (eventSource) {
-                eventSource.close();
-            }
-        }
-        // ESLint might complain about missing deps, but we INTENTIONALLY exclude userRoles/employees to prevent loops.
-        // We only want this to run when the session (user identity) changes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session?.user?.id])
+
+    // SSE: shared connection from layout's SSEProvider — no new EventSource opened here
+    useSSE((payload) => {
+        if (payload.type === 'attendance') {
+            // Patch just the one row that changed — no API call needed
+            if (payload.data) {
+                mutateStaff(
+                    (current: any) => {
+                        if (!current) return current
+                        return patchStaffWithAttendance(current, payload.data)
+                    },
+                    { revalidate: false }
+                )
+                if (!staffData) mutateStaff()
+            }
+            // Only re-fetch own dashboard if this event is about the current user
+            if (payload.data?.userId === session?.user?.id) {
+                mutateDashboard()
+            }
+        } else if (payload.type === 'staff') {
+            if (payload.data?.userId) {
+                // Patch just the affected employee's availability dot — no API call needed
+                const { userId, availabilityStatus, customStatusMessage } = payload.data
+                mutateStaff(
+                    (current: any) => {
+                        if (!current) return current
+                        return {
+                            ...current,
+                            staff: current.staff?.map((emp: any) =>
+                                emp.id === userId
+                                    ? { ...emp, availabilityStatus, customStatusMessage }
+                                    : emp
+                            )
+                        }
+                    },
+                    { revalidate: false }
+                )
+            }
+        } else if (payload.type === 'leaves') {
+            fetchMyLeaveRequests()
+        }
+    })
 
 
 
@@ -934,7 +914,7 @@ export default function UserPortal() {
         // Initial sync on load
         performSync()
 
-        const syncInterval = setInterval(performSync, 60000) // Check every minute
+        const syncInterval = setInterval(performSync, 300000) // Check every 5 minutes
 
         return () => clearInterval(syncInterval)
     }, [session?.user?.id])
