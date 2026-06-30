@@ -154,6 +154,12 @@ model Attendance {
   breakWarningSent       Boolean   @default(false)
   breakLimitExceededSent Boolean   @default(false)
   overdueDepartureSent   Boolean   @default(false)
+  clockInLat             Float?
+  clockInLng             Float?
+  clockInAccuracy        Float?
+  clockOutLat            Float?
+  clockOutLng            Float?
+  clockOutAccuracy       Float?
 
   @@index([userId, date])
   @@index([summaryId])

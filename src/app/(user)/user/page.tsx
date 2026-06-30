@@ -106,6 +106,10 @@ export default function UserPortal() {
     const [isLoading, setIsLoading] = useState(true)
     const [isActionInFlight, setIsActionInFlight] = useState(false)
     const actionInFlightRef = actionLock
+    // Holds geolocation captured while the clock-in dialog is open — avoids the
+    // race where the 5s timeout fires before the user responds to the browser
+    // permission prompt on a first visit.
+    const pendingGeoRef = useRef<{ lat: number; lng: number; accuracy: number } | null>(null)
 
     const [totalPendingLeaves, setTotalPendingLeaves] = useState(0)
     const [hasAutoSwitchedStatus, setHasAutoSwitchedStatus] = useState(false)
@@ -182,6 +186,24 @@ export default function UserPortal() {
     const [showAllStaff, setShowAllStaff] = useState(() =>
         typeof window !== 'undefined' ? localStorage.getItem('dashboard_showAllStaff') === 'true' : false
     )
+
+    // Start capturing geolocation as soon as the clock-in dialog opens so the
+    // browser permission prompt appears early — well before the user hits Confirm.
+    useEffect(() => {
+        if (!showLocationDialog) { pendingGeoRef.current = null; return }
+        if (typeof navigator === "undefined" || !navigator.geolocation) return
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                pendingGeoRef.current = {
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy,
+                }
+            },
+            () => { pendingGeoRef.current = null },
+            { timeout: 30000, maximumAge: 0, enableHighAccuracy: true }
+        )
+    }, [showLocationDialog])
 
     // Persist dashboard filters across navigation for the current browser session
     useEffect(() => { localStorage.setItem('dashboard_filterStatus', filterStatus) }, [filterStatus])
@@ -1090,6 +1112,10 @@ export default function UserPortal() {
         const clockInISO = new Date().toISOString()
         setShowLocationDialog(false)
 
+        // Use the geolocation pre-captured while the dialog was open (started in useEffect).
+        // pendingGeoRef is null if permission was denied or geolocation is unavailable.
+        const geoPosition = pendingGeoRef.current
+
         // Amendment path: no instant action, must wait for manager approval — block UI while submitting
         if (customClockInTime && customClockInTime.trim() !== "") {
             const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: userTimeZone })
@@ -1150,7 +1176,7 @@ export default function UserPortal() {
         fetch('/api/attendance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: session.user.id, mode, locationDetails, clockIn: clockInISO }),
+            body: JSON.stringify({ userId: session.user.id, mode, locationDetails, clockIn: clockInISO, ...(geoPosition && { clockInLat: geoPosition.lat, clockInLng: geoPosition.lng, clockInAccuracy: geoPosition.accuracy }) }),
             keepalive: true
         })
         .then(async res => {
@@ -1250,6 +1276,23 @@ export default function UserPortal() {
         setIsActionInFlight(true)
 
         const body: any = { userId: session.user.id, action }
+
+        // Capture geolocation for clock-out only — non-blocking, won't delay the action
+        if (action === 'clock-out') {
+            const geoPos = await new Promise<{ lat: number, lng: number, accuracy: number } | null>((resolve) => {
+                if (!navigator.geolocation) { resolve(null); return }
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+                    () => resolve(null),
+                    { timeout: 5000, maximumAge: 0, enableHighAccuracy: true }
+                )
+            })
+            if (geoPos) {
+                body.clockOutLat = geoPos.lat
+                body.clockOutLng = geoPos.lng
+                body.clockOutAccuracy = geoPos.accuracy
+            }
+        }
         if (action === 'start-break') {
             let resolvedTime = null
             if (breakInputMode === "minutes" && breakMinutes) {

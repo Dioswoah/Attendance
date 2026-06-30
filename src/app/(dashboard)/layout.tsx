@@ -19,7 +19,8 @@ import {
     Fingerprint,
     BarChart2,
     ScrollText,
-    Sparkles
+    Sparkles,
+    MapPin
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -103,6 +104,7 @@ export default function AdminLayout({
         { href: "/admin/departments", label: "Departments", icon: Building2 },
         { href: "/admin/manual-entry", label: "Manual Entry", icon: Clock },
         { href: "/admin/history", label: "Record", icon: History },
+        { href: "/admin/location", label: "Location", icon: MapPin },
         { href: "/admin/manager-activity", label: "Manager Activity", icon: ShieldCheck },
         { href: "/admin/user-activity", label: "User Activity", icon: ScrollText },
         { href: "/admin/biometric", label: "Biometric", icon: Fingerprint },

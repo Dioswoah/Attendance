@@ -756,7 +756,7 @@ export async function POST(req: Request) {
 
     try {
         const body = await req.json()
-        const { userId, mode, date, clockIn, clockOut, locationDetails } = body
+        const { userId, mode, date, clockIn, clockOut, locationDetails, clockInLat, clockInLng, clockInAccuracy } = body
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
@@ -799,7 +799,10 @@ export async function POST(req: Request) {
                 scheduledEnd: scheduledEnd ? new Date(scheduledEnd) : null,
                 mode: mode || 'OFFICE',
                 locationDetails: locationDetails || null,
-                status: 'PRESENT'
+                status: 'PRESENT',
+                clockInLat: typeof clockInLat === 'number' ? clockInLat : null,
+                clockInLng: typeof clockInLng === 'number' ? clockInLng : null,
+                clockInAccuracy: typeof clockInAccuracy === 'number' ? clockInAccuracy : null,
             }
         })
 
@@ -916,7 +919,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
     try {
         const body = await req.json()
-        const { userId, action, expectedReturnTime } = body
+        const { userId, action, expectedReturnTime, clockOutLat, clockOutLng, clockOutAccuracy } = body
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
@@ -940,7 +943,10 @@ export async function PATCH(req: Request) {
         if (action === 'clock-out') {
             updateData = {
                 clockOut: now,
-                status: 'PRESENT'
+                status: 'PRESENT',
+                clockOutLat: typeof clockOutLat === 'number' ? clockOutLat : null,
+                clockOutLng: typeof clockOutLng === 'number' ? clockOutLng : null,
+                clockOutAccuracy: typeof clockOutAccuracy === 'number' ? clockOutAccuracy : null,
             }
             // Auto-close open breaks in the Break table
             await prisma.break.updateMany({
