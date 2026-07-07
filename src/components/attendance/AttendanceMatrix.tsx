@@ -22,10 +22,11 @@ import { getCurrentAuPayrollPeriod } from "@/lib/payroll"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useSession } from "next-auth/react"
 import { useSSE } from "@/contexts/SSEContext"
+import { toast } from "sonner"
+import { ValidationPopoverContent } from "@/components/attendance/ValidationPopoverContent"
 
 interface AttendanceMatrixProps {
     // When provided, restricts staff/departments/attendance/leaves to this manager's team.
@@ -182,34 +183,37 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
     }
 
     const setValidationStatus = async (recordId: string | undefined, userId: string, dateStr: string, status: 'VALIDATED' | 'NEEDS_CORRECTION' | null) => {
-        if (recordId) {
-            await fetch(`/api/attendance/${recordId}/validate`, {
+        const res = recordId
+            ? await fetch(`/api/attendance/${recordId}/validate`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status })
             })
-        } else {
             // No attendance record exists yet for this day (e.g. an absence) — create one to attach the status to.
-            await fetch(`/api/attendance/validate-day`, {
+            : await fetch(`/api/attendance/validate-day`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, date: dateStr, status })
             })
-        }
+        return res.ok
     }
 
     const handleValidate = async (recordId: string | undefined, userId: string, dateStr: string) => {
-        await setValidationStatus(recordId, userId, dateStr, 'VALIDATED')
+        const ok = await setValidationStatus(recordId, userId, dateStr, 'VALIDATED')
+        if (ok) toast.success("Marked as validated")
+        else toast.error("Failed to validate record")
         refreshData()
     }
 
     const handleClearValidation = async (recordId: string | undefined, userId: string, dateStr: string) => {
-        await setValidationStatus(recordId, userId, dateStr, null)
+        const ok = await setValidationStatus(recordId, userId, dateStr, null)
+        if (ok) toast.success("Validation status cleared")
+        else toast.error("Failed to clear validation status")
         refreshData()
     }
 
     const handleFlagCorrection = async (recordId: string | undefined, empId: string, dateStr: string, note: string) => {
-        await Promise.all([
+        const [statusOk, noteRes] = await Promise.all([
             setValidationStatus(recordId, empId, dateStr, 'NEEDS_CORRECTION'),
             fetch(`/api/employees/${empId}/correction-note`, {
                 method: 'PATCH',
@@ -217,6 +221,11 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                 body: JSON.stringify({ note })
             })
         ])
+        if (statusOk && noteRes.ok) {
+            toast.success("Flagged for correction")
+        } else {
+            toast.error("Failed to flag record for correction")
+        }
         setAllStaff(prev => prev.map(s => s.id === empId ? { ...s, correctionNote: note } : s))
         refreshData()
     }
@@ -236,14 +245,24 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
     const handleBulkSetStatus = async (status: 'VALIDATED' | null) => {
         setBulkActionLoading(true)
         try {
-            const recordIds = history
-                .filter(h => bulkSelectedStaffIds.includes(h.userId) && h.clockIn)
-                .map(h => h.id)
-            await Promise.all(recordIds.map(id => fetch(`/api/attendance/${id}/validate`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status })
-            })))
+            const staffCount = bulkSelectedStaffIds.length
+            const tasks: Promise<boolean>[] = []
+            for (const staffId of bulkSelectedStaffIds) {
+                for (const date of dateRange) {
+                    const dateStr = format(date, "yyyy-MM-dd")
+                    const record = history.find(h => h.userId === staffId && h.date === dateStr)
+                    // Clearing a day with no record is a no-op — skip instead of creating an empty record just to clear it.
+                    if (!record && status === null) continue
+                    tasks.push(setValidationStatus(record?.id, staffId, dateStr, status))
+                }
+            }
+            const results = await Promise.all(tasks)
+            const failed = results.filter(ok => !ok).length
+            if (failed === 0) {
+                toast.success(status === 'VALIDATED' ? `Validated ${results.length} day(s) for ${staffCount} staff` : `Cleared validation for ${staffCount} staff`)
+            } else {
+                toast.error(`${failed} of ${results.length} update(s) failed`)
+            }
             setBulkSelectedStaffIds([])
             refreshData()
         } finally {
@@ -699,7 +718,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                         {!isOnLeave ? (
                                                             <Popover>
                                                                 <PopoverTrigger asChild>
-                                                                    <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark cursor-pointer">
+                                                                    <div className="relative flex flex-col items-center justify-center gap-0.5 py-1 group/mark cursor-pointer">
                                                                         {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
                                                                         <div className={`${dotSize} rounded-full ${dotColor}`} />
                                                                         {record?.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
@@ -840,75 +859,5 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
             </div>
             <p className="text-xs text-muted-foreground">Click a work-hours dot to validate a record or flag it for correction.</p>
         </div>
-    )
-}
-
-function ValidationPopoverContent({ record, staffNote, onValidate, onFlag, onClear }: {
-    record: any
-    staffNote: string
-    onValidate: () => Promise<void>
-    onFlag: (note: string) => Promise<void>
-    onClear: () => Promise<void>
-}) {
-    const [mode, setMode] = useState<'idle' | 'flagging'>('idle')
-    const [note, setNote] = useState(staffNote)
-    const [saving, setSaving] = useState(false)
-    const status = record?.validationStatus
-
-    const runAction = async (action: () => Promise<void>) => {
-        setSaving(true)
-        try {
-            await action()
-            setMode('idle')
-        } finally {
-            setSaving(false)
-        }
-    }
-
-    return (
-        <PopoverContent className="w-72 p-3" align="center">
-            {mode === 'idle' ? (
-                <div className="space-y-2">
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Review this record</p>
-                    {status === 'VALIDATED' && (
-                        <p className="text-xs text-teal-600 font-medium">Marked as validated.</p>
-                    )}
-                    {status === 'NEEDS_CORRECTION' && staffNote && (
-                        <p className="text-xs text-fuchsia-600 font-medium">Flagged: {staffNote}</p>
-                    )}
-                    <div className="flex flex-col gap-1.5 pt-1">
-                        <Button size="sm" disabled={saving} className="h-8 text-xs bg-teal-600 hover:bg-teal-700" onClick={() => runAction(onValidate)}>
-                            Validate
-                        </Button>
-                        <Button size="sm" disabled={saving} variant="outline" className="h-8 text-xs border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50" onClick={() => setMode('flagging')}>
-                            Needs Correction
-                        </Button>
-                        {status && (
-                            <Button size="sm" disabled={saving} variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={() => runAction(onClear)}>
-                                Clear Status
-                            </Button>
-                        )}
-                    </div>
-                </div>
-            ) : (
-                <div className="space-y-2">
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">What needs to be corrected?</p>
-                    <Textarea
-                        value={note}
-                        onChange={e => setNote(e.target.value)}
-                        placeholder="Describe the issue for this staff member..."
-                        className="text-xs min-h-[80px]"
-                    />
-                    <div className="flex gap-2">
-                        <Button size="sm" disabled={saving} className="h-8 text-xs bg-fuchsia-600 hover:bg-fuchsia-700 flex-1" onClick={() => runAction(() => onFlag(note))}>
-                            Save
-                        </Button>
-                        <Button size="sm" disabled={saving} variant="ghost" className="h-8 text-xs" onClick={() => setMode('idle')}>
-                            Back
-                        </Button>
-                    </div>
-                </div>
-            )}
-        </PopoverContent>
     )
 }

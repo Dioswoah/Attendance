@@ -47,6 +47,8 @@ import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { toast } from "sonner"
+import { ValidationPopoverContent } from "@/components/attendance/ValidationPopoverContent"
 
 export default function HistoryPage() {
     const [activeTab, setActiveTab] = useState<'matrix' | 'daily' | 'summary'>('matrix')
@@ -254,6 +256,53 @@ export default function HistoryPage() {
         refreshData(startStr, endStr)
     }
 
+    const setValidationStatus = async (recordId: string | undefined, userId: string, dateStr: string, status: 'VALIDATED' | 'NEEDS_CORRECTION' | null) => {
+        const res = recordId
+            ? await fetch(`/api/attendance/${recordId}/validate`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status })
+            })
+            : await fetch(`/api/attendance/validate-day`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, date: dateStr, status })
+            })
+        return res.ok
+    }
+
+    const handleValidate = async (recordId: string | undefined, userId: string, dateStr: string) => {
+        const ok = await setValidationStatus(recordId, userId, dateStr, 'VALIDATED')
+        if (ok) toast.success("Marked as validated")
+        else toast.error("Failed to validate record")
+        refreshData()
+    }
+
+    const handleClearValidation = async (recordId: string | undefined, userId: string, dateStr: string) => {
+        const ok = await setValidationStatus(recordId, userId, dateStr, null)
+        if (ok) toast.success("Validation status cleared")
+        else toast.error("Failed to clear validation status")
+        refreshData()
+    }
+
+    const handleFlagCorrection = async (recordId: string | undefined, empId: string, dateStr: string, note: string) => {
+        const [statusOk, noteRes] = await Promise.all([
+            setValidationStatus(recordId, empId, dateStr, 'NEEDS_CORRECTION'),
+            fetch(`/api/employees/${empId}/correction-note`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note })
+            })
+        ])
+        if (statusOk && noteRes.ok) {
+            toast.success("Flagged for correction")
+        } else {
+            toast.error("Failed to flag record for correction")
+        }
+        setAllStaff(prev => prev.map(s => s.id === empId ? { ...s, correctionNote: note } : s))
+        refreshData()
+    }
+
     const toggleBulkStaff = (id: string) => {
         setBulkSelectedStaffIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
     }
@@ -269,14 +318,23 @@ export default function HistoryPage() {
     const handleBulkSetStatus = async (status: 'VALIDATED' | null) => {
         setBulkActionLoading(true)
         try {
-            const recordIds = history
-                .filter(h => bulkSelectedStaffIds.includes(h.userId) && h.clockIn)
-                .map(h => h.id)
-            await Promise.all(recordIds.map(id => fetch(`/api/attendance/${id}/validate`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status })
-            })))
+            const staffCount = bulkSelectedStaffIds.length
+            const tasks: Promise<boolean>[] = []
+            for (const staffId of bulkSelectedStaffIds) {
+                for (const date of dateRange) {
+                    const dateStr = format(date, "yyyy-MM-dd")
+                    const record = history.find(h => h.userId === staffId && h.date === dateStr)
+                    if (!record && status === null) continue
+                    tasks.push(setValidationStatus(record?.id, staffId, dateStr, status))
+                }
+            }
+            const results = await Promise.all(tasks)
+            const failed = results.filter(ok => !ok).length
+            if (failed === 0) {
+                toast.success(status === 'VALIDATED' ? `Validated ${results.length} day(s) for ${staffCount} staff` : `Cleared validation for ${staffCount} staff`)
+            } else {
+                toast.error(`${failed} of ${results.length} update(s) failed`)
+            }
             setBulkSelectedStaffIds([])
             refreshData()
         } finally {
@@ -763,38 +821,47 @@ export default function HistoryPage() {
 
                                                     return (
                                                         <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
-                                                            {record ? (
-                                                                <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark">
-                                                                    {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
-                                                                    <div className={`${dotSize} rounded-full ${dotColor}`} />
-                                                                    {record.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
-                                                                    {record.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
-                                                                    {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
-                                                                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
-                                                                        <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5 max-w-[220px]">
-                                                                            {record.clockIn ? (
-                                                                                <>
-                                                                                    <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
-                                                                                    <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
-                                                                                    <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
-                                                                                </>
-                                                                            ) : isLeaveRecord ? (
-                                                                                <div className="font-bold text-foreground">On Leave</div>
-                                                                            ) : (
-                                                                                <div className="font-bold text-foreground">No record</div>
-                                                                            )}
-                                                                            {record.validationStatus === 'NEEDS_CORRECTION' && (
-                                                                                <div className="text-fuchsia-600 font-bold whitespace-normal border-t border-border pt-1 mt-1">
-                                                                                    {allStaff.find(s => s.id === emp.id)?.correctionNote || 'Needs correction'}
+                                                            {!isOnLeave ? (
+                                                                <Popover>
+                                                                    <PopoverTrigger asChild>
+                                                                        <div className="relative flex flex-col items-center justify-center gap-0.5 py-1 group/mark cursor-pointer">
+                                                                            {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+                                                                            <div className={`${dotSize} rounded-full ${dotColor}`} />
+                                                                            {record?.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
+                                                                            {record?.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
+                                                                            {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                                                                            <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
+                                                                                <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5 max-w-[220px]">
+                                                                                    {record?.clockIn ? (
+                                                                                        <>
+                                                                                            <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
+                                                                                            <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
+                                                                                            <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
+                                                                                        </>
+                                                                                    ) : isLeaveRecord ? (
+                                                                                        <div className="font-bold text-foreground">On Leave</div>
+                                                                                    ) : (
+                                                                                        <div className="font-bold text-foreground">No record — click to review</div>
+                                                                                    )}
+                                                                                    {record?.validationStatus === 'NEEDS_CORRECTION' && (
+                                                                                        <div className="text-fuchsia-600 font-bold whitespace-normal border-t border-border pt-1 mt-1">
+                                                                                            {allStaff.find(s => s.id === emp.id)?.correctionNote || 'Needs correction'}
+                                                                                        </div>
+                                                                                    )}
                                                                                 </div>
-                                                                            )}
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                </div>
-                                                            ) : isOnLeave ? (
-                                                                <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
+                                                                    </PopoverTrigger>
+                                                                    <ValidationPopoverContent
+                                                                        record={record}
+                                                                        staffNote={allStaff.find(s => s.id === emp.id)?.correctionNote || ''}
+                                                                        onValidate={() => handleValidate(record?.id, emp.id, dateStr)}
+                                                                        onFlag={(note) => handleFlagCorrection(record?.id, emp.id, dateStr, note)}
+                                                                        onClear={() => handleClearValidation(record?.id, emp.id, dateStr)}
+                                                                    />
+                                                                </Popover>
                                                             ) : (
-                                                                <div className="h-1.5 w-1.5 bg-slate-300 rounded-full mx-auto" />
+                                                                <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                             )}
                                                         </TableCell>
                                                     )
