@@ -758,13 +758,15 @@ export default function HistoryPage() {
                                                     const hasWork = record && record.clockIn && !isLeaveRecord
                                                     const hasOverBreak = hasWork && totalBreakMs > 3600000
                                                     const dayStats = record?.clockIn ? calculateDurations([record]) : null
+                                                    const dotColor = isLeaveRecord ? 'bg-blue-500' : hasWork ? 'bg-green-500' : 'bg-slate-300'
+                                                    const dotSize = (isLeaveRecord || hasWork) ? 'h-2 w-2' : 'h-1.5 w-1.5'
 
                                                     return (
                                                         <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
                                                             {record ? (
                                                                 <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark">
                                                                     {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
-                                                                    <div className={`h-2 w-2 rounded-full ${isLeaveRecord ? 'bg-blue-500' : 'bg-green-500'}`} />
+                                                                    <div className={`${dotSize} rounded-full ${dotColor}`} />
                                                                     {record.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
                                                                     {record.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
                                                                     {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
@@ -776,8 +778,10 @@ export default function HistoryPage() {
                                                                                     <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
                                                                                     <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
                                                                                 </>
-                                                                            ) : (
+                                                                            ) : isLeaveRecord ? (
                                                                                 <div className="font-bold text-foreground">On Leave</div>
+                                                                            ) : (
+                                                                                <div className="font-bold text-foreground">No record</div>
                                                                             )}
                                                                             {record.validationStatus === 'NEEDS_CORRECTION' && (
                                                                                 <div className="text-fuchsia-600 font-bold whitespace-normal border-t border-border pt-1 mt-1">
@@ -790,7 +794,7 @@ export default function HistoryPage() {
                                                             ) : isOnLeave ? (
                                                                 <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                             ) : (
-                                                                <div className="h-1.5 w-1.5 bg-muted rounded-full mx-auto" />
+                                                                <div className="h-1.5 w-1.5 bg-slate-300 rounded-full mx-auto" />
                                                             )}
                                                         </TableCell>
                                                     )
@@ -1124,7 +1128,7 @@ export default function HistoryPage() {
                     { label: 'Pending Request', color: 'bg-amber-500' },
                     { label: 'Validated', color: 'bg-teal-500' },
                     { label: 'Needs Correction', color: 'bg-fuchsia-500' },
-                    { label: 'No Log', color: 'bg-muted border border-border' },
+                    { label: 'No Log', color: 'bg-slate-300' },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">
                         <div className={`h-2.5 w-2.5 rounded-full ${item.color}`} />

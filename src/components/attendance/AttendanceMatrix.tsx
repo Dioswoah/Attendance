@@ -181,31 +181,36 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         }
     }
 
-    const handleValidate = async (recordId: string) => {
-        await fetch(`/api/attendance/${recordId}/validate`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'VALIDATED' })
-        })
-        refreshData()
-    }
-
-    const handleClearValidation = async (recordId: string) => {
-        await fetch(`/api/attendance/${recordId}/validate`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: null })
-        })
-        refreshData()
-    }
-
-    const handleFlagCorrection = async (recordId: string, empId: string, note: string) => {
-        await Promise.all([
-            fetch(`/api/attendance/${recordId}/validate`, {
+    const setValidationStatus = async (recordId: string | undefined, userId: string, dateStr: string, status: 'VALIDATED' | 'NEEDS_CORRECTION' | null) => {
+        if (recordId) {
+            await fetch(`/api/attendance/${recordId}/validate`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'NEEDS_CORRECTION' })
-            }),
+                body: JSON.stringify({ status })
+            })
+        } else {
+            // No attendance record exists yet for this day (e.g. an absence) — create one to attach the status to.
+            await fetch(`/api/attendance/validate-day`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, date: dateStr, status })
+            })
+        }
+    }
+
+    const handleValidate = async (recordId: string | undefined, userId: string, dateStr: string) => {
+        await setValidationStatus(recordId, userId, dateStr, 'VALIDATED')
+        refreshData()
+    }
+
+    const handleClearValidation = async (recordId: string | undefined, userId: string, dateStr: string) => {
+        await setValidationStatus(recordId, userId, dateStr, null)
+        refreshData()
+    }
+
+    const handleFlagCorrection = async (recordId: string | undefined, empId: string, dateStr: string, note: string) => {
+        await Promise.all([
+            setValidationStatus(recordId, empId, dateStr, 'NEEDS_CORRECTION'),
             fetch(`/api/employees/${empId}/correction-note`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -686,27 +691,32 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                 const hasOverBreak = hasWork && totalBreakMs > 3600000
                                                 const dayStats = record?.clockIn ? calculateDurations([record]) : null
 
+                                                const dotColor = isLeaveRecord ? 'bg-blue-500' : hasWork ? 'bg-green-500' : 'bg-slate-300'
+                                                const dotSize = (isLeaveRecord || hasWork) ? 'h-2 w-2' : 'h-1.5 w-1.5'
+
                                                 return (
                                                     <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
-                                                        {record ? (
+                                                        {!isOnLeave ? (
                                                             <Popover>
                                                                 <PopoverTrigger asChild>
                                                                     <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark cursor-pointer">
                                                                         {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
-                                                                        <div className={`h-2 w-2 rounded-full ${isLeaveRecord ? 'bg-blue-500' : 'bg-green-500'}`} />
-                                                                        {record.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
-                                                                        {record.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
+                                                                        <div className={`${dotSize} rounded-full ${dotColor}`} />
+                                                                        {record?.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
+                                                                        {record?.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
                                                                         {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
                                                                         <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
                                                                             <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5">
-                                                                                {record.clockIn ? (
+                                                                                {record?.clockIn ? (
                                                                                     <>
                                                                                         <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
                                                                                         <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
                                                                                         <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
                                                                                     </>
-                                                                                ) : (
+                                                                                ) : isLeaveRecord ? (
                                                                                     <div className="font-bold text-foreground">On Leave</div>
+                                                                                ) : (
+                                                                                    <div className="font-bold text-foreground">No record — click to review</div>
                                                                                 )}
                                                                             </div>
                                                                         </div>
@@ -715,15 +725,13 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                                 <ValidationPopoverContent
                                                                     record={record}
                                                                     staffNote={allStaff.find(s => s.id === emp.id)?.correctionNote || ''}
-                                                                    onValidate={() => handleValidate(record.id)}
-                                                                    onFlag={(note) => handleFlagCorrection(record.id, emp.id, note)}
-                                                                    onClear={() => handleClearValidation(record.id)}
+                                                                    onValidate={() => handleValidate(record?.id, emp.id, dateStr)}
+                                                                    onFlag={(note) => handleFlagCorrection(record?.id, emp.id, dateStr, note)}
+                                                                    onClear={() => handleClearValidation(record?.id, emp.id, dateStr)}
                                                                 />
                                                             </Popover>
-                                                        ) : isOnLeave ? (
-                                                            <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                         ) : (
-                                                            <div className="h-1.5 w-1.5 bg-muted rounded-full mx-auto" />
+                                                            <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                         )}
                                                     </TableCell>
                                                 )
@@ -822,7 +830,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                     { label: 'Pending Request', color: 'bg-amber-500' },
                     { label: 'Validated', color: 'bg-teal-500' },
                     { label: 'Needs Correction', color: 'bg-fuchsia-500' },
-                    { label: 'No Log', color: 'bg-muted border border-border' },
+                    { label: 'No Log (click to review)', color: 'bg-slate-300' },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">
                         <div className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
@@ -845,7 +853,7 @@ function ValidationPopoverContent({ record, staffNote, onValidate, onFlag, onCle
     const [mode, setMode] = useState<'idle' | 'flagging'>('idle')
     const [note, setNote] = useState(staffNote)
     const [saving, setSaving] = useState(false)
-    const status = record.validationStatus
+    const status = record?.validationStatus
 
     const runAction = async (action: () => Promise<void>) => {
         setSaving(true)
