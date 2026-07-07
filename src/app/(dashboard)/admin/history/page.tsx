@@ -679,6 +679,7 @@ export default function HistoryPage() {
                                                     const isLeaveRecord = record && (record.status === 'on-leave' || record.mode === 'LEAVE')
                                                     const hasWork = record && record.clockIn && !isLeaveRecord
                                                     const hasOverBreak = hasWork && totalBreakMs > 3600000
+                                                    const dayStats = hasWork ? calculateDurations([record]) : null
 
                                                     return (
                                                         <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
@@ -688,10 +689,21 @@ export default function HistoryPage() {
                                                                 <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark">
                                                                     {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
                                                                     <div className="h-2 w-2 rounded-full bg-green-500" />
+                                                                    {record.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
+                                                                    {record.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
                                                                     {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
-                                                                    <span className="text-[10px] text-muted-foreground font-medium opacity-0 group-hover/mark:opacity-100 transition-opacity absolute -mt-6 bg-popover px-1.5 py-0.5 rounded shadow-sm border border-border">
-                                                                        {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}
-                                                                    </span>
+                                                                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
+                                                                        <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5 max-w-[220px]">
+                                                                            <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
+                                                                            <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
+                                                                            <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
+                                                                            {record.validationStatus === 'NEEDS_CORRECTION' && (
+                                                                                <div className="text-fuchsia-600 font-bold whitespace-normal border-t border-border pt-1 mt-1">
+                                                                                    {allStaff.find(s => s.id === emp.id)?.correctionNote || 'Needs correction'}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             ) : (
                                                                 <div className="h-1.5 w-1.5 bg-muted rounded-full mx-auto" />
@@ -1020,12 +1032,14 @@ export default function HistoryPage() {
             </Dialog>
 
             {/* Legend / Metrics Info */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                     { label: 'Work Hours', color: 'bg-green-500' },
                     { label: 'Break > 1h', color: 'bg-red-500' },
                     { label: 'Leave', color: 'bg-blue-500' },
                     { label: 'Pending Request', color: 'bg-amber-500' },
+                    { label: 'Validated', color: 'bg-teal-500' },
+                    { label: 'Needs Correction', color: 'bg-fuchsia-500' },
                     { label: 'No Log', color: 'bg-muted border border-border' },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">

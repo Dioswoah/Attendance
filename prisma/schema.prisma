@@ -32,6 +32,7 @@ model User {
   shiftEndTime        String?             @default("17:00")
   workingDays         String              @default("MON,TUE,WED,THU,FRI")
   managerNotificationsEnabled Boolean     @default(true)
+  correctionNote      String?
   accounts            Account[]
   attendance                    Attendance[]
   attendanceRequests            AttendanceRequest[]             @relation("AttendanceRequestUser")
@@ -153,6 +154,8 @@ model Attendance {
   breakWarningSent       Boolean   @default(false)
   breakLimitExceededSent Boolean   @default(false)
   overdueDepartureSent   Boolean   @default(false)
+  validationStatus       ValidationStatus?
+  validatedAt            DateTime?
 
   @@index([userId, date])
   @@index([summaryId])
@@ -328,6 +331,11 @@ enum UserStatus {
   BE_RIGHT_BACK
   APPEAR_AWAY
   APPEAR_OFFLINE
+}
+
+enum ValidationStatus {
+  VALIDATED
+  NEEDS_CORRECTION
 }
 
 model WorkHoursChangeLog {

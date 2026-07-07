@@ -5,7 +5,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
     Search,
     RefreshCcw,
@@ -23,6 +22,7 @@ import { getCurrentAuPayrollPeriod } from "@/lib/payroll"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useSession } from "next-auth/react"
 import { useSSE } from "@/contexts/SSEContext"
@@ -47,7 +47,8 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
 
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
-    const [selectedDept, setSelectedDept] = useState("all")
+    const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([])
+    const [deptSearchQuery, setDeptSearchQuery] = useState("")
     const [allStaff, setAllStaff] = useState<any[]>([])
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
     const [searchTerm, setSearchTerm] = useState("")
@@ -56,16 +57,16 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
 
     const startDateRef = useRef(startDate)
     const endDateRef = useRef(endDate)
-    const selectedDeptRef = useRef(selectedDept)
+    const selectedDeptIdsRef = useRef(selectedDeptIds)
     useEffect(() => { startDateRef.current = startDate }, [startDate])
     useEffect(() => { endDateRef.current = endDate }, [endDate])
-    useEffect(() => { selectedDeptRef.current = selectedDept }, [selectedDept])
+    useEffect(() => { selectedDeptIdsRef.current = selectedDeptIds }, [selectedDeptIds])
 
     const isFirstRender = useRef(true)
     useEffect(() => {
         if (isFirstRender.current) { isFirstRender.current = false; return }
-        refreshData(startDate, endDate, selectedDept)
-    }, [startDate, endDate, selectedDept])
+        refreshData(startDate, endDate, selectedDeptIds)
+    }, [startDate, endDate, selectedDeptIds])
 
     const calculateDurations = (recs: any[]) => {
         let workMs = 0
@@ -128,9 +129,10 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         setLoading(true)
         try {
             const managerParam = scopeToManagerId ? `&managerId=${scopeToManagerId}` : ''
+            const deptParam = selectedDeptIds.length === 1 ? `&departmentId=${selectedDeptIds[0]}` : ''
             const [deptRes, attRes, staffRes, leavesRes] = await Promise.all([
                 fetch('/api/departments'),
-                fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}&departmentId=${selectedDept}${managerParam}`),
+                fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}${deptParam}${managerParam}`),
                 fetch('/api/employees'),
                 fetch(`/api/leaves?startDate=${startDate}&endDate=${endDate}&status=APPROVED${managerParam}`)
             ])
@@ -158,15 +160,16 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         }
     }
 
-    const refreshData = async (overrideStart?: string, overrideEnd?: string, overrideDept?: string) => {
+    const refreshData = async (overrideStart?: string, overrideEnd?: string, overrideDeptIds?: string[]) => {
         const sd = overrideStart ?? startDateRef.current
         const ed = overrideEnd ?? endDateRef.current
-        const dept = overrideDept ?? selectedDeptRef.current
+        const deptIds = overrideDeptIds ?? selectedDeptIdsRef.current
         setRefreshing(true)
         try {
             const managerParam = scopeToManagerId ? `&managerId=${scopeToManagerId}` : ''
+            const deptParam = deptIds.length === 1 ? `&departmentId=${deptIds[0]}` : ''
             const [attRes, leavesRes] = await Promise.all([
-                fetch(`/api/attendance?startDate=${sd}&endDate=${ed}&departmentId=${dept}${managerParam}`),
+                fetch(`/api/attendance?startDate=${sd}&endDate=${ed}${deptParam}${managerParam}`),
                 fetch(`/api/leaves?startDate=${sd}&endDate=${ed}&status=APPROVED${managerParam}`)
             ])
             if (attRes.ok) setHistory(await attRes.json())
@@ -174,6 +177,41 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         } finally {
             setRefreshing(false)
         }
+    }
+
+    const handleValidate = async (recordId: string) => {
+        await fetch(`/api/attendance/${recordId}/validate`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'VALIDATED' })
+        })
+        refreshData()
+    }
+
+    const handleClearValidation = async (recordId: string) => {
+        await fetch(`/api/attendance/${recordId}/validate`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: null })
+        })
+        refreshData()
+    }
+
+    const handleFlagCorrection = async (recordId: string, empId: string, note: string) => {
+        await Promise.all([
+            fetch(`/api/attendance/${recordId}/validate`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'NEEDS_CORRECTION' })
+            }),
+            fetch(`/api/employees/${empId}/correction-note`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note })
+            })
+        ])
+        setAllStaff(prev => prev.map(s => s.id === empId ? { ...s, correctionNote: note } : s))
+        refreshData()
     }
 
     const setQuickRange = (range: 'today' | '7days' | '30days' | 'month' | 'au-payroll') => {
@@ -207,7 +245,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
     const employees = allStaff
         .filter(s => !s.isArchived)
         .filter(s => selectedStaffIds.length === 0 || selectedStaffIds.includes(s.id))
-        .filter(s => selectedDept === 'all' || s.departmentId === selectedDept)
+        .filter(s => selectedDeptIds.length === 0 || selectedDeptIds.includes(s.departmentId))
         .map(s => ({
             id: s.id,
             name: s.name,
@@ -222,10 +260,31 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
     const filteredStaffForDropdown = allStaff
         .filter(s => !s.isArchived)
         .filter(s => {
-            const matchesDept = selectedDept === 'all' || s.departmentId === selectedDept
+            const matchesDept = selectedDeptIds.length === 0 || selectedDeptIds.includes(s.departmentId)
             const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
             return matchesDept && matchesQuery
         })
+
+    const filteredDeptsForDropdown = departments.filter(d =>
+        d.name.toLowerCase().includes(deptSearchQuery.toLowerCase())
+    )
+
+    const toggleAllDepts = () => {
+        const visibleIds = filteredDeptsForDropdown.map(d => d.id)
+        if (visibleIds.every(id => selectedDeptIds.includes(id))) {
+            setSelectedDeptIds(prev => prev.filter(id => !visibleIds.includes(id)))
+        } else {
+            setSelectedDeptIds(prev => [...new Set([...prev, ...visibleIds])])
+        }
+        setSelectedStaffIds([])
+    }
+
+    const toggleDeptSelection = (id: string) => {
+        setSelectedDeptIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        )
+        setSelectedStaffIds([])
+    }
 
     const toggleAllStaff = () => {
         const visibleIds = filteredStaffForDropdown.map(s => s.id)
@@ -280,20 +339,84 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                         </div>
                         <div className="space-y-2">
                             <Label>Department</Label>
-                            <Select value={selectedDept} onValueChange={(val) => {
-                                setSelectedDept(val)
-                                setSelectedStaffIds([])
-                            }}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="All Departments" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Departments</SelectItem>
-                                    {departments.map(d => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between h-10 font-normal">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Users className="h-4 w-4 text-muted-foreground" />
+                                            {selectedDeptIds.length === 0 ? (
+                                                <span className="text-muted-foreground">All Departments</span>
+                                            ) : selectedDeptIds.length === 1 ? (
+                                                <span className="truncate">{departments.find(d => d.id === selectedDeptIds[0])?.name || '1 Selected'}</span>
+                                            ) : (
+                                                <span>{selectedDeptIds.length} Selected</span>
+                                            )}
+                                        </div>
+                                        <ChevronDown className="h-4 w-4 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[300px] p-0" align="start">
+                                    <div className="p-2 border-b border-border space-y-2">
+                                        <div className="relative">
+                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Search departments..."
+                                                className="pl-8 h-8 text-xs"
+                                                value={deptSearchQuery}
+                                                onChange={e => setDeptSearchQuery(e.target.value)}
+                                            />
+                                        </div>
+                                        <div
+                                            className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors bg-muted/30"
+                                            onClick={toggleAllDepts}
+                                        >
+                                            <Checkbox
+                                                checked={filteredDeptsForDropdown.length > 0 && filteredDeptsForDropdown.every(d => selectedDeptIds.includes(d.id))}
+                                                onCheckedChange={toggleAllDepts}
+                                            />
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-sm font-bold text-foreground leading-none truncate">Select All Departments</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="max-h-[300px] overflow-y-auto p-1">
+                                        {filteredDeptsForDropdown.length === 0 ? (
+                                            <div className="p-4 text-center text-xs text-muted-foreground">
+                                                No departments found
+                                            </div>
+                                        ) : (
+                                            filteredDeptsForDropdown.map(dept => (
+                                                <div
+                                                    key={dept.id}
+                                                    className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors"
+                                                    onClick={() => toggleDeptSelection(dept.id)}
+                                                >
+                                                    <Checkbox
+                                                        id={`dept-${dept.id}`}
+                                                        checked={selectedDeptIds.includes(dept.id)}
+                                                        onCheckedChange={() => toggleDeptSelection(dept.id)}
+                                                    />
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-sm font-medium leading-none truncate">{dept.name}</span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                    {selectedDeptIds.length > 0 && (
+                                        <div className="p-2 border-t border-border">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="w-full h-8 text-xs text-primary hover:text-primary transition-colors"
+                                                onClick={() => { setSelectedDeptIds([]); setSelectedStaffIds([]) }}
+                                            >
+                                                Clear Selection
+                                            </Button>
+                                        </div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         <div className="space-y-2">
                             <Label>Staff Filter</Label>
@@ -483,20 +606,38 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                 const isLeaveRecord = record && (record.status === 'on-leave' || record.mode === 'LEAVE')
                                                 const hasWork = record && record.clockIn && !isLeaveRecord
                                                 const hasOverBreak = hasWork && totalBreakMs > 3600000
+                                                const dayStats = hasWork ? calculateDurations([record]) : null
 
                                                 return (
                                                     <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
                                                         {isLeaveRecord || isOnLeave ? (
                                                             <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                         ) : hasWork ? (
-                                                            <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark">
-                                                                {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
-                                                                <div className="h-2 w-2 rounded-full bg-green-500" />
-                                                                {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
-                                                                <span className="text-[10px] text-muted-foreground font-medium opacity-0 group-hover/mark:opacity-100 transition-opacity absolute -mt-6 bg-popover px-1.5 py-0.5 rounded shadow-sm border border-border">
-                                                                    {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}
-                                                                </span>
-                                                            </div>
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <div className="flex flex-col items-center justify-center gap-0.5 py-1 group/mark cursor-pointer">
+                                                                        {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+                                                                        <div className="h-2 w-2 rounded-full bg-green-500" />
+                                                                        {record.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
+                                                                        {record.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
+                                                                        {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                                                                        <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
+                                                                            <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5">
+                                                                                <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
+                                                                                <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
+                                                                                <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </PopoverTrigger>
+                                                                <ValidationPopoverContent
+                                                                    record={record}
+                                                                    staffNote={allStaff.find(s => s.id === emp.id)?.correctionNote || ''}
+                                                                    onValidate={() => handleValidate(record.id)}
+                                                                    onFlag={(note) => handleFlagCorrection(record.id, emp.id, note)}
+                                                                    onClear={() => handleClearValidation(record.id)}
+                                                                />
+                                                            </Popover>
                                                         ) : (
                                                             <div className="h-1.5 w-1.5 bg-muted rounded-full mx-auto" />
                                                         )}
@@ -589,12 +730,14 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
             </Dialog>
 
             {/* Legend */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                     { label: 'Work Hours', color: 'bg-green-500' },
                     { label: 'Break > 1h', color: 'bg-red-500' },
                     { label: 'Leave', color: 'bg-blue-500' },
                     { label: 'Pending Request', color: 'bg-amber-500' },
+                    { label: 'Validated', color: 'bg-teal-500' },
+                    { label: 'Needs Correction', color: 'bg-fuchsia-500' },
                     { label: 'No Log', color: 'bg-muted border border-border' },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">
@@ -603,6 +746,77 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                     </div>
                 ))}
             </div>
+            <p className="text-xs text-muted-foreground">Click a work-hours dot to validate a record or flag it for correction.</p>
         </div>
+    )
+}
+
+function ValidationPopoverContent({ record, staffNote, onValidate, onFlag, onClear }: {
+    record: any
+    staffNote: string
+    onValidate: () => Promise<void>
+    onFlag: (note: string) => Promise<void>
+    onClear: () => Promise<void>
+}) {
+    const [mode, setMode] = useState<'idle' | 'flagging'>('idle')
+    const [note, setNote] = useState(staffNote)
+    const [saving, setSaving] = useState(false)
+    const status = record.validationStatus
+
+    const runAction = async (action: () => Promise<void>) => {
+        setSaving(true)
+        try {
+            await action()
+            setMode('idle')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    return (
+        <PopoverContent className="w-72 p-3" align="center">
+            {mode === 'idle' ? (
+                <div className="space-y-2">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Review this record</p>
+                    {status === 'VALIDATED' && (
+                        <p className="text-xs text-teal-600 font-medium">Marked as validated.</p>
+                    )}
+                    {status === 'NEEDS_CORRECTION' && staffNote && (
+                        <p className="text-xs text-fuchsia-600 font-medium">Flagged: {staffNote}</p>
+                    )}
+                    <div className="flex flex-col gap-1.5 pt-1">
+                        <Button size="sm" disabled={saving} className="h-8 text-xs bg-teal-600 hover:bg-teal-700" onClick={() => runAction(onValidate)}>
+                            Validate
+                        </Button>
+                        <Button size="sm" disabled={saving} variant="outline" className="h-8 text-xs border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50" onClick={() => setMode('flagging')}>
+                            Needs Correction
+                        </Button>
+                        {status && (
+                            <Button size="sm" disabled={saving} variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={() => runAction(onClear)}>
+                                Clear Status
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">What needs to be corrected?</p>
+                    <Textarea
+                        value={note}
+                        onChange={e => setNote(e.target.value)}
+                        placeholder="Describe the issue for this staff member..."
+                        className="text-xs min-h-[80px]"
+                    />
+                    <div className="flex gap-2">
+                        <Button size="sm" disabled={saving} className="h-8 text-xs bg-fuchsia-600 hover:bg-fuchsia-700 flex-1" onClick={() => runAction(() => onFlag(note))}>
+                            Save
+                        </Button>
+                        <Button size="sm" disabled={saving} variant="ghost" className="h-8 text-xs" onClick={() => setMode('idle')}>
+                            Back
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </PopoverContent>
     )
 }
