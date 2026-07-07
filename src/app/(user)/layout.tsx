@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { SSEProvider, useSSE } from "@/contexts/SSEContext"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2 } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2, LayoutGrid } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { PatchNotesModal } from "@/components/PatchNotesModal"
 import { Button } from "@/components/ui/button"
@@ -199,6 +199,7 @@ function UserLayoutInner({
             subItems: [
                 { name: "Pending Requests", href: "/user/manager?tab=requests", icon: ListChecks, badge: managerPendingLeaves + managerPendingAttn },
                 { name: "History", href: "/user/manager?tab=history", icon: History },
+                { name: "Record", href: "/user/manager?tab=record", icon: LayoutGrid },
                 { name: "Calendar", href: "/user/manager?tab=calendar", icon: CalendarDays },
                 { name: "Performance", href: "/user/manager?tab=performance", icon: TrendingUp },
                 { name: "Reports", href: "/user/manager?tab=reports", icon: Download },
