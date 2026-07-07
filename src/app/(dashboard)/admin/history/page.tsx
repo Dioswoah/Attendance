@@ -72,6 +72,8 @@ export default function HistoryPage() {
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [includeArchived, setIncludeArchived] = useState(false)
     const [viewingStaff, setViewingStaff] = useState<any | null>(null)
+    const [bulkSelectedStaffIds, setBulkSelectedStaffIds] = useState<string[]>([])
+    const [bulkActionLoading, setBulkActionLoading] = useState(false)
 
     // Daily Event Log column filters/sort
     const [dailyStatusFilter, setDailyStatusFilter] = useState<string[]>([])
@@ -250,6 +252,36 @@ export default function HistoryPage() {
         setEndDate(endStr)
         // Fetch immediately with the new dates — don't wait for state to settle
         refreshData(startStr, endStr)
+    }
+
+    const toggleBulkStaff = (id: string) => {
+        setBulkSelectedStaffIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
+    }
+
+    const toggleAllBulkStaff = (visibleIds: string[]) => {
+        setBulkSelectedStaffIds(prev =>
+            visibleIds.every(id => prev.includes(id))
+                ? prev.filter(id => !visibleIds.includes(id))
+                : [...new Set([...prev, ...visibleIds])]
+        )
+    }
+
+    const handleBulkSetStatus = async (status: 'VALIDATED' | null) => {
+        setBulkActionLoading(true)
+        try {
+            const recordIds = history
+                .filter(h => bulkSelectedStaffIds.includes(h.userId) && h.clockIn)
+                .map(h => h.id)
+            await Promise.all(recordIds.map(id => fetch(`/api/attendance/${id}/validate`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status })
+            })))
+            setBulkSelectedStaffIds([])
+            refreshData()
+        } finally {
+            setBulkActionLoading(false)
+        }
     }
 
     // Matrix Transformation
@@ -629,12 +661,52 @@ export default function HistoryPage() {
                         </div>
                     </div>
 
+                    {activeTab === 'matrix' && bulkSelectedStaffIds.length > 0 && (
+                        <div className="px-4 py-2.5 border-b border-border bg-teal-50/50 flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-teal-700">{bulkSelectedStaffIds.length} staff selected</span>
+                            <div className="flex gap-2">
+                                <Button
+                                    size="sm"
+                                    disabled={bulkActionLoading}
+                                    className="h-8 text-xs bg-teal-600 hover:bg-teal-700"
+                                    onClick={() => handleBulkSetStatus('VALIDATED')}
+                                >
+                                    Validate Selected
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={bulkActionLoading}
+                                    className="h-8 text-xs"
+                                    onClick={() => handleBulkSetStatus(null)}
+                                >
+                                    Clear Status
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={bulkActionLoading}
+                                    className="h-8 text-xs text-muted-foreground"
+                                    onClick={() => setBulkSelectedStaffIds([])}
+                                >
+                                    Deselect All
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="overflow-x-auto w-full min-h-[400px]">
                         {activeTab === 'matrix' ? (
                             <Table>
                                 <TableHeader className="bg-muted/50">
                                     <TableRow className="hover:bg-transparent border-border">
-                                        <TableHead className="py-3 px-6 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 w-[200px]">Staff</TableHead>
+                                        <TableHead className="py-3 px-3 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 w-[36px]">
+                                            <Checkbox
+                                                checked={employees.length > 0 && employees.every(e => bulkSelectedStaffIds.includes(e.id))}
+                                                onCheckedChange={() => toggleAllBulkStaff(employees.map(e => e.id))}
+                                            />
+                                        </TableHead>
+                                        <TableHead className="py-3 px-6 font-medium text-muted-foreground sticky left-9 bg-muted/50 z-10 w-[200px]">Staff</TableHead>
                                         <TableHead className="py-3 px-6 font-medium text-muted-foreground">Department</TableHead>
                                         {dateRange.map(date => (
                                             <TableHead key={date.toISOString()} className="py-3 px-2 text-center font-medium text-muted-foreground min-w-[60px]">
@@ -650,8 +722,14 @@ export default function HistoryPage() {
                                         const stats = calculateDurations(empRecs)
                                         return (
                                             <TableRow key={emp.id} className="border-border hover:bg-muted/30 transition-colors group">
+                                                <TableCell className="py-3 px-3 sticky left-0 bg-white group-hover:bg-muted/30 z-10 w-[36px]">
+                                                    <Checkbox
+                                                        checked={bulkSelectedStaffIds.includes(emp.id)}
+                                                        onCheckedChange={() => toggleBulkStaff(emp.id)}
+                                                    />
+                                                </TableCell>
                                                 <TableCell
-                                                    className="py-3 px-6 sticky left-0 bg-white group-hover:bg-muted/30 z-10 border-r border-border font-medium text-sm text-foreground cursor-pointer hover:text-primary"
+                                                    className="py-3 px-6 sticky left-9 bg-white group-hover:bg-muted/30 z-10 border-r border-border font-medium text-sm text-foreground cursor-pointer hover:text-primary"
                                                     onClick={() => setViewingStaff({ ...emp, stats, records: empRecs })}
                                                 >
                                                     {emp.name}
@@ -725,7 +803,7 @@ export default function HistoryPage() {
                                     })}
                                     {employees.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={dateRange.length + 3} className="py-12 text-center">
+                                            <TableCell colSpan={dateRange.length + 4} className="py-12 text-center">
                                                 <div className="flex flex-col items-center gap-2 text-muted-foreground opacity-50">
                                                     <Users className="h-8 w-8" />
                                                     <p className="text-sm font-medium">No records</p>
