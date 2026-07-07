@@ -40,6 +40,7 @@ import {
 import { format, eachDayOfInterval, parseISO, isSameDay } from "date-fns"
 import { useSession } from "next-auth/react"
 import { getBrowserTimezone } from "@/lib/timezone"
+import { getCurrentAuPayrollPeriod } from "@/lib/payroll"
 import * as XLSX from 'xlsx'
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
@@ -219,9 +220,9 @@ export default function HistoryPage() {
         return `${h}h ${m}m ${s}s`
     }
 
-    const setQuickRange = (range: 'today' | '7days' | '30days' | 'month' | 'cutoff1' | 'cutoff2') => {
-        const end = new Date()
-        const start = new Date()
+    const setQuickRange = (range: 'today' | '7days' | '30days' | 'month' | 'cutoff1' | 'cutoff2' | 'au-payroll') => {
+        let end = new Date()
+        let start = new Date()
 
         if (range === 'today') {
             start.setHours(0, 0, 0, 0)
@@ -229,6 +230,11 @@ export default function HistoryPage() {
         } else if (range === '7days') start.setDate(end.getDate() - 7)
         else if (range === '30days') start.setDate(end.getDate() - 30)
         else if (range === 'month') start.setDate(1)
+        else if (range === 'au-payroll') {
+            const period = getCurrentAuPayrollPeriod()
+            start = period.start
+            end = period.end
+        }
         else if (range === 'cutoff1') {
             start.setMonth(start.getMonth() - 1)
             start.setDate(26)
@@ -528,6 +534,16 @@ export default function HistoryPage() {
                                     {r === 'today' ? 'Today' : r === '7days' ? 'Last 7 Days' : r === '30days' ? 'Last 30 Days' : 'This Month'}
                                 </Button>
                             ))}
+                            {activeTab !== 'daily' && (
+                                <Button
+                                    onClick={() => setQuickRange('au-payroll')}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs font-black bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 transition-all"
+                                >
+                                    AU Payroll Period
+                                </Button>
+                            )}
                             {activeTab === 'summary' && (
                                 <>
                                     <div className="w-px h-6 bg-border mx-1 hidden md:block self-center" />

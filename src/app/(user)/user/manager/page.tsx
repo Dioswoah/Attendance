@@ -34,6 +34,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSepar
 import { Checkbox } from "@/components/ui/checkbox"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell } from 'recharts'
 import { Skeleton } from "@/components/ui/skeleton"
+import { AttendanceMatrix } from "@/components/attendance/AttendanceMatrix"
 
 interface LeaveHistoryEntry {
     id: string
@@ -918,6 +919,10 @@ export default function ManagerControlPage() {
                             <History className="w-4 h-4 mr-2" />
                             History
                         </TabsTrigger>
+                        <TabsTrigger value="record" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
+                            <LayoutGrid className="w-4 h-4 mr-2" />
+                            Record
+                        </TabsTrigger>
                         <TabsTrigger value="calendar" className="data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm px-4 h-10 rounded-xl transition-all text-xs font-black uppercase tracking-wider">
                             <CalendarDays className="w-4 h-4 mr-2" />
                             Calendar
@@ -1682,6 +1687,17 @@ export default function ManagerControlPage() {
                             ))
                         )}
                     </div>
+                </TabsContent>
+
+                {/* --- RECORD TAB --- */}
+                <TabsContent value="record" className="space-y-6 animate-in slide-in-from-left-4 duration-300">
+                    {uid ? (
+                        <AttendanceMatrix scopeToManagerId={uid} />
+                    ) : (
+                        <div className="flex items-center justify-center min-h-[50vh]">
+                            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                        </div>
+                    )}
                 </TabsContent>
 
                 {/* --- CALENDAR TAB --- */}
