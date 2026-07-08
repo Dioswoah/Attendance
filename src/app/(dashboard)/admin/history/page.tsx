@@ -35,7 +35,8 @@ import {
     Clock3,
     Coffee,
     Building2,
-    Home
+    Home,
+    Globe
 } from "lucide-react"
 import { format, eachDayOfInterval, parseISO, isSameDay } from "date-fns"
 import { useSession } from "next-auth/react"
@@ -67,9 +68,15 @@ export default function HistoryPage() {
     // Filters
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    // The range actually reflected in `history`/`dateRange` below. Only updated once a fetch for
+    // that range completes — kept separate from startDate/endDate (which update immediately as the
+    // user types/clicks) so the table never renders new date columns against still-stale data.
+    const [appliedStartDate, setAppliedStartDate] = useState(startDate)
+    const [appliedEndDate, setAppliedEndDate] = useState(endDate)
     const [selectedDept, setSelectedDept] = useState("all")
     const [allStaff, setAllStaff] = useState<any[]>([])
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
+    const [selectedLocations, setSelectedLocations] = useState<string[]>([])
     const [searchTerm, setSearchTerm] = useState("")
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [includeArchived, setIncludeArchived] = useState(false)
@@ -164,7 +171,11 @@ export default function HistoryPage() {
                 fetch(`/api/leaves?startDate=${startDate}&endDate=${endDate}&status=APPROVED`)
             ])
             if (deptRes.ok) setDepartments(await deptRes.json())
-            if (attRes.ok) setHistory(await attRes.json())
+            if (attRes.ok) {
+                setHistory(await attRes.json())
+                setAppliedStartDate(startDate)
+                setAppliedEndDate(endDate)
+            }
             if (staffRes.ok) setAllStaff(await staffRes.json())
             if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
         } catch (error) {
@@ -184,7 +195,14 @@ export default function HistoryPage() {
                 fetch(`/api/attendance?startDate=${sd}&endDate=${ed}&departmentId=${dept}`),
                 fetch(`/api/leaves?startDate=${sd}&endDate=${ed}&status=APPROVED`)
             ])
-            if (attRes.ok) setHistory(await attRes.json())
+            // Apply the fetched data and the range it belongs to together — never let the table's
+            // date columns (driven by appliedStartDate/appliedEndDate) update ahead of the records
+            // backing them, which is what caused the Total column to flash a stale value.
+            if (attRes.ok) {
+                setHistory(await attRes.json())
+                setAppliedStartDate(sd)
+                setAppliedEndDate(ed)
+            }
             if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
         } finally {
             setRefreshing(false)
@@ -250,10 +268,12 @@ export default function HistoryPage() {
 
         const startStr = format(start, "yyyy-MM-dd")
         const endStr = format(end, "yyyy-MM-dd")
+        // Don't also call refreshData here — the useEffect watching [startDate, endDate,
+        // selectedDept] already fires on this state change. Calling both fired two
+        // overlapping fetches for the same range, which is exactly the kind of race that
+        // caused the table to visibly flicker/double-render.
         setStartDate(startStr)
         setEndDate(endStr)
-        // Fetch immediately with the new dates — don't wait for state to settle
-        refreshData(startStr, endStr)
     }
 
     const setValidationStatus = async (recordId: string | undefined, userId: string, dateStr: string, status: 'VALIDATED' | 'NEEDS_CORRECTION' | null) => {
@@ -303,6 +323,36 @@ export default function HistoryPage() {
         refreshData()
     }
 
+    const EMPLOYMENT_LOCATIONS = ['Philippines', 'Australia']
+
+    const toggleLocationSelection = (loc: string) => {
+        setSelectedLocations(prev => prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc])
+    }
+
+    // Aggregates one staff member's day-by-day validation status across the currently selected
+    // date range into a single symbol. Leave days are excluded — there's no validate/flag action
+    // for a leave day, so requiring them to be "validated" would make full-✓ unreachable for
+    // anyone who took leave during the period.
+    const getValidationSummary = (empId: string): 'VALIDATED' | 'NEEDS_CORRECTION' | 'NOT_VALIDATED' => {
+        let hasNeedsCorrection = false
+        let hasUnvalidated = false
+        dateRange.forEach(date => {
+            const dateStr = format(date, "yyyy-MM-dd")
+            const record = history.find(h => h.userId === empId && h.date === dateStr)
+            const isOnLeave = !record && approvedLeaves.some(l =>
+                l.userId === empId &&
+                dateStr >= l.startDate.slice(0, 10) &&
+                dateStr <= l.endDate.slice(0, 10)
+            )
+            if (isOnLeave) return
+            if (record?.validationStatus === 'NEEDS_CORRECTION') hasNeedsCorrection = true
+            else if (record?.validationStatus !== 'VALIDATED') hasUnvalidated = true
+        })
+        if (hasNeedsCorrection) return 'NEEDS_CORRECTION'
+        if (hasUnvalidated) return 'NOT_VALIDATED'
+        return 'VALIDATED'
+    }
+
     const toggleBulkStaff = (id: string) => {
         setBulkSelectedStaffIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
     }
@@ -319,21 +369,19 @@ export default function HistoryPage() {
         setBulkActionLoading(true)
         try {
             const staffCount = bulkSelectedStaffIds.length
-            const tasks: Promise<boolean>[] = []
-            for (const staffId of bulkSelectedStaffIds) {
-                for (const date of dateRange) {
-                    const dateStr = format(date, "yyyy-MM-dd")
-                    const record = history.find(h => h.userId === staffId && h.date === dateStr)
-                    if (!record && status === null) continue
-                    tasks.push(setValidationStatus(record?.id, staffId, dateStr, status))
-                }
-            }
-            const results = await Promise.all(tasks)
-            const failed = results.filter(ok => !ok).length
-            if (failed === 0) {
-                toast.success(status === 'VALIDATED' ? `Validated ${results.length} day(s) for ${staffCount} staff` : `Cleared validation for ${staffCount} staff`)
+            // Single batched request instead of one HTTP call per staff x date — firing
+            // hundreds of parallel requests competed with regular clock-in/out traffic for
+            // the same Cloud Run instances and DB connections, occasionally stalling them.
+            const res = await fetch('/api/attendance/validate-bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ staffIds: bulkSelectedStaffIds, startDate: appliedStartDate, endDate: appliedEndDate, status })
+            })
+            if (res.ok) {
+                const { updated, created } = await res.json()
+                toast.success(status === 'VALIDATED' ? `Validated ${updated + created} day(s) for ${staffCount} staff` : `Cleared validation for ${staffCount} staff`)
             } else {
-                toast.error(`${failed} of ${results.length} update(s) failed`)
+                toast.error("Failed to update validation status")
             }
             setBulkSelectedStaffIds([])
             refreshData()
@@ -344,14 +392,15 @@ export default function HistoryPage() {
 
     // Matrix Transformation
     const dateRange = eachDayOfInterval({
-        start: parseISO(startDate),
-        end: parseISO(endDate)
+        start: parseISO(appliedStartDate),
+        end: parseISO(appliedEndDate)
     })
 
     const employees = allStaff
         .filter(s => includeArchived || !s.isArchived)
         .filter(s => selectedStaffIds.length === 0 || selectedStaffIds.includes(s.id))
         .filter(s => selectedDept === 'all' || s.departmentId === selectedDept)
+        .filter(s => selectedLocations.length === 0 || selectedLocations.includes(s.employmentLocation))
         .map(s => ({
             id: s.id,
             name: s.name,
@@ -366,8 +415,9 @@ export default function HistoryPage() {
     const filteredStaffForDropdown = allStaff
         .filter(s => {
             const matchesDept = selectedDept === 'all' || s.departmentId === selectedDept
+            const matchesLocation = selectedLocations.length === 0 || selectedLocations.includes(s.employmentLocation)
             const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
-            return matchesDept && matchesQuery
+            return matchesDept && matchesLocation && matchesQuery
         })
 
     const toggleAllArchived = () => {
@@ -475,7 +525,7 @@ export default function HistoryPage() {
             {/* Filters Card */}
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardContent className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                         {activeTab === 'daily' ? (
                             <div className="space-y-2 col-span-2 md:col-span-2">
                                 <Label>Date</Label>
@@ -610,6 +660,54 @@ export default function HistoryPage() {
                                 </PopoverContent>
                             </Popover>
                         </div>
+                        <div className="space-y-2">
+                            <Label>Location</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between h-10 font-normal">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Globe className="h-4 w-4 text-muted-foreground" />
+                                            {selectedLocations.length === 0 ? (
+                                                <span className="text-muted-foreground">All Locations</span>
+                                            ) : selectedLocations.length === 1 ? (
+                                                <span className="truncate">{selectedLocations[0]}</span>
+                                            ) : (
+                                                <span>{selectedLocations.length} Selected</span>
+                                            )}
+                                        </div>
+                                        <ChevronDown className="h-4 w-4 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[220px] p-1" align="start">
+                                    {EMPLOYMENT_LOCATIONS.map(loc => (
+                                        <div
+                                            key={loc}
+                                            className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors"
+                                            onClick={() => toggleLocationSelection(loc)}
+                                        >
+                                            <Checkbox
+                                                id={`loc-${loc}`}
+                                                checked={selectedLocations.includes(loc)}
+                                                onCheckedChange={() => toggleLocationSelection(loc)}
+                                            />
+                                            <span className="text-sm font-medium leading-none truncate">{loc}</span>
+                                        </div>
+                                    ))}
+                                    {selectedLocations.length > 0 && (
+                                        <div className="p-1 border-t border-border mt-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="w-full h-8 text-xs text-primary hover:text-primary transition-colors"
+                                                onClick={() => setSelectedLocations([])}
+                                            >
+                                                Clear Selection
+                                            </Button>
+                                        </div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
+                        </div>
                     </div>
                     <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-t border-border mt-4 pt-4">
                         <div className="flex flex-wrap gap-2">
@@ -707,13 +805,13 @@ export default function HistoryPage() {
                         </div>
                         <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
                             <span className="font-medium text-foreground">Period:</span>
-                            {activeTab === 'daily' || startDate === endDate ? (
-                                <span>{format(parseISO(endDate), "MMM dd, yyyy")}</span>
+                            {activeTab === 'daily' || appliedStartDate === appliedEndDate ? (
+                                <span>{format(parseISO(appliedEndDate), "MMM dd, yyyy")}</span>
                             ) : (
                                 <>
-                                    <span>{format(parseISO(startDate), "MMM dd")}</span>
+                                    <span>{format(parseISO(appliedStartDate), "MMM dd")}</span>
                                     <ArrowRight className="h-3.5 w-3.5" />
-                                    <span>{format(parseISO(endDate), "MMM dd, yyyy")}</span>
+                                    <span>{format(parseISO(appliedEndDate), "MMM dd, yyyy")}</span>
                                 </>
                             )}
                         </div>
@@ -766,6 +864,7 @@ export default function HistoryPage() {
                                         </TableHead>
                                         <TableHead className="py-3 px-6 font-medium text-muted-foreground sticky left-9 bg-muted/50 z-10 w-[200px]">Staff</TableHead>
                                         <TableHead className="py-3 px-6 font-medium text-muted-foreground">Department</TableHead>
+                                        <TableHead className="py-3 px-4 text-center font-medium text-muted-foreground w-[90px]">Validation</TableHead>
                                         {dateRange.map(date => (
                                             <TableHead key={date.toISOString()} className="py-3 px-2 text-center font-medium text-muted-foreground min-w-[60px]">
                                                 {format(date, "dd MMM")}
@@ -795,6 +894,19 @@ export default function HistoryPage() {
                                                 <TableCell className="py-3 px-6 text-sm text-muted-foreground">
                                                     {emp.dept}
                                                 </TableCell>
+                                                {(() => {
+                                                    const summary = getValidationSummary(emp.id)
+                                                    const display = summary === 'NEEDS_CORRECTION'
+                                                        ? { symbol: '!', className: 'text-fuchsia-600', title: 'Needs correction on at least one day' }
+                                                        : summary === 'VALIDATED'
+                                                        ? { symbol: '✓', className: 'text-teal-600', title: 'All days validated' }
+                                                        : { symbol: '✗', className: 'text-slate-400', title: 'Not fully validated' }
+                                                    return (
+                                                        <TableCell className="py-3 px-4 text-center">
+                                                            <span className={`font-black text-base ${display.className}`} title={display.title}>{display.symbol}</span>
+                                                        </TableCell>
+                                                    )
+                                                })()}
                                                 {dateRange.map(date => {
                                                     const dateStr = format(date, "yyyy-MM-dd")
                                                     const record = history.find(h => h.userId === emp.id && h.date === dateStr)
@@ -874,7 +986,7 @@ export default function HistoryPage() {
                                     })}
                                     {employees.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={dateRange.length + 4} className="py-12 text-center">
+                                            <TableCell colSpan={dateRange.length + 5} className="py-12 text-center">
                                                 <div className="flex flex-col items-center gap-2 text-muted-foreground opacity-50">
                                                     <Users className="h-8 w-8" />
                                                     <p className="text-sm font-medium">No records</p>
@@ -887,7 +999,7 @@ export default function HistoryPage() {
                         ) : activeTab === 'daily' ? (() => {
                             const dailyRows = employees
                                 .map(emp => {
-                                    const record = history.find(h => h.userId === emp.id && isSameDay(parseISO(h.date), parseISO(endDate)))
+                                    const record = history.find(h => h.userId === emp.id && isSameDay(parseISO(h.date), parseISO(appliedEndDate)))
                                     const status = record?.status || "absent"
                                     const accessKey = record?.mode && status !== 'on-leave'
                                         ? (record.mode === 'OFFICE' ? 'office' : 'wfh')
@@ -1028,7 +1140,7 @@ export default function HistoryPage() {
                                                             <span>{record?.clockIn ? new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : '---'}</span>
                                                         </div>
                                                         {/* For historical records, we can't show "Live" duration if it's not today. If it is today, we can. */}
-                                                        {isSameDay(parseISO(endDate), new Date()) ? (
+                                                        {isSameDay(parseISO(appliedEndDate), new Date()) ? (
                                                             <span className="text-xs text-muted-foreground font-mono tabular-nums">{calculateLiveDuration(record)}</span>
                                                         ) : (
                                                             <span className="text-xs text-muted-foreground font-mono tabular-nums">
@@ -1133,7 +1245,7 @@ export default function HistoryPage() {
                             </div>
                             <div>
                                 <DialogTitle className="text-xl font-bold">{viewingStaff?.name}</DialogTitle>
-                                <DialogDescription>{viewingStaff?.dept} • Stats for {format(parseISO(startDate), "MMM dd")} - {format(parseISO(endDate), "MMM dd, yyyy")}</DialogDescription>
+                                <DialogDescription>{viewingStaff?.dept} • Stats for {format(parseISO(appliedStartDate), "MMM dd")} - {format(parseISO(appliedEndDate), "MMM dd, yyyy")}</DialogDescription>
                             </div>
                         </div>
                     </DialogHeader>
@@ -1203,6 +1315,20 @@ export default function HistoryPage() {
                     </div>
                 ))}
             </div>
+            {activeTab === 'matrix' && (
+                <div className="grid grid-cols-3 gap-4">
+                    {[
+                        { symbol: '✓', label: 'All Validated', className: 'text-teal-600' },
+                        { symbol: '!', label: 'Needs Correction', className: 'text-fuchsia-600' },
+                        { symbol: '✗', label: 'Not Validated', className: 'text-slate-400' },
+                    ].map(item => (
+                        <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">
+                            <span className={`font-black text-base ${item.className}`}>{item.symbol}</span>
+                            <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div >
     )
 }

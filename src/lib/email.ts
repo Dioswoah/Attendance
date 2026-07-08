@@ -320,6 +320,30 @@ export async function sendOverdueDepartureEmail({ userName, userEmail, scheduled
     }
 }
 
+interface ManagerValidationReminderEmailProps { managerName: string; managerEmail: string; }
+export async function sendManagerValidationReminderEmail({ managerName, managerEmail }: ManagerValidationReminderEmailProps): Promise<boolean> {
+    try {
+        if (!(await isEmailEnabled())) return true;
+        const recordUrl = `${process.env.NEXTAUTH_URL || 'https://attendance-app-712513641417.us-central1.run.app'}/user/manager?tab=record`;
+        const html = buildEmailHtml({
+            title: `Weekly Attendance Review`,
+            subtitle: `Staff Validation Reminder`,
+            buttonText: 'Validate Your Staff',
+            buttonLink: recordUrl,
+            greetingName: managerName,
+            bodyHtml: `
+        <p>It's time for your weekly attendance review. Please validate your staff's attendance records for the past week, or flag any days that need correction.</p>
+        <p style="font-size: 14px; color: #64748b;">Click the button below — it will take you straight to the Record tab where you can review and validate.</p>
+      `
+        });
+        await transporter.sendMail({ from: SENDER_EMAIL, to: managerEmail, subject: "[RSA] Reminder: Validate Your Staff's Attendance", html });
+        return true;
+    } catch (error) {
+        console.error("[ZeptoMail] Failed to send manager validation reminder email:", error);
+        return false;
+    }
+}
+
 interface LateStaffInfo { name: string; scheduledStart: string; }
 interface ManagerLateReportEmailProps { managerName: string; managerEmail: string; lateStaff: LateStaffInfo[]; }
 export async function sendManagerLateReportEmail({ managerName, managerEmail, lateStaff }: ManagerLateReportEmailProps): Promise<boolean> {

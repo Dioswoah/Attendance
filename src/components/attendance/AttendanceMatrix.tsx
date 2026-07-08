@@ -49,6 +49,11 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
 
     const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
     const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    // The range actually reflected in `history`/`dateRange` below. Only updated once a fetch for
+    // that range completes — kept separate from startDate/endDate (which update immediately as the
+    // user types/clicks) so the table never renders new date columns against still-stale data.
+    const [appliedStartDate, setAppliedStartDate] = useState(startDate)
+    const [appliedEndDate, setAppliedEndDate] = useState(endDate)
     const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([])
     const [deptSearchQuery, setDeptSearchQuery] = useState("")
     const [allStaff, setAllStaff] = useState<any[]>([])
@@ -161,7 +166,11 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
 
             setDepartments(deptList)
             setAllStaff(staffList)
-            if (attRes.ok) setHistory(await attRes.json())
+            if (attRes.ok) {
+                setHistory(await attRes.json())
+                setAppliedStartDate(startDate)
+                setAppliedEndDate(endDate)
+            }
             if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
         } catch (error) {
             // Error handled silently for production
@@ -182,7 +191,14 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                 fetch(`/api/attendance?startDate=${sd}&endDate=${ed}${deptParam}${managerParam}`),
                 fetch(`/api/leaves?startDate=${sd}&endDate=${ed}&status=APPROVED${managerParam}`)
             ])
-            if (attRes.ok) setHistory(await attRes.json())
+            // Apply the fetched data and the range it belongs to together — never let the table's
+            // date columns (driven by appliedStartDate/appliedEndDate) update ahead of the records
+            // backing them, which is what caused the Total column to flash a stale value.
+            if (attRes.ok) {
+                setHistory(await attRes.json())
+                setAppliedStartDate(sd)
+                setAppliedEndDate(ed)
+            }
             if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
         } finally {
             setRefreshing(false)
@@ -287,7 +303,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
             const res = await fetch('/api/attendance/validate-bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ staffIds: bulkSelectedStaffIds, startDate, endDate, status })
+                body: JSON.stringify({ staffIds: bulkSelectedStaffIds, startDate: appliedStartDate, endDate: appliedEndDate, status })
             })
             if (res.ok) {
                 const { updated, created } = await res.json()
@@ -320,14 +336,17 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
 
         const startStr = format(start, "yyyy-MM-dd")
         const endStr = format(end, "yyyy-MM-dd")
+        // Don't also call refreshData here — the useEffect watching [startDate, endDate,
+        // selectedDeptIds] already fires on this state change. Calling both fired two
+        // overlapping fetches for the same range, which is exactly the kind of race that
+        // caused the table to visibly flicker/double-render.
         setStartDate(startStr)
         setEndDate(endStr)
-        refreshData(startStr, endStr)
     }
 
     const dateRange = eachDayOfInterval({
-        start: parseISO(startDate),
-        end: parseISO(endDate)
+        start: parseISO(appliedStartDate),
+        end: parseISO(appliedEndDate)
     })
 
     const employees = allStaff
@@ -693,13 +712,13 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                         </div>
                         <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
                             <span className="font-medium text-foreground">Period:</span>
-                            {startDate === endDate ? (
-                                <span>{format(parseISO(endDate), "MMM dd, yyyy")}</span>
+                            {appliedStartDate === appliedEndDate ? (
+                                <span>{format(parseISO(appliedEndDate), "MMM dd, yyyy")}</span>
                             ) : (
                                 <>
-                                    <span>{format(parseISO(startDate), "MMM dd")}</span>
+                                    <span>{format(parseISO(appliedStartDate), "MMM dd")}</span>
                                     <ArrowRight className="h-3.5 w-3.5" />
-                                    <span>{format(parseISO(endDate), "MMM dd, yyyy")}</span>
+                                    <span>{format(parseISO(appliedEndDate), "MMM dd, yyyy")}</span>
                                 </>
                             )}
                         </div>
@@ -830,9 +849,10 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                     <div className={`relative flex flex-col items-center justify-center gap-0.5 py-1 group/mark ${showValidation ? "cursor-pointer" : ""}`}>
                                                         {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
                                                         <div className={`${dotSize} rounded-full ${dotColor}`} />
+                                                        {record?.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
                                                         {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
                                                         <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
-                                                            <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5">
+                                                            <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5 max-w-[220px]">
                                                                 {record?.clockIn ? (
                                                                     <>
                                                                         <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
@@ -843,6 +863,11 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                                     <div className="font-bold text-foreground">On Leave</div>
                                                                 ) : (
                                                                     <div className="font-bold text-foreground">{showValidation ? 'No record — click to review' : 'No record'}</div>
+                                                                )}
+                                                                {record?.validationStatus === 'NEEDS_CORRECTION' && (
+                                                                    <div className="text-fuchsia-600 font-bold whitespace-normal border-t border-border pt-1 mt-1">
+                                                                        {allStaff.find(s => s.id === emp.id)?.correctionNote || 'Needs correction'}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -902,7 +927,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                             </div>
                             <div>
                                 <DialogTitle className="text-xl font-bold">{viewingStaff?.name}</DialogTitle>
-                                <DialogDescription>{viewingStaff?.dept} • Stats for {format(parseISO(startDate), "MMM dd")} - {format(parseISO(endDate), "MMM dd, yyyy")}</DialogDescription>
+                                <DialogDescription>{viewingStaff?.dept} • Stats for {format(parseISO(appliedStartDate), "MMM dd")} - {format(parseISO(appliedEndDate), "MMM dd, yyyy")}</DialogDescription>
                             </div>
                         </div>
                     </DialogHeader>
