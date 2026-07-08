@@ -27,6 +27,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO, isWithinInterval, startOfWeek, endOfWeek } from "date-fns"
 import { cn } from "@/lib/utils"
 import { io } from "socket.io-client"
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout"
 import { getBrowserTimezone } from "@/lib/timezone"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger, SheetClose } from "@/components/ui/sheet"
 import { statusConfig } from "@/components/UserStatusDropdown"
@@ -386,10 +387,19 @@ export default function UserPortal() {
                 if (active) {
                     // Active session confirmed in summary — use it (richer data than fast endpoint)
                     setCurrentAttendance(active)
+                } else {
+                    // No active session in mine. Could be a race where a brand-new clock-in hasn't
+                    // reached this response yet (fire-and-forget delay) — in that case the session
+                    // we're tracking won't even be in `mine`, so leave currentAttendance alone.
+                    // But if the exact session we ARE tracking shows up here with clockOut now set,
+                    // it really did end (e.g. clocked out from another device/tab) — clear it so the
+                    // buttons don't get stuck showing a session that's no longer open.
+                    setCurrentAttendance((prev: any) => {
+                        if (!prev) return prev
+                        const sameSession = mineData.find((r: any) => r.id === prev.id)
+                        return (sameSession && sameSession.clockOut) ? null : prev
+                    })
                 }
-                // No active session in mine: could be a race where the new clock-in hasn't reached
-                // attendanceSummary yet (fire-and-forget delay). Don't overwrite currentAttendance
-                // with an old clocked-out record — the currentState useEffect holds the correct state.
             }
 
             setMyLeaveRequests(data.leaves || [])
@@ -1127,7 +1137,7 @@ export default function UserPortal() {
         if (actionInFlightRef.current) return
         setActionLock(true)
         setIsActionInFlight(true)
-        fetch('/api/attendance', {
+        fetchWithTimeout('/api/attendance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: session.user.id, mode, locationDetails, clockIn: clockInISO }),
@@ -1158,8 +1168,17 @@ export default function UserPortal() {
                 mutateDashboard()
             }
         })
-        .catch(() => {
-            toast.error("We encountered a small issue. Please try again.")
+        .catch(async (err: any) => {
+            if (err?.name === 'AbortError') {
+                toast.error("That took longer than expected — checking your latest status...")
+            } else {
+                toast.error("We encountered a small issue. Please try again.")
+            }
+            // Request may have actually reached the server before stalling/timing out —
+            // resync from the DB instead of assuming failure, so the button never gets stuck.
+            const stateData = await mutateCurrentState()
+            if (stateData) setCurrentAttendance(stateData.active || null)
+            mutateDashboard()
         })
         .finally(() => {
             setActionLock(false)
@@ -1245,7 +1264,7 @@ export default function UserPortal() {
             if (resolvedTime) body.expectedReturnTime = resolvedTime
         }
 
-        fetch('/api/attendance', {
+        fetchWithTimeout('/api/attendance', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -1285,8 +1304,17 @@ export default function UserPortal() {
                 mutateDashboard()
             }
         })
-        .catch(() => {
-            toast.error("We encountered a small issue. Please try again.")
+        .catch(async (err: any) => {
+            if (err?.name === 'AbortError') {
+                toast.error("That took longer than expected — checking your latest status...")
+            } else {
+                toast.error("We encountered a small issue. Please try again.")
+            }
+            // Request may have actually reached the server before stalling/timing out —
+            // resync from the DB instead of assuming failure, so the button never gets stuck.
+            const stateData = await mutateCurrentState()
+            if (stateData) setCurrentAttendance(stateData.active || null)
+            mutateDashboard()
         })
         .finally(() => {
             setActionLock(false)

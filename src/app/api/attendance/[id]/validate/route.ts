@@ -25,7 +25,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             }
         })
 
-        broadcastUpdate('attendance', attendance)
+        broadcastUpdate('validation', attendance)
 
         return NextResponse.json(attendance)
     } catch (error) {

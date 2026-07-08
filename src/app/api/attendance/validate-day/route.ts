@@ -46,7 +46,7 @@ export async function POST(req: Request) {
                 }
             })
 
-        broadcastUpdate('attendance', attendance)
+        broadcastUpdate('validation', attendance)
 
         return NextResponse.json(attendance)
     } catch (error) {

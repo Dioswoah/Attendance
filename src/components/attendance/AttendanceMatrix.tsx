@@ -14,7 +14,8 @@ import {
     ShieldCheck,
     Clock3,
     Coffee,
-    Calendar as CalendarIcon
+    Calendar as CalendarIcon,
+    Globe
 } from "lucide-react"
 import { format, eachDayOfInterval, parseISO } from "date-fns"
 import { getBrowserTimezone } from "@/lib/timezone"
@@ -52,11 +53,17 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
     const [deptSearchQuery, setDeptSearchQuery] = useState("")
     const [allStaff, setAllStaff] = useState<any[]>([])
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
+    const [selectedLocations, setSelectedLocations] = useState<string[]>([])
     const [searchTerm, setSearchTerm] = useState("")
     const [staffSearchQuery, setStaffSearchQuery] = useState("")
     const [viewingStaff, setViewingStaff] = useState<any | null>(null)
     const [bulkSelectedStaffIds, setBulkSelectedStaffIds] = useState<string[]>([])
     const [bulkActionLoading, setBulkActionLoading] = useState(false)
+    // Validation mode is off by default — managers can view records read-only until they
+    // opt in, since the checklist/validate actions are a review workflow, not the default view.
+    const [showValidation, setShowValidation] = useState(false)
+
+    const EMPLOYMENT_LOCATIONS = ['Philippines', 'Australia']
 
     const startDateRef = useRef(startDate)
     const endDateRef = useRef(endDate)
@@ -121,9 +128,9 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         fetchInitialData()
     }, [scopeToManagerId])
 
-    // Only refresh on actual attendance or leave changes, not calendar status updates
+    // Only refresh on actual attendance/leave/validation changes, not calendar status updates
     useSSE((payload) => {
-        if (payload.type === 'attendance' || payload.type === 'leaves') {
+        if (payload.type === 'attendance' || payload.type === 'leaves' || payload.type === 'validation') {
             refreshData()
         }
     })
@@ -230,6 +237,34 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         refreshData()
     }
 
+    // Aggregates one staff member's day-by-day validation status across the currently selected
+    // date range into a single symbol. Leave days are excluded — there's no validate/flag action
+    // for a leave day, so requiring them to be "validated" would make full-✓ unreachable for
+    // anyone who took leave during the period.
+    const getValidationSummary = (empId: string): 'VALIDATED' | 'NEEDS_CORRECTION' | 'NOT_VALIDATED' => {
+        let hasNeedsCorrection = false
+        let hasUnvalidated = false
+        dateRange.forEach(date => {
+            const dateStr = format(date, "yyyy-MM-dd")
+            const record = history.find(h => h.userId === empId && h.date === dateStr)
+            const isOnLeave = !record && approvedLeaves.some(l =>
+                l.userId === empId &&
+                dateStr >= l.startDate.slice(0, 10) &&
+                dateStr <= l.endDate.slice(0, 10)
+            )
+            if (isOnLeave) return
+            if (record?.validationStatus === 'NEEDS_CORRECTION') hasNeedsCorrection = true
+            else if (record?.validationStatus !== 'VALIDATED') hasUnvalidated = true
+        })
+        if (hasNeedsCorrection) return 'NEEDS_CORRECTION'
+        if (hasUnvalidated) return 'NOT_VALIDATED'
+        return 'VALIDATED'
+    }
+
+    const toggleLocationSelection = (loc: string) => {
+        setSelectedLocations(prev => prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc])
+    }
+
     const toggleBulkStaff = (id: string) => {
         setBulkSelectedStaffIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
     }
@@ -246,22 +281,19 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         setBulkActionLoading(true)
         try {
             const staffCount = bulkSelectedStaffIds.length
-            const tasks: Promise<boolean>[] = []
-            for (const staffId of bulkSelectedStaffIds) {
-                for (const date of dateRange) {
-                    const dateStr = format(date, "yyyy-MM-dd")
-                    const record = history.find(h => h.userId === staffId && h.date === dateStr)
-                    // Clearing a day with no record is a no-op — skip instead of creating an empty record just to clear it.
-                    if (!record && status === null) continue
-                    tasks.push(setValidationStatus(record?.id, staffId, dateStr, status))
-                }
-            }
-            const results = await Promise.all(tasks)
-            const failed = results.filter(ok => !ok).length
-            if (failed === 0) {
-                toast.success(status === 'VALIDATED' ? `Validated ${results.length} day(s) for ${staffCount} staff` : `Cleared validation for ${staffCount} staff`)
+            // Single batched request instead of one HTTP call per staff x date — firing
+            // hundreds of parallel requests competed with regular clock-in/out traffic for
+            // the same Cloud Run instances and DB connections, occasionally stalling them.
+            const res = await fetch('/api/attendance/validate-bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ staffIds: bulkSelectedStaffIds, startDate, endDate, status })
+            })
+            if (res.ok) {
+                const { updated, created } = await res.json()
+                toast.success(status === 'VALIDATED' ? `Validated ${updated + created} day(s) for ${staffCount} staff` : `Cleared validation for ${staffCount} staff`)
             } else {
-                toast.error(`${failed} of ${results.length} update(s) failed`)
+                toast.error("Failed to update validation status")
             }
             setBulkSelectedStaffIds([])
             refreshData()
@@ -302,6 +334,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         .filter(s => !s.isArchived)
         .filter(s => selectedStaffIds.length === 0 || selectedStaffIds.includes(s.id))
         .filter(s => selectedDeptIds.length === 0 || selectedDeptIds.includes(s.departmentId))
+        .filter(s => selectedLocations.length === 0 || selectedLocations.includes(s.employmentLocation))
         .map(s => ({
             id: s.id,
             name: s.name,
@@ -317,8 +350,9 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         .filter(s => !s.isArchived)
         .filter(s => {
             const matchesDept = selectedDeptIds.length === 0 || selectedDeptIds.includes(s.departmentId)
+            const matchesLocation = selectedLocations.length === 0 || selectedLocations.includes(s.employmentLocation)
             const matchesQuery = s.name.toLowerCase().includes(staffSearchQuery.toLowerCase())
-            return matchesDept && matchesQuery
+            return matchesDept && matchesLocation && matchesQuery
         })
 
     const filteredDeptsForDropdown = departments.filter(d =>
@@ -384,7 +418,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
             {/* Filters Card */}
             <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
                 <CardContent className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                         <div className="space-y-2">
                             <Label>Start Date</Label>
                             <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -554,6 +588,54 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                 </PopoverContent>
                             </Popover>
                         </div>
+                        <div className="space-y-2">
+                            <Label>Location</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between h-10 font-normal">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Globe className="h-4 w-4 text-muted-foreground" />
+                                            {selectedLocations.length === 0 ? (
+                                                <span className="text-muted-foreground">All Locations</span>
+                                            ) : selectedLocations.length === 1 ? (
+                                                <span className="truncate">{selectedLocations[0]}</span>
+                                            ) : (
+                                                <span>{selectedLocations.length} Selected</span>
+                                            )}
+                                        </div>
+                                        <ChevronDown className="h-4 w-4 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[220px] p-1" align="start">
+                                    {EMPLOYMENT_LOCATIONS.map(loc => (
+                                        <div
+                                            key={loc}
+                                            className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors"
+                                            onClick={() => toggleLocationSelection(loc)}
+                                        >
+                                            <Checkbox
+                                                id={`loc-${loc}`}
+                                                checked={selectedLocations.includes(loc)}
+                                                onCheckedChange={() => toggleLocationSelection(loc)}
+                                            />
+                                            <span className="text-sm font-medium leading-none truncate">{loc}</span>
+                                        </div>
+                                    ))}
+                                    {selectedLocations.length > 0 && (
+                                        <div className="p-1 border-t border-border mt-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="w-full h-8 text-xs text-primary hover:text-primary transition-colors"
+                                                onClick={() => setSelectedLocations([])}
+                                            >
+                                                Clear Selection
+                                            </Button>
+                                        </div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
+                        </div>
                     </div>
                     <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-t border-border mt-4 pt-4">
                         <div className="flex flex-wrap gap-2">
@@ -578,6 +660,15 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                             </Button>
                         </div>
                         <div className="flex gap-2">
+                            <Button
+                                onClick={() => { setShowValidation(v => !v); setBulkSelectedStaffIds([]) }}
+                                variant={showValidation ? "default" : "outline"}
+                                size="sm"
+                                className={`h-9 ${showValidation ? "bg-teal-600 hover:bg-teal-700 text-white" : ""}`}
+                            >
+                                <ShieldCheck className="h-3.5 w-3.5 mr-2" />
+                                Validation
+                            </Button>
                             <Button onClick={() => refreshData()} disabled={refreshing} variant="outline" size="sm" className="h-9">
                                 <RefreshCcw className={`h-3.5 w-3.5 mr-2 ${refreshing ? "animate-spin" : ""}`} />
                                 Refresh
@@ -614,7 +705,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                         </div>
                     </div>
 
-                    {bulkSelectedStaffIds.length > 0 && (
+                    {showValidation && bulkSelectedStaffIds.length > 0 && (
                         <div className="px-4 py-2.5 border-b border-border bg-teal-50/50 flex items-center justify-between gap-3">
                             <span className="text-xs font-bold text-teal-700">{bulkSelectedStaffIds.length} staff selected</span>
                             <div className="flex gap-2">
@@ -652,14 +743,19 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                         <Table>
                             <TableHeader className="bg-muted/50">
                                 <TableRow className="hover:bg-transparent border-border">
-                                    <TableHead className="py-3 px-3 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 w-[36px]">
-                                        <Checkbox
-                                            checked={employees.length > 0 && employees.every(e => bulkSelectedStaffIds.includes(e.id))}
-                                            onCheckedChange={() => toggleAllBulkStaff(employees.map(e => e.id))}
-                                        />
-                                    </TableHead>
-                                    <TableHead className="py-3 px-6 font-medium text-muted-foreground sticky left-9 bg-muted/50 z-10 w-[200px]">Staff</TableHead>
+                                    {showValidation && (
+                                        <TableHead className="py-3 px-3 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 w-[36px]">
+                                            <Checkbox
+                                                checked={employees.length > 0 && employees.every(e => bulkSelectedStaffIds.includes(e.id))}
+                                                onCheckedChange={() => toggleAllBulkStaff(employees.map(e => e.id))}
+                                            />
+                                        </TableHead>
+                                    )}
+                                    <TableHead className={`py-3 px-6 font-medium text-muted-foreground sticky ${showValidation ? "left-9" : "left-0"} bg-muted/50 z-10 w-[200px]`}>Staff</TableHead>
                                     <TableHead className="py-3 px-6 font-medium text-muted-foreground">Department</TableHead>
+                                    {showValidation && (
+                                        <TableHead className="py-3 px-4 text-center font-medium text-muted-foreground w-[90px]">Validation</TableHead>
+                                    )}
                                     {dateRange.map(date => (
                                         <TableHead key={date.toISOString()} className="py-3 px-2 text-center font-medium text-muted-foreground min-w-[60px]">
                                             {format(date, "dd MMM")}
@@ -674,14 +770,16 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                     const stats = calculateDurations(empRecs)
                                     return (
                                         <TableRow key={emp.id} className="border-border hover:bg-muted/30 transition-colors group">
-                                            <TableCell className="py-3 px-3 sticky left-0 bg-white group-hover:bg-muted/30 z-10 w-[36px]">
-                                                <Checkbox
-                                                    checked={bulkSelectedStaffIds.includes(emp.id)}
-                                                    onCheckedChange={() => toggleBulkStaff(emp.id)}
-                                                />
-                                            </TableCell>
+                                            {showValidation && (
+                                                <TableCell className="py-3 px-3 sticky left-0 bg-white group-hover:bg-muted/30 z-10 w-[36px]">
+                                                    <Checkbox
+                                                        checked={bulkSelectedStaffIds.includes(emp.id)}
+                                                        onCheckedChange={() => toggleBulkStaff(emp.id)}
+                                                    />
+                                                </TableCell>
+                                            )}
                                             <TableCell
-                                                className="py-3 px-6 sticky left-9 bg-white group-hover:bg-muted/30 z-10 border-r border-border font-medium text-sm text-foreground cursor-pointer hover:text-primary"
+                                                className={`py-3 px-6 sticky ${showValidation ? "left-9" : "left-0"} bg-white group-hover:bg-muted/30 z-10 border-r border-border font-medium text-sm text-foreground cursor-pointer hover:text-primary`}
                                                 onClick={() => setViewingStaff({ ...emp, stats, records: empRecs })}
                                             >
                                                 {emp.name}
@@ -689,6 +787,19 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                             <TableCell className="py-3 px-6 text-sm text-muted-foreground">
                                                 {emp.dept}
                                             </TableCell>
+                                            {showValidation && (() => {
+                                                const summary = getValidationSummary(emp.id)
+                                                const display = summary === 'NEEDS_CORRECTION'
+                                                    ? { symbol: '!', className: 'text-fuchsia-600', title: 'Needs correction on at least one day' }
+                                                    : summary === 'VALIDATED'
+                                                    ? { symbol: '✓', className: 'text-teal-600', title: 'All days validated' }
+                                                    : { symbol: '✗', className: 'text-slate-400', title: 'Not fully validated' }
+                                                return (
+                                                    <TableCell className="py-3 px-4 text-center">
+                                                        <span className={`font-black text-base ${display.className}`} title={display.title}>{display.symbol}</span>
+                                                    </TableCell>
+                                                )
+                                            })()}
                                             {dateRange.map(date => {
                                                 const dateStr = format(date, "yyyy-MM-dd")
                                                 const record = history.find(h => h.userId === emp.id && h.date === dateStr)
@@ -713,42 +824,46 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                 const dotColor = isLeaveRecord ? 'bg-blue-500' : hasWork ? 'bg-green-500' : 'bg-slate-300'
                                                 const dotSize = (isLeaveRecord || hasWork) ? 'h-2 w-2' : 'h-1.5 w-1.5'
 
+                                                // Validation status now lives in the row-level Validation column — cells
+                                                // only show work/break/leave/pending markers, not per-day validation dots.
+                                                const cellMarker = (
+                                                    <div className={`relative flex flex-col items-center justify-center gap-0.5 py-1 group/mark ${showValidation ? "cursor-pointer" : ""}`}>
+                                                        {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+                                                        <div className={`${dotSize} rounded-full ${dotColor}`} />
+                                                        {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                                                        <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
+                                                            <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5">
+                                                                {record?.clockIn ? (
+                                                                    <>
+                                                                        <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
+                                                                        <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
+                                                                        <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
+                                                                    </>
+                                                                ) : isLeaveRecord ? (
+                                                                    <div className="font-bold text-foreground">On Leave</div>
+                                                                ) : (
+                                                                    <div className="font-bold text-foreground">{showValidation ? 'No record — click to review' : 'No record'}</div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )
+
                                                 return (
                                                     <TableCell key={date.toISOString()} className="py-3 px-2 text-center p-0">
                                                         {!isOnLeave ? (
-                                                            <Popover>
-                                                                <PopoverTrigger asChild>
-                                                                    <div className="relative flex flex-col items-center justify-center gap-0.5 py-1 group/mark cursor-pointer">
-                                                                        {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
-                                                                        <div className={`${dotSize} rounded-full ${dotColor}`} />
-                                                                        {record?.validationStatus === 'VALIDATED' && <div className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
-                                                                        {record?.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
-                                                                        {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
-                                                                        <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
-                                                                            <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5">
-                                                                                {record?.clockIn ? (
-                                                                                    <>
-                                                                                        <div>In: {new Date(record.clockIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone })}</div>
-                                                                                        <div>Out: {record.clockOut ? new Date(record.clockOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone }) : 'Still clocked in'}</div>
-                                                                                        <div className="font-bold text-foreground">Total: {dayStats?.workLabel}</div>
-                                                                                    </>
-                                                                                ) : isLeaveRecord ? (
-                                                                                    <div className="font-bold text-foreground">On Leave</div>
-                                                                                ) : (
-                                                                                    <div className="font-bold text-foreground">No record — click to review</div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </PopoverTrigger>
-                                                                <ValidationPopoverContent
-                                                                    record={record}
-                                                                    staffNote={allStaff.find(s => s.id === emp.id)?.correctionNote || ''}
-                                                                    onValidate={() => handleValidate(record?.id, emp.id, dateStr)}
-                                                                    onFlag={(note) => handleFlagCorrection(record?.id, emp.id, dateStr, note)}
-                                                                    onClear={() => handleClearValidation(record?.id, emp.id, dateStr)}
-                                                                />
-                                                            </Popover>
+                                                            showValidation ? (
+                                                                <Popover>
+                                                                    <PopoverTrigger asChild>{cellMarker}</PopoverTrigger>
+                                                                    <ValidationPopoverContent
+                                                                        record={record}
+                                                                        staffNote={allStaff.find(s => s.id === emp.id)?.correctionNote || ''}
+                                                                        onValidate={() => handleValidate(record?.id, emp.id, dateStr)}
+                                                                        onFlag={(note) => handleFlagCorrection(record?.id, emp.id, dateStr, note)}
+                                                                        onClear={() => handleClearValidation(record?.id, emp.id, dateStr)}
+                                                                    />
+                                                                </Popover>
+                                                            ) : cellMarker
                                                         ) : (
                                                             <div className="h-2 w-2 rounded-full bg-blue-500 mx-auto" />
                                                         )}
@@ -763,7 +878,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                 })}
                                 {employees.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={dateRange.length + 4} className="py-12 text-center">
+                                        <TableCell colSpan={dateRange.length + (showValidation ? 5 : 3)} className="py-12 text-center">
                                             <div className="flex flex-col items-center gap-2 text-muted-foreground opacity-50">
                                                 <Users className="h-8 w-8" />
                                                 <p className="text-sm font-medium">No records</p>
@@ -847,9 +962,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                     { label: 'Break > 1h', color: 'bg-red-500' },
                     { label: 'Leave', color: 'bg-blue-500' },
                     { label: 'Pending Request', color: 'bg-amber-500' },
-                    { label: 'Validated', color: 'bg-teal-500' },
-                    { label: 'Needs Correction', color: 'bg-fuchsia-500' },
-                    { label: 'No Log (click to review)', color: 'bg-slate-300' },
+                    { label: showValidation ? 'No Log (click to review)' : 'No Log', color: 'bg-slate-300' },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">
                         <div className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
@@ -857,7 +970,25 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                     </div>
                 ))}
             </div>
-            <p className="text-xs text-muted-foreground">Click a work-hours dot to validate a record or flag it for correction.</p>
+            {showValidation && (
+                <div className="grid grid-cols-3 gap-4">
+                    {[
+                        { symbol: '✓', label: 'All Validated', className: 'text-teal-600' },
+                        { symbol: '!', label: 'Needs Correction', className: 'text-fuchsia-600' },
+                        { symbol: '✗', label: 'Not Validated', className: 'text-slate-400' },
+                    ].map(item => (
+                        <div key={item.label} className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-border shadow-sm">
+                            <span className={`font-black text-base ${item.className}`}>{item.symbol}</span>
+                            <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+                {showValidation
+                    ? "Click a day cell to validate a record or flag it for correction. The Validation column summarizes the whole selected date range per staff member."
+                    : "Read-only view — hover a day cell for clock in/out and total hours. Click \"Validation\" above to review and validate records."}
+            </p>
         </div>
     )
 }

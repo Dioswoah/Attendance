@@ -64,7 +64,7 @@ function initRedisPubSub() {
 
 // Broadcast an update to all instances via Redis (falls back to local if no Redis)
 export const broadcastUpdate = (
-    type: 'attendance' | 'leaves' | 'staff' | 'notification',
+    type: 'attendance' | 'leaves' | 'staff' | 'notification' | 'validation',
     data?: unknown
 ) => {
     const payload = { type, data, timestamp: new Date().toISOString() }

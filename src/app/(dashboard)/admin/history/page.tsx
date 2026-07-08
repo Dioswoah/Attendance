@@ -147,9 +147,9 @@ export default function HistoryPage() {
         fetchInitialData()
     }, [])
 
-    // Only refresh history on actual attendance or leave changes, not calendar status updates
+    // Only refresh history on actual attendance/leave/validation changes, not calendar status updates
     useSSE((payload) => {
-        if (payload.type === 'attendance' || payload.type === 'leaves') {
+        if (payload.type === 'attendance' || payload.type === 'leaves' || payload.type === 'validation') {
             refreshData()
         }
     })
