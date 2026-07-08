@@ -1,21 +1,34 @@
 # ============================================================
-# P2 PRODUCTION Deployment Script — bap-rsa project
+# DEPRECATED — DO NOT USE. Use deploy-prod-p2-sg.ps1 instead.
 # ============================================================
-# WORKFLOW:
-#   1. Fix bugs / build features locally
-#   2. Run deploy-staging.ps1  →  test on P2 staging
-#   3. Run this script         →  deploy to P2 prod (attendance-app-prod)
-#   4. Run deploy.ps1          →  deploy to P1 prod (attendance-app, P1)
+# This script targets australia-southeast1, which is NOT where attendance-app-prod
+# actually runs anymore. Prod was migrated to asia-southeast1 (Singapore) so Cloud Run
+# domain mappings could be enabled for redadair.com.au — see deploy-prod-p2-sg.ps1.
+# Running this script today would deploy to the wrong region and NOT update the live
+# site at staff.redadair.com.au, while looking like it succeeded.
 #
-# FLAGS:
-#   -SkipBuild          Skip Docker build (reuse last pushed image)
-#   -SkipInfrastructure Skip Redis IP fetch (use REDIS_URL from .env.prod-p2)
+# Kept in the repo for history only. Real workflow:
+#   1. Fix bugs / build features locally
+#   2. Run deploy-staging.ps1     →  test on P2 staging
+#   3. Run deploy-prod-p2-sg.ps1  →  deploy to P2 prod (attendance-app-prod, Singapore)
 # ============================================================
 
 param(
     [switch]$SkipBuild,
     [switch]$SkipInfrastructure
 )
+
+Write-Host ""
+Write-Host "============================================" -ForegroundColor Red
+Write-Host " DEPRECATED SCRIPT — DEPLOY BLOCKED" -ForegroundColor Red
+Write-Host "============================================" -ForegroundColor Red
+Write-Host " This script targets australia-southeast1, which is no longer" -ForegroundColor Yellow
+Write-Host " where attendance-app-prod runs (it moved to asia-southeast1)." -ForegroundColor Yellow
+Write-Host " Use this instead:" -ForegroundColor Cyan
+Write-Host "   .\external-tools\deploy-prod-p2-sg.ps1" -ForegroundColor Cyan
+Write-Host "============================================" -ForegroundColor Red
+Write-Host ""
+exit 1
 
 $ErrorActionPreference = "Stop"
 Set-Location "$PSScriptRoot/.."
