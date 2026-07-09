@@ -370,7 +370,13 @@ model AttendanceSummary {
   isManualOverride  Boolean          @default(false)
   overriddenById    String?
   overrideReason    String?
-  
+
+  // Manager review (day-level). Lives here — NOT on raw Attendance rows — because an
+  // Attendance row's open/closed shape doubles as live clocked-in state, so validation
+  // writes must never create or modify rows in that table.
+  validationStatus  ValidationStatus?
+  validatedAt       DateTime?
+
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 

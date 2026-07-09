@@ -31,9 +31,9 @@ export async function GET(req: Request) {
     try {
         if (action === 'clock-in') {
             // Clock In Logic
-            // Check if already active
+            // Check if already active (clockIn must exist — placeholder rows are not sessions)
             const active = await prisma.attendance.findFirst({
-                where: { userId, clockOut: null, deletedAt: null }
+                where: { userId, clockOut: null, clockIn: { not: null }, deletedAt: null }
             })
             if (active) {
                 message = "You are already clocked in!"
@@ -53,7 +53,7 @@ export async function GET(req: Request) {
         } else if (action === 'clock-out') {
             // Clock Out Logic
             const active = await prisma.attendance.findFirst({
-                where: { userId, clockOut: null, deletedAt: null }
+                where: { userId, clockOut: null, clockIn: { not: null }, deletedAt: null }
             })
             if (!active) {
                 message = "No active session found to clock out from."
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
         } else if (action === 'end-break') {
             // End Break Logic
             const active = await prisma.attendance.findFirst({
-                where: { userId, clockOut: null, deletedAt: null }
+                where: { userId, clockOut: null, clockIn: { not: null }, deletedAt: null }
             })
             if (!active) {
                 message = "No active session found."

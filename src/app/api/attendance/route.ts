@@ -70,6 +70,7 @@ export async function cleanupOldSessions() {
     const unclosed = await prisma.attendance.findMany({
         where: {
             clockOut: null,
+            clockIn: { not: null }, // a row without clockIn is not a live session (e.g. legacy validation placeholders)
             deletedAt: null
         },
         include: {
@@ -397,7 +398,7 @@ async function syncAvailabilityWithAttendance() {
     try {
         // 1. Get all currently clocked-in users
         const activeSessions = await prisma.attendance.findMany({
-            where: { clockOut: null, deletedAt: null },
+            where: { clockOut: null, clockIn: { not: null }, deletedAt: null },
             select: { userId: true }
         })
         const activeUserIds = activeSessions.map(s => s.userId)
@@ -632,7 +633,9 @@ export async function GET(req: Request) {
                 scheduledEnd: a.scheduledEnd?.toISOString(),
                 mode: a.mode,
                 locationDetails: a.locationDetails,
-                status: a.clockOut ? 'clocked-out' : ((a.breaks?.some((b: any) => !b.endTime) || (a.breakStart && !a.breakEnd)) ? 'on-break' : 'clocked-in'),
+                // A row with no clockIn is never a live session — without this, malformed rows
+                // (validation placeholders, amendment shells) read as 'clocked-in' on dashboards.
+                status: a.clockOut || !a.clockIn ? 'clocked-out' : ((a.breaks?.some((b: any) => !b.endTime) || (a.breakStart && !a.breakEnd)) ? 'on-break' : 'clocked-in'),
                 attendanceStatus: a.status, // DB-level status: PRESENT, LATE, ABSENT, etc.
                 validationStatus: a.validationStatus,
                 validatedAt: a.validatedAt?.toISOString(),
@@ -743,8 +746,11 @@ export async function POST(req: Request) {
     try {
         const today = new Date()
         today.setUTCHours(0, 0, 0, 0)
+        // clockIn must exist: rows without one (e.g. validation placeholders) can never be
+        // closed by cleanup, so matching them here would run the full cleanup on EVERY
+        // clock-in forever — that's what caused the 5-15s clock-in latencies of Jul 8-9.
         const stale = await prisma.attendance.findFirst({
-            where: { clockOut: null, deletedAt: null, date: { lt: today } },
+            where: { clockOut: null, clockIn: { not: null }, deletedAt: null, date: { lt: today } },
             select: { id: true }
         })
         if (stale) {
@@ -774,12 +780,14 @@ export async function POST(req: Request) {
         const localDateStr = sessionStart.toLocaleDateString('en-CA', { timeZone }) // YYYY-MM-DD
         const targetDate = new Date(`${localDateStr}T00:00:00Z`)
 
-        // Check for an ACTIVE session (not clocked out)
-        // Check for an ACTIVE session (not clocked out)
+        // Check for an ACTIVE session (not clocked out). A session is only active if it has
+        // a real clockIn — malformed rows (validation placeholders) must never trigger the
+        // "already clocked in" rejection.
         const activeSession = await prisma.attendance.findFirst({
             where: {
                 userId,
                 clockOut: null,
+                clockIn: { not: null },
                 deletedAt: null
             }
         })
@@ -922,11 +930,14 @@ export async function PATCH(req: Request) {
 
         if (!userId) return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
 
-        // Find ACTIVE session (most recent, in case duplicates exist)
+        // Find ACTIVE session (most recent, in case duplicates exist). clockIn must exist:
+        // Postgres sorts NULLs first on desc, so a malformed row without clockIn would
+        // otherwise win this lookup and receive the user's clock-out/break action.
         const existing = await prisma.attendance.findFirst({
             where: {
                 userId,
                 clockOut: null,
+                clockIn: { not: null },
                 deletedAt: null
             },
             orderBy: { clockIn: 'desc' }

@@ -24,7 +24,9 @@ export async function POST(req: Request) {
             where: {
                 userId,
                 date: { gte: today },
-                clockOut: null
+                clockOut: null,
+                clockIn: { not: null },
+                deletedAt: null
             }
         });
 

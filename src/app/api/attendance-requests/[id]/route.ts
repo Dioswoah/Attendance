@@ -86,11 +86,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 const endDate = new Date(startDate)
                 endDate.setDate(endDate.getDate() + 1)
 
+                // Exclude soft-deleted rows; prefer the row with a real clockIn so approved
+                // times never land on a malformed shell row (NULLs sort first on desc otherwise).
                 let attendance = await prisma.attendance.findFirst({
                     where: {
                         userId: request.userId,
-                        date: { gte: startDate, lt: endDate }
-                    }
+                        date: { gte: startDate, lt: endDate },
+                        deletedAt: null
+                    },
+                    orderBy: { clockIn: { sort: 'desc', nulls: 'last' } }
                 })
 
                 const updateData: any = {}

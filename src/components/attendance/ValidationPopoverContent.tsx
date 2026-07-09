@@ -5,8 +5,8 @@ import { PopoverContent } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
-export function ValidationPopoverContent({ record, staffNote, onValidate, onFlag, onClear }: {
-    record: any
+export function ValidationPopoverContent({ status, staffNote, onValidate, onFlag, onClear }: {
+    status: 'VALIDATED' | 'NEEDS_CORRECTION' | null | undefined
     staffNote: string
     onValidate: () => Promise<void>
     onFlag: (note: string) => Promise<void>
@@ -15,7 +15,6 @@ export function ValidationPopoverContent({ record, staffNote, onValidate, onFlag
     const [mode, setMode] = useState<'idle' | 'flagging'>('idle')
     const [note, setNote] = useState(staffNote)
     const [saving, setSaving] = useState(false)
-    const status = record?.validationStatus
 
     const runAction = async (action: () => Promise<void>) => {
         setSaving(true)

@@ -4,11 +4,15 @@ import { auth } from "@/auth"
 import { broadcastUpdate } from "@/lib/eventBus"
 import { eachDayOfInterval, format } from "date-fns"
 
-// Batched version of validate/validate-day: applies one validation status across many
-// staff x dates in a single request instead of one HTTP round-trip per record. Firing
-// dozens/hundreds of individual requests (the old approach) competes with regular
-// clock-in/out traffic for the same Cloud Run instances and shared Cloud SQL connection
-// pool, which can stall unrelated requests long enough to trip client-side timeouts.
+// Batched validation: applies one status across many staff x dates in a single request.
+//
+// Validation lives on AttendanceSummary (day-level, unique per user+day) — NEVER on raw
+// Attendance rows, whose open/closed shape doubles as live clocked-in state. The previous
+// version created placeholder Attendance rows for empty days, which the rest of the app
+// read as permanently-open sessions: it blocked staff clock-ins ("You are already clocked
+// in") and misdirected their End Break/Clock Out actions onto the wrong day. Summary rows
+// carry no live state, and the unique(userId, date) constraint + skipDuplicates also
+// removes the duplicate-row race the Attendance table allowed.
 export async function POST(req: Request) {
     try {
         const session = await auth()
@@ -29,24 +33,24 @@ export async function POST(req: Request) {
         const rangeEnd = new Date(`${endDate}T00:00:00Z`)
         rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1)
 
-        const existingRecords = await prisma.attendance.findMany({
-            where: { userId: { in: staffIds }, date: { gte: rangeStart, lt: rangeEnd }, deletedAt: null },
+        const existingSummaries = await prisma.attendanceSummary.findMany({
+            where: { userId: { in: staffIds }, date: { gte: rangeStart, lt: rangeEnd } },
             select: { id: true, userId: true, date: true }
         })
 
         let updatedCount = 0
-        if (existingRecords.length > 0) {
-            const result = await prisma.attendance.updateMany({
-                where: { id: { in: existingRecords.map(r => r.id) } },
+        if (existingSummaries.length > 0) {
+            const result = await prisma.attendanceSummary.updateMany({
+                where: { id: { in: existingSummaries.map(s => s.id) } },
                 data: { validationStatus: status, validatedAt: status ? new Date() : null }
             })
             updatedCount = result.count
         }
 
-        // Clearing a day with no record is a no-op — only fill in missing days when setting a status.
+        // Clearing a day with no summary is a no-op — only fill in missing days when setting a status.
         let createdCount = 0
         if (status !== null) {
-            const existingKeys = new Set(existingRecords.map(r => `${r.userId}_${r.date.toISOString().split('T')[0]}`))
+            const existingKeys = new Set(existingSummaries.map(s => `${s.userId}_${s.date.toISOString().split('T')[0]}`))
             const days = eachDayOfInterval({ start: rangeStart, end: new Date(rangeEnd.getTime() - 1) })
                 .map(d => format(d, 'yyyy-MM-dd'))
 
@@ -58,7 +62,6 @@ export async function POST(req: Request) {
                         userId,
                         date: new Date(`${dateStr}T00:00:00Z`),
                         status: 'ABSENT',
-                        mode: 'OFFICE',
                         validationStatus: status,
                         validatedAt: new Date()
                     })
@@ -66,7 +69,7 @@ export async function POST(req: Request) {
             }
 
             if (rowsToCreate.length > 0) {
-                const result = await prisma.attendance.createMany({ data: rowsToCreate })
+                const result = await prisma.attendanceSummary.createMany({ data: rowsToCreate, skipDuplicates: true })
                 createdCount = result.count
             }
         }

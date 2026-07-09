@@ -39,6 +39,7 @@ export async function GET(request: Request) {
             where: {
                 date: startOfDay, // Exact match: only today's Philippine-date records
                 clockOut: null, // Active day
+                clockIn: { not: null }, // placeholder rows without clockIn are not sessions
                 deletedAt: null,
                 OR: [
                     { breakWarningSent: false },

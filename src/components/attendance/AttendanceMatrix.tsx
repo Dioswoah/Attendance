@@ -67,6 +67,10 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
     // Validation mode is off by default — managers can view records read-only until they
     // opt in, since the checklist/validate actions are a review workflow, not the default view.
     const [showValidation, setShowValidation] = useState(false)
+    // Day-level validation marks keyed `${userId}_${yyyy-MM-dd}` — sourced from
+    // AttendanceSummary via /api/attendance/validations, independent of attendance records
+    // so empty (absent) days can carry a mark without any Attendance row existing.
+    const [validations, setValidations] = useState<Record<string, 'VALIDATED' | 'NEEDS_CORRECTION'>>({})
 
     const EMPLOYMENT_LOCATIONS = ['Philippines', 'Australia']
 
@@ -145,11 +149,12 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         try {
             const managerParam = scopeToManagerId ? `&managerId=${scopeToManagerId}` : ''
             const deptParam = selectedDeptIds.length === 1 ? `&departmentId=${selectedDeptIds[0]}` : ''
-            const [deptRes, attRes, staffRes, leavesRes] = await Promise.all([
+            const [deptRes, attRes, staffRes, leavesRes, valRes] = await Promise.all([
                 fetch('/api/departments'),
                 fetch(`/api/attendance?startDate=${startDate}&endDate=${endDate}${deptParam}${managerParam}`),
                 fetch('/api/employees'),
-                fetch(`/api/leaves?startDate=${startDate}&endDate=${endDate}&status=APPROVED${managerParam}`)
+                fetch(`/api/leaves?startDate=${startDate}&endDate=${endDate}&status=APPROVED${managerParam}`),
+                fetch(`/api/attendance/validations?startDate=${startDate}&endDate=${endDate}`)
             ])
 
             let deptList = deptRes.ok ? await deptRes.json() : []
@@ -172,6 +177,10 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                 setAppliedEndDate(endDate)
             }
             if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
+            if (valRes.ok) {
+                const marks = await valRes.json()
+                setValidations(Object.fromEntries(marks.map((m: any) => [`${m.userId}_${m.date}`, m.validationStatus])))
+            }
         } catch (error) {
             // Error handled silently for production
         } finally {
@@ -187,9 +196,10 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
         try {
             const managerParam = scopeToManagerId ? `&managerId=${scopeToManagerId}` : ''
             const deptParam = deptIds.length === 1 ? `&departmentId=${deptIds[0]}` : ''
-            const [attRes, leavesRes] = await Promise.all([
+            const [attRes, leavesRes, valRes] = await Promise.all([
                 fetch(`/api/attendance?startDate=${sd}&endDate=${ed}${deptParam}${managerParam}`),
-                fetch(`/api/leaves?startDate=${sd}&endDate=${ed}&status=APPROVED${managerParam}`)
+                fetch(`/api/leaves?startDate=${sd}&endDate=${ed}&status=APPROVED${managerParam}`),
+                fetch(`/api/attendance/validations?startDate=${sd}&endDate=${ed}`)
             ])
             // Apply the fetched data and the range it belongs to together — never let the table's
             // date columns (driven by appliedStartDate/appliedEndDate) update ahead of the records
@@ -200,44 +210,50 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                 setAppliedEndDate(ed)
             }
             if (leavesRes.ok) setApprovedLeaves(await leavesRes.json())
+            if (valRes.ok) {
+                const marks = await valRes.json()
+                setValidations(Object.fromEntries(marks.map((m: any) => [`${m.userId}_${m.date}`, m.validationStatus])))
+            }
         } finally {
             setRefreshing(false)
         }
     }
 
-    const setValidationStatus = async (recordId: string | undefined, userId: string, dateStr: string, status: 'VALIDATED' | 'NEEDS_CORRECTION' | null) => {
-        const res = recordId
-            ? await fetch(`/api/attendance/${recordId}/validate`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status })
+    // Validation is stored day-level on AttendanceSummary — one endpoint for every day,
+    // whether or not an Attendance record exists. Never creates rows in the live table.
+    const setValidationStatus = async (userId: string, dateStr: string, status: 'VALIDATED' | 'NEEDS_CORRECTION' | null) => {
+        const res = await fetch(`/api/attendance/validate-day`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, date: dateStr, status })
+        })
+        if (res.ok) {
+            const key = `${userId}_${dateStr}`
+            setValidations(prev => {
+                const next = { ...prev }
+                if (status) next[key] = status
+                else delete next[key]
+                return next
             })
-            // No attendance record exists yet for this day (e.g. an absence) — create one to attach the status to.
-            : await fetch(`/api/attendance/validate-day`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, date: dateStr, status })
-            })
+        }
         return res.ok
     }
 
-    const handleValidate = async (recordId: string | undefined, userId: string, dateStr: string) => {
-        const ok = await setValidationStatus(recordId, userId, dateStr, 'VALIDATED')
+    const handleValidate = async (userId: string, dateStr: string) => {
+        const ok = await setValidationStatus(userId, dateStr, 'VALIDATED')
         if (ok) toast.success("Marked as validated")
         else toast.error("Failed to validate record")
-        refreshData()
     }
 
-    const handleClearValidation = async (recordId: string | undefined, userId: string, dateStr: string) => {
-        const ok = await setValidationStatus(recordId, userId, dateStr, null)
+    const handleClearValidation = async (userId: string, dateStr: string) => {
+        const ok = await setValidationStatus(userId, dateStr, null)
         if (ok) toast.success("Validation status cleared")
         else toast.error("Failed to clear validation status")
-        refreshData()
     }
 
-    const handleFlagCorrection = async (recordId: string | undefined, empId: string, dateStr: string, note: string) => {
+    const handleFlagCorrection = async (empId: string, dateStr: string, note: string) => {
         const [statusOk, noteRes] = await Promise.all([
-            setValidationStatus(recordId, empId, dateStr, 'NEEDS_CORRECTION'),
+            setValidationStatus(empId, dateStr, 'NEEDS_CORRECTION'),
             fetch(`/api/employees/${empId}/correction-note`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -269,8 +285,9 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                 dateStr <= l.endDate.slice(0, 10)
             )
             if (isOnLeave) return
-            if (record?.validationStatus === 'NEEDS_CORRECTION') hasNeedsCorrection = true
-            else if (record?.validationStatus !== 'VALIDATED') hasUnvalidated = true
+            const mark = validations[`${empId}_${dateStr}`]
+            if (mark === 'NEEDS_CORRECTION') hasNeedsCorrection = true
+            else if (mark !== 'VALIDATED') hasUnvalidated = true
         })
         if (hasNeedsCorrection) return 'NEEDS_CORRECTION'
         if (hasUnvalidated) return 'NOT_VALIDATED'
@@ -842,6 +859,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
 
                                                 const dotColor = isLeaveRecord ? 'bg-blue-500' : hasWork ? 'bg-green-500' : 'bg-slate-300'
                                                 const dotSize = (isLeaveRecord || hasWork) ? 'h-2 w-2' : 'h-1.5 w-1.5'
+                                                const dayValidation = validations[`${emp.id}_${dateStr}`]
 
                                                 // Validation status now lives in the row-level Validation column — cells
                                                 // only show work/break/leave/pending markers, not per-day validation dots.
@@ -849,7 +867,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                     <div className={`relative flex flex-col items-center justify-center gap-0.5 py-1 group/mark ${showValidation ? "cursor-pointer" : ""}`}>
                                                         {hasOverBreak && <div className="h-1.5 w-1.5 rounded-full bg-red-500" />}
                                                         <div className={`${dotSize} rounded-full ${dotColor}`} />
-                                                        {record?.validationStatus === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
+                                                        {dayValidation === 'NEEDS_CORRECTION' && <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-500" />}
                                                         {hasPendingRequest && <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
                                                         <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover/mark:opacity-100 transition-opacity z-20 pointer-events-none">
                                                             <div className="bg-popover border border-border rounded shadow-sm px-2 py-1.5 text-[10px] text-muted-foreground font-medium whitespace-nowrap text-left space-y-0.5 max-w-[220px]">
@@ -864,7 +882,7 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                                 ) : (
                                                                     <div className="font-bold text-foreground">{showValidation ? 'No record — click to review' : 'No record'}</div>
                                                                 )}
-                                                                {record?.validationStatus === 'NEEDS_CORRECTION' && (
+                                                                {dayValidation === 'NEEDS_CORRECTION' && (
                                                                     <div className="text-fuchsia-600 font-bold whitespace-normal border-t border-border pt-1 mt-1">
                                                                         {allStaff.find(s => s.id === emp.id)?.correctionNote || 'Needs correction'}
                                                                     </div>
@@ -881,11 +899,11 @@ export function AttendanceMatrix({ scopeToManagerId }: AttendanceMatrixProps) {
                                                                 <Popover>
                                                                     <PopoverTrigger asChild>{cellMarker}</PopoverTrigger>
                                                                     <ValidationPopoverContent
-                                                                        record={record}
+                                                                        status={dayValidation ?? null}
                                                                         staffNote={allStaff.find(s => s.id === emp.id)?.correctionNote || ''}
-                                                                        onValidate={() => handleValidate(record?.id, emp.id, dateStr)}
-                                                                        onFlag={(note) => handleFlagCorrection(record?.id, emp.id, dateStr, note)}
-                                                                        onClear={() => handleClearValidation(record?.id, emp.id, dateStr)}
+                                                                        onValidate={() => handleValidate(emp.id, dateStr)}
+                                                                        onFlag={(note) => handleFlagCorrection(emp.id, dateStr, note)}
+                                                                        onClear={() => handleClearValidation(emp.id, dateStr)}
                                                                     />
                                                                 </Popover>
                                                             ) : cellMarker

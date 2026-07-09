@@ -36,7 +36,9 @@ export async function PUT(req: Request) {
                 where: {
                     userId: session.user.id,
                     date: today,
-                    clockOut: null
+                    clockOut: null,
+                    clockIn: { not: null },
+                    deletedAt: null
                 }
             })
 
