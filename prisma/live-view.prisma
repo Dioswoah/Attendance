@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/live-view-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("LIVE_DATABASE_URL")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime
+  deletedAt         DateTime?
+  User              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model ActivityLog {
+  id         String   @id
+  userId     String
+  action     String
+  entityType String?
+  entityId   String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  User       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([action])
+  @@index([userId, createdAt])
+}
+
+model Attendance {
+  id                     String             @id
+  userId                 String
+  date                   DateTime
+  clockIn                DateTime?
+  clockOut               DateTime?
+  breakStart             DateTime?
+  breakEnd               DateTime?
+  status                 AttendanceStatus   @default(ABSENT)
+  mode                   WorkMode           @default(OFFICE)
+  duration               Int?
+  notes                  String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime
+  deletedAt              DateTime?
+  breakLimitExceededSent Boolean            @default(false)
+  breakWarningSent       Boolean            @default(false)
+  locationDetails        String?
+  scheduledEnd           DateTime?
+  scheduledStart         DateTime?
+  summaryId              String?
+  overdueDepartureSent   Boolean            @default(false)
+  AttendanceSummary      AttendanceSummary? @relation(fields: [summaryId], references: [id])
+  User                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Break                  Break[]
+
+  @@index([clockOut])
+  @@index([summaryId])
+  @@index([userId, clockOut])
+  @@index([userId, date])
+}
+
+model AttendanceRequest {
+  id                                             String    @id
+  userId                                         String
+  date                                           DateTime
+  type                                           String
+  time                                           DateTime
+  reason                                         String?
+  status                                         String    @default("PENDING")
+  declineReason                                  String?
+  createdAt                                      DateTime  @default(now())
+  updatedAt                                      DateTime
+  deletedAt                                      DateTime?
+  isArchived                                     Boolean   @default(false)
+  targetId                                       String?
+  assignedManagerId                              String?
+  User_AttendanceRequest_assignedManagerIdToUser User?     @relation("AttendanceRequest_assignedManagerIdToUser", fields: [assignedManagerId], references: [id])
+  User_AttendanceRequest_userIdToUser            User      @relation("AttendanceRequest_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([assignedManagerId])
+  @@index([date])
+  @@index([userId, status])
+}
+
+model AttendanceSummary {
+  id                                          String           @id
+  userId                                      String
+  date                                        DateTime
+  clockIn                                     DateTime?
+  clockOut                                    DateTime?
+  totalWorkDuration                           Int              @default(0)
+  totalBreakDuration                          Int              @default(0)
+  status                                      AttendanceStatus @default(ABSENT)
+  mode                                        WorkMode         @default(OFFICE)
+  isManualOverride                            Boolean          @default(false)
+  overriddenById                              String?
+  overrideReason                              String?
+  createdAt                                   DateTime         @default(now())
+  updatedAt                                   DateTime
+  Attendance                                  Attendance[]
+  User_AttendanceSummary_overriddenByIdToUser User?            @relation("AttendanceSummary_overriddenByIdToUser", fields: [overriddenById], references: [id])
+  User_AttendanceSummary_userIdToUser         User             @relation("AttendanceSummary_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([userId, date])
+}
+
+model Break {
+  id                           String     @id
+  attendanceId                 String
+  startTime                    DateTime
+  endTime                      DateTime?
+  createdAt                    DateTime   @default(now())
+  updatedAt                    DateTime
+  deletedAt                    DateTime?
+  breakExpectedReturnEmailSent Boolean    @default(false)
+  expectedReturnTime           DateTime?
+  Attendance                   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+}
+
+model ChatMessage {
+  id          String      @id
+  sessionId   String
+  role        String
+  content     String
+  createdAt   DateTime    @default(now())
+  ChatSession ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id          String        @id
+  userId      String
+  title       String?       @default("New Chat")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime
+  ChatMessage ChatMessage[]
+  User        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Department {
+  id                                 String    @id
+  name                               String    @unique
+  managerId                          String?
+  createdAt                          DateTime  @default(now())
+  updatedAt                          DateTime
+  deletedAt                          DateTime?
+  shiftStartTime                     String?   @default("09:00")
+  User_Department_managerIdToUser    User?     @relation("Department_managerIdToUser", fields: [managerId], references: [id])
+  Team                               Team[]
+  User_User_departmentIdToDepartment User[]    @relation("User_departmentIdToDepartment")
+  User_UserSecondaryDepartments      User[]    @relation("UserSecondaryDepartments")
+
+  @@index([managerId])
+}
+
+model Leave {
+  id             String    @id
+  userId         String
+  startDate      DateTime
+  endDate        DateTime
+  type           String
+  reason         String?
+  status         String    @default("APPROVED")
+  duration       String
+  startTime      DateTime?
+  endTime        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  declineReason  String?
+  deletedAt      DateTime?
+  isArchived     Boolean   @default(false)
+  attachmentPath String?
+  User           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([userId, startDate, endDate])
+}
+
+model LeaveRequest {
+  id                                        String                @id
+  userId                                    String
+  startDate                                 DateTime
+  endDate                                   DateTime
+  type                                      String
+  reason                                    String?
+  status                                    String                @default("PENDING")
+  duration                                  String
+  startTime                                 DateTime?
+  endTime                                   DateTime?
+  declineReason                             String?
+  isArchived                                Boolean               @default(false)
+  createdAt                                 DateTime              @default(now())
+  updatedAt                                 DateTime
+  deletedAt                                 DateTime?
+  attachmentPath                            String?
+  assignedManagerId                         String?
+  User_LeaveRequest_assignedManagerIdToUser User?                 @relation("LeaveRequest_assignedManagerIdToUser", fields: [assignedManagerId], references: [id])
+  User_LeaveRequest_userIdToUser            User                  @relation("LeaveRequest_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+  LeaveRequestHistory                       LeaveRequestHistory[]
+
+  @@index([assignedManagerId])
+  @@index([startTime, endTime])
+  @@index([userId, status])
+}
+
+model LeaveRequestHistory {
+  id             String       @id
+  leaveRequestId String
+  activity       String
+  description    String
+  actorId        String?
+  createdAt      DateTime     @default(now())
+  User           User?        @relation(fields: [actorId], references: [id])
+  LeaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id])
+
+  @@index([leaveRequestId])
+}
+
+model Notification {
+  id        String    @id
+  userId    String
+  title     String
+  message   String
+  type      String
+  read      Boolean   @default(false)
+  link      String?
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+  updatedAt DateTime  @default(now())
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Session {
+  sessionToken String    @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  deletedAt    DateTime?
+  User         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SystemSettings {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
+model Team {
+  id                       String     @id
+  name                     String
+  departmentId             String
+  leaderId                 String?
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime
+  deletedAt                DateTime?
+  Department               Department @relation(fields: [departmentId], references: [id])
+  User_Team_leaderIdToUser User?      @relation("Team_leaderIdToUser", fields: [leaderId], references: [id])
+  User_User_teamIdToTeam   User[]     @relation("User_teamIdToTeam")
+
+  @@index([departmentId])
+  @@index([leaderId])
+}
+
+model User {
+  id                                                          String                @id
+  name                                                        String?
+  email                                                       String                @unique
+  password                                                    String?
+  image                                                       String?
+  departmentId                                                String?
+  teamId                                                      String?
+  managerId                                                   String?
+  createdAt                                                   DateTime              @default(now())
+  updatedAt                                                   DateTime
+  emailVerified                                               DateTime?
+  roles                                                       Role[]                @default([USER])
+  isArchived                                                  Boolean               @default(false)
+  deletedAt                                                   DateTime?
+  availabilityStatus                                          UserStatus            @default(AVAILABLE)
+  location                                                    String?
+  selectedTimezone                                            String?               @default("UTC")
+  useCurrentTimezone                                          Boolean               @default(true)
+  customStatusMessage                                         String?
+  shiftEndTime                                                String?               @default("17:00")
+  shiftStartTime                                              String?               @default("09:00")
+  forceLogoutAt                                               DateTime?
+  managerNotificationsEnabled                                 Boolean               @default(true)
+  workingDays                                                 String                @default("MON,TUE,WED,THU,FRI")
+  Account                                                     Account[]
+  ActivityLog                                                 ActivityLog[]
+  Attendance                                                  Attendance[]
+  AttendanceRequest_AttendanceRequest_assignedManagerIdToUser AttendanceRequest[]   @relation("AttendanceRequest_assignedManagerIdToUser")
+  AttendanceRequest_AttendanceRequest_userIdToUser            AttendanceRequest[]   @relation("AttendanceRequest_userIdToUser")
+  AttendanceSummary_AttendanceSummary_overriddenByIdToUser    AttendanceSummary[]   @relation("AttendanceSummary_overriddenByIdToUser")
+  AttendanceSummary_AttendanceSummary_userIdToUser            AttendanceSummary[]   @relation("AttendanceSummary_userIdToUser")
+  ChatSession                                                 ChatSession[]
+  Department_Department_managerIdToUser                       Department[]          @relation("Department_managerIdToUser")
+  Leave                                                       Leave[]
+  LeaveRequest_LeaveRequest_assignedManagerIdToUser           LeaveRequest[]        @relation("LeaveRequest_assignedManagerIdToUser")
+  LeaveRequest_LeaveRequest_userIdToUser                      LeaveRequest[]        @relation("LeaveRequest_userIdToUser")
+  LeaveRequestHistory                                         LeaveRequestHistory[]
+  Notification                                                Notification[]
+  Session                                                     Session[]
+  Team_Team_leaderIdToUser                                    Team[]                @relation("Team_leaderIdToUser")
+  Department_User_departmentIdToDepartment                    Department?           @relation("User_departmentIdToDepartment", fields: [departmentId], references: [id])
+  User                                                        User?                 @relation("UserToUser", fields: [managerId], references: [id])
+  other_User                                                  User[]                @relation("UserToUser")
+  Team_User_teamIdToTeam                                      Team?                 @relation("User_teamIdToTeam", fields: [teamId], references: [id])
+  WorkHoursChangeLog                                          WorkHoursChangeLog[]
+  Department_UserSecondaryDepartments                         Department[]          @relation("UserSecondaryDepartments")
+
+  @@index([departmentId])
+  @@index([managerId])
+  @@index([teamId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+  createdAt  DateTime @default(now())
+
+  @@id([identifier, token])
+}
+
+model WorkHoursChangeLog {
+  id           String   @id
+  userId       String
+  attendanceId String?
+  date         DateTime
+  oldStart     String?
+  oldEnd       String?
+  newStart     String
+  newEnd       String
+  reason       String?
+  changedAt    DateTime @default(now())
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+  @@index([userId, date])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  LEAVE
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  VIEWER
+  USER
+}
+
+enum UserStatus {
+  AVAILABLE
+  BUSY
+  DO_NOT_DISTURB
+  BE_RIGHT_BACK
+  APPEAR_AWAY
+  APPEAR_OFFLINE
+}
+
+enum WorkMode {
+  OFFICE
+  WFH
+  OTHER
+  ONSITE
+}

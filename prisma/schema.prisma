@@ -55,6 +55,9 @@ model User {
   secondaryDepartments Department[]        @relation("UserSecondaryDepartments")
   leaveHistoryActed    LeaveRequestHistory[] @relation("LeaveHistoryActor")
   xeroLeaveBalances    XeroLeaveBalance[]
+  selfCheckRuns             SelfCheckRun[]
+  selfCheckFindings         SelfCheckFinding[] @relation("SelfCheckFindingUser")
+  selfCheckFindingsResolved SelfCheckFinding[] @relation("SelfCheckFindingResolver")
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
@@ -411,4 +414,50 @@ model XeroLeaveBalance {
 
   @@unique([userId, leaveName])
   @@index([userId])
+}
+
+enum SelfCheckStatus {
+  OPEN
+  IGNORED
+  RESOLVED
+}
+
+model SelfCheckRun {
+  id            String    @id @default(cuid())
+  triggeredById String
+  scanDate      DateTime
+  status        String    @default("RUNNING") // RUNNING | COMPLETED | FAILED
+  findingsCount Int?
+  errorMessage  String?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  triggeredBy   User               @relation(fields: [triggeredById], references: [id])
+  findings      SelfCheckFinding[]
+
+  @@index([scanDate])
+}
+
+model SelfCheckFinding {
+  id           String          @id @default(cuid())
+  runId        String
+  scanDate     DateTime
+  entityType   String          // "AttendanceSummary" | "Attendance" | "LeaveRequest" | "AttendanceRequest" | "User"
+  entityId     String
+  userId       String?         // affected staff member, for display/filtering
+  issueType    String          // e.g. "NULL_CLOCK_OUT", "ORPHANED_SUMMARY_LINK"
+  description  String
+  severity     String          @default("MEDIUM") // LOW | MEDIUM | HIGH
+  status       SelfCheckStatus @default(OPEN)
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime        @default(now())
+
+  run          SelfCheckRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  user         User?           @relation("SelfCheckFindingUser", fields: [userId], references: [id])
+  resolvedBy   User?           @relation("SelfCheckFindingResolver", fields: [resolvedById], references: [id])
+
+  @@index([runId])
+  @@index([status])
+  @@index([scanDate])
 }

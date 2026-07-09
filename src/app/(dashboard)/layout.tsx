@@ -20,7 +20,8 @@ import {
     BarChart2,
     ScrollText,
     Sparkles,
-    MapPin
+    MapPin,
+    ShieldAlert
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -109,6 +110,7 @@ export default function AdminLayout({
         { href: "/admin/user-activity", label: "User Activity", icon: ScrollText },
         { href: "/admin/biometric", label: "Biometric", icon: Fingerprint },
         { href: "/admin/ai-insights", label: "AI Insights", icon: Sparkles },
+        { href: "/admin/self-check", label: "Self-Check", icon: ShieldAlert },
         { href: "/admin/reports", label: "Export", icon: FileText },
         { href: "/admin/notifications", label: "Notifications", icon: BellRing },
         { href: "/admin/settings", label: "Settings", icon: Settings },

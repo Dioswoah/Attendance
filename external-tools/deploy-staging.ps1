@@ -320,6 +320,9 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "BIOMETRIC_APPS_SCRIPT_URL=$BIOMETRIC_APPS_SCRIPT_URL" `
     --set-env-vars "DISABLE_EMAILS=true" `
     --set-env-vars "VERTEX_PROJECT_ID=$PROD_PROJECT_ID" `
+    --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=1" `
+    --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROD_PROJECT_ID" `
+    --set-env-vars "GOOGLE_CLOUD_LOCATION=us-central1" `
     --set-env-vars "XERO_CLIENT_ID=$XERO_CLIENT_ID" `
     --set-env-vars "XERO_CLIENT_SECRET=$XERO_CLIENT_SECRET" `
     --set-env-vars "XERO_REDIRECT_URI=$XERO_REDIRECT_URI" `
