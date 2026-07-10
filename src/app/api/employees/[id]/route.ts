@@ -15,7 +15,7 @@ export async function PATCH(
         const session = await auth() as any
         console.log(`Updating employee ${id} with body:`, JSON.stringify(body, null, 2))
 
-        const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime, secondaryDepartmentIds } = body
+        const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime, secondaryDepartmentIds, workingDays } = body
         const updateData: any = {}
         if (name !== undefined) updateData.name = name
         if (email !== undefined) updateData.email = email
@@ -49,6 +49,7 @@ export async function PATCH(
         }
         if (shiftStartTime !== undefined) updateData.shiftStartTime = shiftStartTime
         if (body.shiftEndTime !== undefined) updateData.shiftEndTime = body.shiftEndTime
+        if (workingDays !== undefined) updateData.workingDays = Array.isArray(workingDays) ? workingDays.join(',') : workingDays
         if (secondaryDepartmentIds !== undefined) {
             updateData.secondaryDepartments = {
                 set: Array.isArray(secondaryDepartmentIds)
@@ -76,6 +77,7 @@ export async function PATCH(
             if (location !== undefined) changedFields.push('work location')
             if (shiftStartTime !== undefined || body.shiftEndTime !== undefined) changedFields.push('shift hours')
             if (secondaryDepartmentIds !== undefined) changedFields.push('secondary departments')
+            if (workingDays !== undefined) changedFields.push('working days')
             if (isArchived !== undefined) changedFields.push('account status')
 
             const changedSummary = changedFields.length > 0 ? changedFields.join(', ') : 'profile details'

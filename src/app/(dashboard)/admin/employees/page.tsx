@@ -47,6 +47,14 @@ export default function EmployeesPage() {
     const [editLocation, setEditLocation] = useState("")
     const [editShiftStart, setEditShiftStart] = useState("09:00")
     const [editShiftEnd, setEditShiftEnd] = useState("17:00")
+    const [editWorkingDays, setEditWorkingDays] = useState<string[]>(["MON","TUE","WED","THU","FRI"])
+
+    const ALL_DAYS = ["MON","TUE","WED","THU","FRI","SAT","SUN"]
+    const DAY_LABELS: Record<string,string> = { MON:"Mon", TUE:"Tue", WED:"Wed", THU:"Thu", FRI:"Fri", SAT:"Sat", SUN:"Sun" }
+
+    const toggleEditWorkingDay = (day: string) => {
+        setEditWorkingDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+    }
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -211,6 +219,7 @@ export default function EmployeesPage() {
         setEditLocation(emp.employmentLocation || "")
         setEditShiftStart(emp.shiftStartTime || "09:00")
         setEditShiftEnd(emp.shiftEndTime || "17:00")
+        setEditWorkingDays(emp.workingDays ? emp.workingDays.split(',') : ["MON","TUE","WED","THU","FRI"])
         setIsEditOpen(true)
     }
 
@@ -231,7 +240,8 @@ export default function EmployeesPage() {
                     managerId: (editManagerId && editManagerId !== "unassigned") ? editManagerId : null,
                     location: editLocation,
                     shiftStartTime: editShiftStart,
-                    shiftEndTime: editShiftEnd
+                    shiftEndTime: editShiftEnd,
+                    workingDays: editWorkingDays
                 })
             })
             if (res.ok) {
@@ -710,7 +720,7 @@ export default function EmployeesPage() {
                                         </PopoverContent>
                                     </Popover>
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-2 md:col-span-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location</Label>
                                     <Select value={newLocation} onValueChange={setNewLocation} required>
                                         <SelectTrigger className="h-11">
@@ -797,7 +807,7 @@ export default function EmployeesPage() {
 
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
-                                    <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
+                                    <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border min-h-11 items-center">
                                         {['USER', 'VIEWER', 'MANAGER', 'ADMIN'].map((role) => (
                                             <div key={role} className="flex items-center gap-2">
                                                 <input
@@ -1218,7 +1228,7 @@ export default function EmployeesPage() {
                                     </PopoverContent>
                                 </Popover>
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-2 md:col-span-2">
                                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Location</Label>
                                 <Select value={editLocation} onValueChange={setEditLocation}>
                                     <SelectTrigger className="h-11">
@@ -1250,6 +1260,34 @@ export default function EmployeesPage() {
                                     required
                                     className="h-11"
                                 />
+                            </div>
+
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Working Days</Label>
+                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Notifications are only sent on the staff member&apos;s working days</p>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {ALL_DAYS.map(day => (
+                                        <button
+                                            key={day}
+                                            type="button"
+                                            onClick={() => toggleEditWorkingDay(day)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
+                                                editWorkingDays.includes(day)
+                                                    ? "bg-[#8B2323] text-white border-[#8B2323]"
+                                                    : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
+                                            }`}
+                                        >
+                                            {DAY_LABELS[day]}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2 mt-1">
+                                    <button type="button" onClick={() => setEditWorkingDays(["MON","TUE","WED","THU","FRI"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Fri</button>
+                                    <span className="text-slate-300 text-[10px]">·</span>
+                                    <button type="button" onClick={() => setEditWorkingDays(["MON","TUE","WED","THU"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Thu</button>
+                                    <span className="text-slate-300 text-[10px]">·</span>
+                                    <button type="button" onClick={() => setEditWorkingDays(["MON","TUE","WED","THU","FRI","SAT"])} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-[#8B2323] transition-colors">Mon–Sat</button>
+                                </div>
                             </div>
 
                             <div className="col-span-full bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3 mt-2">
@@ -1310,7 +1348,7 @@ export default function EmployeesPage() {
 
                             <div className="space-y-2">
                                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
-                                <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
+                                <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border min-h-11 items-center">
                                     {['USER', 'VIEWER', 'MANAGER', 'ADMIN'].map((role) => (
                                         <div key={role} className="flex items-center gap-2">
                                             <input
