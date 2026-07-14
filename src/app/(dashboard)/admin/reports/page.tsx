@@ -31,6 +31,53 @@ import { AdminTimezoneSelect } from "@/components/AdminTimezoneSelect"
 import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { useSession } from "next-auth/react"
 
+// ── Lateness helpers ──────────────────────────────────────────────────────────
+const LATE_GRACE_SEC = 5 * 60 // 5-minute grace, consistent across AU (DB) and PH (biometric)
+
+// Parse a biometric wall-clock string ("06:05:47 AM" / "6:05 AM" / "06:05:47") -> seconds since midnight
+function bioTimeToSec(t: string | null): number | null {
+    if (!t || t === '--') return null
+    const m = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)/i)
+    if (m) {
+        let h = parseInt(m[1]); const min = parseInt(m[2]); const s = m[3] ? parseInt(m[3]) : 0
+        if (m[4].toUpperCase() === 'PM' && h !== 12) h += 12
+        if (m[4].toUpperCase() === 'AM' && h === 12) h = 0
+        return h * 3600 + min * 60 + s
+    }
+    const p = t.split(':')
+    if (p.length >= 2) return (parseInt(p[0]) || 0) * 3600 + (parseInt(p[1]) || 0) * 60 + (p[2] ? parseInt(p[2]) || 0 : 0)
+    return null
+}
+
+function hhmmToSec(s: string): number {
+    const [h, m] = (s || '09:00').split(':').map(Number)
+    return (h || 0) * 3600 + (m || 0) * 60
+}
+
+function secToHHMMSS(sec: number): string {
+    const v = Math.max(0, Math.round(sec))
+    const h = Math.floor(v / 3600), m = Math.floor((v % 3600) / 60), s = v % 60
+    return [h, m, s].map(x => String(x).padStart(2, '0')).join(':')
+}
+
+// Seconds-since-midnight of a UTC timestamp in a given timezone's wall clock
+function clockInSecInTz(iso: string, tz: string): number | null {
+    try {
+        const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(new Date(iso))
+        const get = (t: string) => parseInt(parts.find(p => p.type === t)?.value || '0')
+        let h = get('hour'); if (h === 24) h = 0
+        return h * 3600 + get('minute') * 60 + get('second')
+    } catch { return null }
+}
+
+function dateRangeList(startStr: string, endStr: string): string[] {
+    const out: string[] = []
+    const cur = new Date(startStr + 'T12:00:00Z')
+    const end = new Date(endStr + 'T12:00:00Z')
+    while (cur <= end) { out.push(cur.toISOString().split('T')[0]); cur.setUTCDate(cur.getUTCDate() + 1) }
+    return out
+}
+
 export default function ExportPage() {
     const [generating, setGenerating] = useState(false)
     const [departments, setDepartments] = useState<any[]>([])
@@ -62,6 +109,12 @@ export default function ExportPage() {
     const [leaveStaffIds, setLeaveStaffIds] = useState<string[]>([])
     const [leaveStaffSearch, setLeaveStaffSearch] = useState("")
     const [leaveLoaded, setLeaveLoaded] = useState(false)
+
+    // Lateness Report state
+    const [lateStartDate, setLateStartDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [lateEndDate, setLateEndDate] = useState(format(new Date(), "yyyy-MM-dd"))
+    const [lateLocation, setLateLocation] = useState<"all" | "Philippines" | "Australia">("all")
+    const [lateGenerating, setLateGenerating] = useState(false)
 
     useEffect(() => {
         if (session?.user) {
@@ -451,6 +504,152 @@ export default function ExportPage() {
             toast.error('Export failed')
         } finally {
             setLeaveExporting(false)
+        }
+    }
+
+    // ── Lateness Report export ────────────────────────────────────────────────
+    // AU staff lateness comes from the app DB (clock-in vs shift start + grace);
+    // PH staff lateness comes from the biometric feed (firstIn vs expectedStart).
+    // Tabs depend on the Employment Location filter: both -> AU + PH + Summary,
+    // single location -> that one tab only.
+    const handleLatenessExport = async () => {
+        setLateGenerating(true)
+        try {
+            const wantAU = lateLocation === 'all' || lateLocation === 'Australia'
+            const wantPH = lateLocation === 'all' || lateLocation === 'Philippines'
+            const days = dateRangeList(lateStartDate, lateEndDate)
+
+            type LateRow = { date: string; name: string; dept: string; started: number; expected: number; lateBy: number }
+            const auLate: LateRow[] = []
+            const phLate: LateRow[] = []
+            const phOut: { date: string; name: string; dept: string; reason: string }[] = []
+
+            // AU — app database
+            if (wantAU) {
+                const res = await fetch(`/api/attendance?startDate=${lateStartDate}&endDate=${lateEndDate}`)
+                const recs = res.ok ? await res.json() : []
+                const empById = new Map(allStaff.map((s: any) => [s.id, s]))
+                for (const rec of recs) {
+                    if (!rec.clockIn) continue
+                    const emp: any = empById.get(rec.userId)
+                    if (!emp || emp.employmentLocation !== 'Australia') continue
+                    const shiftStartSec = hhmmToSec(emp.shiftStartTime || emp.department?.shiftStartTime || '09:00')
+                    let shiftEndSec = hhmmToSec(emp.shiftEndTime || emp.department?.shiftEndTime || '17:00')
+                    if (shiftEndSec <= shiftStartSec) shiftEndSec += 24 * 3600 // overnight shift
+                    const cutoff = shiftStartSec + LATE_GRACE_SEC
+                    const inSec = clockInSecInTz(rec.clockIn, 'Australia/Sydney')
+                    // A late ARRIVAL must fall within the shift window: after start+grace, at/before shift end.
+                    // This excludes forgotten/evening open sessions that would otherwise show as many hours "late".
+                    if (inSec === null || inSec <= cutoff || inSec > shiftEndSec) continue
+                    auLate.push({
+                        date: rec.date,
+                        name: emp.name,
+                        dept: emp.department?.name || emp.departmentName || 'Unassigned',
+                        started: inSec, expected: cutoff, lateBy: inSec - cutoff
+                    })
+                }
+            }
+
+            // PH — biometric feed (one fetch per day in range)
+            if (wantPH) {
+                for (const day of days) {
+                    let json: any = null
+                    try {
+                        const res = await fetch(`/api/biometric?date=${day}`)
+                        if (!res.ok) continue
+                        json = await res.json()
+                    } catch { continue }
+                    for (const entry of (json?.entries || [])) {
+                        const b = entry.biometric
+                        const inSec = bioTimeToSec(b.firstIn)
+                        const expSec = bioTimeToSec(b.expectedStart)
+                        // A late ARRIVAL is a morning event. PH biometric expected-starts are early (≈06:05),
+                        // so bound to before midday — this drops afternoon first-punches (partial day / field
+                        // work / device quirks) that would otherwise read as many hours "late".
+                        if (inSec !== null && expSec !== null && inSec > expSec && inSec < 12 * 3600) {
+                            phLate.push({ date: day, name: b.name, dept: b.department || '—', started: inSec, expected: expSec, lateBy: inSec - expSec })
+                        } else if ((!b.firstIn || b.firstIn === '--') && entry.app?.clockIn) {
+                            // Biometric-absent but present in the app that day = worked away from the device.
+                            phOut.push({ date: day, name: b.name, dept: b.department || '—', reason: 'Away' })
+                        }
+                    }
+                }
+            }
+
+            if (auLate.length === 0 && phLate.length === 0 && phOut.length === 0) {
+                toast.error('No lateness records found for the selected range.')
+                return
+            }
+
+            const multiDay = days.length > 1
+            const sortRows = (a: LateRow, b: LateRow) => a.date === b.date ? a.started - b.started : a.date.localeCompare(b.date)
+
+            // Build a "Started Late" section (array-of-arrays) for one region
+            const lateSection = (title: string, rows: LateRow[]): any[][] => {
+                const out: any[][] = [[title], multiDay ? ['#', 'Date', 'Name', 'Dept', 'Time Started', 'Expected Start', 'Late Time'] : ['#', 'Name', 'Dept', 'Time Started', 'Expected Start', 'Late Time']]
+                rows.sort(sortRows).forEach((r, i) => {
+                    const base = [secToHHMMSS(r.started), secToHHMMSS(r.expected), secToHHMMSS(r.lateBy)]
+                    out.push(multiDay ? [i + 1, r.date, r.name, r.dept, ...base] : [i + 1, r.name, r.dept, ...base])
+                })
+                if (rows.length === 0) out.push(['— none —'])
+                return out
+            }
+
+            const wb = XLSX.utils.book_new()
+            const addSheet = (name: string, aoa: any[][], widths: number[]) => {
+                const ws = XLSX.utils.aoa_to_sheet(aoa)
+                ws['!cols'] = widths.map(w => ({ wch: w }))
+                XLSX.utils.book_append_sheet(wb, ws, name)
+            }
+            const rangeLabel = multiDay ? `${lateStartDate} to ${lateEndDate}` : lateStartDate
+
+            if (wantAU) {
+                addSheet('Australia', [
+                    [`AUSTRALIA — Lateness (app clock-in vs shift start + 5 min grace)`],
+                    [rangeLabel], [],
+                    ...lateSection('STARTED LATE', auLate)
+                ], multiDay ? [5, 12, 26, 18, 14, 14, 12] : [5, 26, 18, 14, 14, 12])
+            }
+
+            if (wantPH) {
+                const outSection: any[][] = [[], ['PH - OUT (biometric-absent but clocked in on the app)'],
+                    multiDay ? ['#', 'Date', 'Name', 'Dept', 'Reason'] : ['#', 'Name', 'Dept', 'Reason']]
+                phOut.sort((a, b) => a.date === b.date ? a.name.localeCompare(b.name) : a.date.localeCompare(b.date))
+                    .forEach((r, i) => outSection.push(multiDay ? [i + 1, r.date, r.name, r.dept, r.reason] : [i + 1, r.name, r.dept, r.reason]))
+                if (phOut.length === 0) outSection.push(['— none —'])
+                addSheet('Philippines', [
+                    [`PHILIPPINES — Lateness (biometric firstIn vs expected start)`],
+                    [rangeLabel], [],
+                    ...lateSection('STARTED LATE', phLate),
+                    ...outSection
+                ], multiDay ? [5, 12, 26, 18, 14, 14, 12] : [5, 26, 18, 14, 14, 12])
+            }
+
+            // Summary only when both locations are in scope
+            if (lateLocation === 'all') {
+                const combined = [
+                    ...auLate.map(r => ({ loc: 'Australia', ...r })),
+                    ...phLate.map(r => ({ loc: 'Philippines', ...r })),
+                ].sort((a, b) => a.date === b.date ? a.started - b.started : a.date.localeCompare(b.date))
+                const summary: any[][] = [
+                    ['LATENESS SUMMARY'], [rangeLabel], [],
+                    ['Location', 'Late Count', 'Out Count'],
+                    ['Australia', auLate.length, '—'],
+                    ['Philippines', phLate.length, phOut.length],
+                    ['Total', auLate.length + phLate.length, phOut.length],
+                    [], ['COMBINED LATE LIST'],
+                    ['#', 'Location', 'Date', 'Name', 'Dept', 'Time Started', 'Expected Start', 'Late Time'],
+                    ...combined.map((r, i) => [i + 1, r.loc, r.date, r.name, r.dept, secToHHMMSS(r.started), secToHHMMSS(r.expected), secToHHMMSS(r.lateBy)])
+                ]
+                addSheet('Summary', summary, [5, 12, 12, 26, 18, 14, 14, 12])
+            }
+
+            XLSX.writeFile(wb, `REDADAIR_LATENESS_${lateStartDate}_${lateEndDate}.xlsx`)
+        } catch (error) {
+            console.error('Lateness export failed:', error)
+            toast.error('Lateness export failed. Please try again.')
+        } finally {
+            setLateGenerating(false)
         }
     }
 
@@ -947,6 +1146,85 @@ export default function ExportPage() {
                             )}
                         </div>
                     )}
+                </CardContent>
+            </Card>
+
+            {/* Lateness Report */}
+            <Card className="border border-border shadow-sm rounded-xl overflow-hidden bg-white">
+                <CardHeader className="p-6 border-b border-border bg-muted/20">
+                    <div className="flex items-center gap-3">
+                        <CalendarDays className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                            <CardTitle className="text-lg font-semibold text-foreground">Lateness Report</CardTitle>
+                            <CardDescription className="text-sm text-muted-foreground">
+                                Late arrivals by employment location — Australia from app clock-in, Philippines from biometric. Both locations produce Australia, Philippines and a combined Summary sheet; a single location produces one sheet.
+                            </CardDescription>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <Label>Start Date</Label>
+                            <Input type="date" value={lateStartDate} onChange={e => setLateStartDate(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>End Date</Label>
+                            <Input type="date" value={lateEndDate} onChange={e => {
+                                if (e.target.value < lateStartDate) { toast.error('End date cannot be before start date'); return }
+                                setLateEndDate(e.target.value)
+                            }} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Employment Location</Label>
+                            <Select value={lateLocation} onValueChange={(v: any) => setLateLocation(v)}>
+                                <SelectTrigger className="h-10">
+                                    <div className="flex items-center gap-2">
+                                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                                        <SelectValue placeholder="All Locations" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Locations (AU + PH + Summary)</SelectItem>
+                                    <SelectItem value="Philippines">Philippines only</SelectItem>
+                                    <SelectItem value="Australia">Australia only</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                        {[
+                            { id: 'today', label: 'Today' },
+                            { id: 'yesterday', label: 'Yesterday' },
+                            { id: 'thisweek', label: 'This Week' },
+                            { id: 'lastweek', label: 'Last Week' },
+                        ].map(r => (
+                            <Button key={r.id} variant="outline" size="sm" className="h-8 text-xs"
+                                onClick={() => {
+                                    const today = new Date()
+                                    let s = new Date(), e = new Date()
+                                    if (r.id === 'today') { /* both today */ }
+                                    else if (r.id === 'yesterday') { s.setDate(today.getDate() - 1); e = new Date(s) }
+                                    else if (r.id === 'thisweek') { const d = today.getDay(); const diff = d === 0 ? -6 : 1 - d; s = new Date(today); s.setDate(today.getDate() + diff); e = new Date() }
+                                    else if (r.id === 'lastweek') { const d = today.getDay(); const diff = (d === 0 ? -6 : 1 - d) - 7; s = new Date(today); s.setDate(today.getDate() + diff); e = new Date(s); e.setDate(s.getDate() + 6) }
+                                    setLateStartDate(format(s, 'yyyy-MM-dd'))
+                                    setLateEndDate(format(e, 'yyyy-MM-dd'))
+                                }}>
+                                {r.label}
+                            </Button>
+                        ))}
+                    </div>
+
+                    <div className="pt-4 border-t border-border">
+                        <p className="text-xs text-muted-foreground mb-3">
+                            Philippines data is pulled from the biometric sheet one day at a time, so wide date ranges take longer. 5-minute grace applied to both locations.
+                        </p>
+                        <Button onClick={handleLatenessExport} disabled={lateGenerating} className="w-full md:w-auto">
+                            {lateGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                            {lateGenerating ? 'Compiling Lateness…' : 'Generate Lateness Report'}
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
         </div >
