@@ -104,13 +104,6 @@ export async function cleanupOldSessions() {
         }
     };
 
-    // Hard 9pm Australia/Sydney cutoff — computed once per cleanup run
-    const nowGlobal = new Date()
-    const sydneyTodayStr = nowGlobal.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
-    const sydneyOffset = getOffset(nowGlobal, 'Australia/Sydney')
-    const sydney9pmUtc = new Date(`${sydneyTodayStr}T21:00:00${sydneyOffset}`)
-    const isSydney9pmOrLater = nowGlobal >= sydney9pmUtc
-
     for (const session of unclosed) {
         let timeZone = 'Asia/Manila';
         if (session.user?.employmentLocation === 'Philippines') {
@@ -127,11 +120,15 @@ export async function cleanupOldSessions() {
 
         if (!session.clockIn) continue
 
-        const is14HoursPast = (now.getTime() - session.clockIn.getTime()) >= (14 * 60 * 60 * 1000);
-
         const probe = new Date(session.date);
         probe.setUTCHours(12);
         const offsetStr = getOffset(probe, timeZone);
+
+        // Hard 11pm cutoff in the user's OWN timezone (per employment location):
+        // AU staff -> 23:00 Australia/Sydney, PH staff -> 23:00 Asia/Manila.
+        // The every-minute cron closes each region at its own 11pm; no separate cron needed.
+        const cutoff11pmLocal = new Date(`${userTodayStr}T23:00:00${offsetStr}`);
+        const isPast11pmLocal = now >= cutoff11pmLocal;
 
         // Calculate Target Auto-Clock Out Time (shift end time)
         let targetTime: Date;
@@ -162,7 +159,7 @@ export async function cleanupOldSessions() {
             reason = "reached the standard 9-hour limit";
         }
 
-        // Reminder at 10 mins past shift end; auto clock-out only at 9pm Sydney hard cutoff
+        // Reminder at 10 mins past shift end; auto clock-out only at the 11pm local hard cutoff
         const reminderTriggerTime = new Date(targetTime.getTime() + 10 * 60 * 1000);
 
         // 1. Calculate End of Day Barrier (Local 23:59 -> UTC)
@@ -174,10 +171,8 @@ export async function cleanupOldSessions() {
 
         if (sessionDateStr < userTodayStr) {
             shouldAutoClockOut = true;
-        } else if (sessionDateStr === userTodayStr && is14HoursPast) {
-            shouldAutoClockOut = true;
-        } else if (sessionDateStr === userTodayStr && isSydney9pmOrLater && session.clockIn < sydney9pmUtc) {
-            // Hard 9pm AU cutoff — clock out anyone still in, stamp at their shift end time
+        } else if (sessionDateStr === userTodayStr && isPast11pmLocal && session.clockIn < cutoff11pmLocal) {
+            // Hard 11pm local cutoff — clock out anyone still in, stamp at their shift end time
             // reason and targetTime already set above (shift end time / 9h limit); don't override them
             shouldAutoClockOut = true;
         } else if (sessionDateStr === userTodayStr && now >= reminderTriggerTime) {
