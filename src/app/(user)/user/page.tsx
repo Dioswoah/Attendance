@@ -1453,7 +1453,7 @@ export default function UserPortal() {
                         </div>
                         <div className="space-y-2">
                             <h1 className="text-3xl font-bold tracking-tight text-foreground">Redadair</h1>
-                            <p className="text-muted-foreground uppercase tracking-widest text-xs font-semibold">Staff Availability</p>
+                            <p className="text-muted-foreground uppercase tracking-widest text-xs font-semibold">Staff Admin</p>
                         </div>
                     </div>
 

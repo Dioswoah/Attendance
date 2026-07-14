@@ -269,7 +269,7 @@ function UserLayoutInner({
                         {!sidebarCollapsed && (
                             <div className="flex flex-col">
                                 <span className="text-lg font-bold text-sidebar-foreground tracking-tight leading-none">Redadair</span>
-                                <span className="text-xs font-medium text-sidebar-foreground/60">Staff Availability</span>
+                                <span className="text-xs font-medium text-sidebar-foreground/60">Staff Admin</span>
                             </div>
                         )}
                     </div>
