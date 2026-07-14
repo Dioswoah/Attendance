@@ -2501,7 +2501,7 @@ export default function UserPortal() {
                                             <Users className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <CardTitle className="text-lg font-bold text-foreground">Staff Availability</CardTitle>
+                                            <CardTitle className="text-lg font-bold text-foreground">Staff Attendance</CardTitle>
                                             <CardDescription className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Real-time status monitor</CardDescription>
                                         </div>
                                     </div>

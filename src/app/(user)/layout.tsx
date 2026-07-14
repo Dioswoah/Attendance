@@ -187,7 +187,7 @@ function UserLayoutInner({
 
     // Dynamic navigation items based on role
     const navItems = [
-        { name: "Dashboard", href: "/user", icon: LayoutDashboard },
+        { name: "Attendance", href: "/user", icon: LayoutDashboard },
         { name: "Leave Requests", href: "/user/leaves", icon: CalendarDays, badge: pendingLeaveCount },
         { name: "Amend Records", href: "/user/amend-records", icon: Edit, badge: pendingAmendCount },
         { name: "Activity Logs", href: "/user/activity", icon: FileText },
