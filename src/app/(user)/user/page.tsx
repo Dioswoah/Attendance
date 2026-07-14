@@ -1863,12 +1863,16 @@ export default function UserPortal() {
         return Array.from(new Set(names)).sort()
     }, [enrichedStaffList])
 
+    // Managers, admins and viewers may see sick leave and leave reasons across all
+    // departments; regular staff may not (also enforced server-side in /api/leaves).
+    const canSeeSensitiveLeave = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
+
     // --- Team Calendar Logic ---
     useEffect(() => {
-        if (userDepartmentId || managedDepartments.length > 0) {
+        if (userDepartmentId || managedDepartments.length > 0 || canSeeSensitiveLeave) {
             fetchMonthlyData()
         }
-    }, [userDepartmentId, managedDepartments, currentMonth, userManagerId, calendarFilterDepartment]) // Re-fetch when context or filter changes
+    }, [userDepartmentId, managedDepartments, currentMonth, userManagerId, calendarFilterDepartment, canSeeSensitiveLeave]) // Re-fetch when context or filter changes
 
     const fetchMonthlyData = async () => {
         // Fetch Attendance and Leaves ONLY for staff you directly manage (by managerId)
@@ -1882,28 +1886,30 @@ export default function UserPortal() {
             // 1. Collect all user IDs you manage (from managedStaffBase which already filters correctly)
             const managedUserIds = managedStaffBase.map((s: any) => s.id)
 
-            // 2. Fetch data for each managed user
+            // 2. Attendance is always scoped to managed staff (Staff Overview needs it).
             if (managedUserIds.length > 0) {
-                const userResults = await Promise.all(managedUserIds.map(async (userId: string) => {
-                    const userQuery = new URLSearchParams({
-                        userId: userId,
-                        startDate: start.toISOString(),
-                        endDate: end.toISOString()
-                    })
-
-                    const [attRes, leaveRes] = await Promise.all([
-                        fetch(`/api/attendance?${userQuery.toString()}`),
-                        fetch(`/api/leaves?${userQuery.toString()}`)
-                    ])
-
-                    return {
-                        attendance: attRes.ok ? await attRes.json() : [],
-                        leaves: leaveRes.ok ? await leaveRes.json() : []
-                    }
+                const attResults = await Promise.all(managedUserIds.map(async (uid: string) => {
+                    const q = new URLSearchParams({ userId: uid, startDate: start.toISOString(), endDate: end.toISOString() })
+                    const attRes = await fetch(`/api/attendance?${q.toString()}`)
+                    return attRes.ok ? await attRes.json() : []
                 }))
+                newMonthlyAttendance = attResults.flat()
+            }
 
-                newMonthlyAttendance = userResults.flatMap(r => r.attendance)
-                newTeamLeaves = userResults.flatMap(r => r.leaves)
+            // 3. Leaves. Managers/admins/viewers see leave across ALL departments in one
+            //    call (API returns full sick + reason for privileged callers). Regular staff
+            //    only fetch their own team; the API strips other people's sick + reason.
+            if (canSeeSensitiveLeave) {
+                const q = new URLSearchParams({ startDate: start.toISOString(), endDate: end.toISOString() })
+                const leaveRes = await fetch(`/api/leaves?${q.toString()}`)
+                newTeamLeaves = leaveRes.ok ? await leaveRes.json() : []
+            } else if (managedUserIds.length > 0) {
+                const leaveResults = await Promise.all(managedUserIds.map(async (uid: string) => {
+                    const q = new URLSearchParams({ userId: uid, startDate: start.toISOString(), endDate: end.toISOString() })
+                    const leaveRes = await fetch(`/api/leaves?${q.toString()}`)
+                    return leaveRes.ok ? await leaveRes.json() : []
+                }))
+                newTeamLeaves = leaveResults.flat()
             }
 
             // Deduplicate by ID
@@ -1945,10 +1951,10 @@ export default function UserPortal() {
         const dateStr = format(date, 'yyyy-MM-dd')
         const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
 
-        // 1a. Approved Leaves (sick excluded — privacy)
+        // 1a. Approved Leaves (sick hidden from regular staff — privacy)
         const approvedLeavesForDay = teamApprovedLeaves.filter((leave: any) => {
             if (leave.status !== 'APPROVED') return false
-            if (leave.type === 'SICK') return false
+            if (leave.type === 'SICK' && !isManagerOrAdmin) return false
 
             const isMatch = isWithinInterval(date, {
                 start: parseISO(leave.startDate.slice(0, 10)),
@@ -2965,21 +2971,22 @@ export default function UserPortal() {
                                             <div className="flex flex-col gap-1">
                                                 {/* Department Filter for Calendar */}
                                                 {(() => {
-                                                    const isAdmin = userProfile?.roles?.includes('ADMIN')
+                                                    // Managers/admins/viewers can filter across all departments; regular staff only their own.
+                                                    const canSeeAllDepts = canSeeSensitiveLeave
                                                     const myDepts: string[] = []
                                                     if (userDepartment) myDepts.push(userDepartment)
                                                     ;(userProfile?.secondaryDepartments || []).forEach((d: any) => {
                                                         const name = typeof d === 'string' ? d : d?.name
                                                         if (name && !myDepts.includes(name)) myDepts.push(name)
                                                     })
-                                                    const calendarDeptOptions = isAdmin ? uniqueDepartments : myDepts
+                                                    const calendarDeptOptions = canSeeAllDepts ? uniqueDepartments : myDepts
                                                     return (
                                                         <Select value={calendarFilterDepartment} onValueChange={setCalendarFilterDepartment}>
                                                             <SelectTrigger className="h-9 w-[180px] bg-white border-slate-200 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-600 focus:ring-0 shadow-sm">
                                                                 <SelectValue placeholder="Department" />
                                                             </SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem value="all">{isAdmin ? "All Departments" : "My Departments"}</SelectItem>
+                                                                <SelectItem value="all">{canSeeAllDepts ? "All Departments" : "My Departments"}</SelectItem>
                                                                 {calendarDeptOptions.map((dept: any) => (
                                                                     <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                                                                 ))}
@@ -3083,10 +3090,10 @@ export default function UserPortal() {
                                                         {calendarDays.map((day, i) => {
                                                             const dateStr = format(day, 'yyyy-MM-dd')
 
-                                                            // 1. Approved Leaves (sick excluded — privacy)
+                                                            // 1. Approved Leaves (sick hidden from regular staff — privacy)
                                                             const approvedLeaves = teamApprovedLeaves.filter((leave: any) => {
                                                                 if (leave.status !== 'APPROVED') return false
-                                                                if (leave.type === 'SICK') return false
+                                                                if (leave.type === 'SICK' && !canSeeSensitiveLeave) return false
 
                                                                 if (calendarFilterDepartment !== 'all') {
                                                                     const staff = employees.find((e: any) => e.id === leave.userId || e.id === leave.user?.id)
@@ -3936,6 +3943,9 @@ export default function UserPortal() {
                                                 {e.type === 'leave-approved' && <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Approved Leave · {e.data.type}</p>}
                                                 {e.type === 'leave-pending' && <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Pending Approval · {e.data.type}</p>}
                                                 {e.type === 'holiday' && <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Public Holiday</p>}
+                                                {canSeeSensitiveLeave && (e.type === 'leave-approved' || e.type === 'leave-pending') && e.data?.reason && (
+                                                    <p className="text-[11px] text-slate-600 italic mt-1">"{e.data.reason}"</p>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

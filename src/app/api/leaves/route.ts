@@ -8,6 +8,18 @@ import { notifyRole } from "@/lib/notifications"
 import { invalidateCache, invalidateCachePattern, CacheKeys } from '@/lib/cache'
 
 export async function GET(req: Request) {
+    // Auth + role gate: leave reasons and SICK-type leaves are private.
+    // Only ADMIN/MANAGER/VIEWER may see other people's sick leave and reasons;
+    // regular staff get other people's leaves with reasons stripped and SICK hidden.
+    // A caller always sees their OWN leaves in full.
+    const session = await auth() as any
+    if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    const callerId: string = session.user.id
+    const callerRoles: string[] = session.user.roles || []
+    const privileged = callerRoles.some(r => ['ADMIN', 'MANAGER', 'VIEWER'].includes(r))
+
     const { searchParams } = new URL(req.url)
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
@@ -133,7 +145,17 @@ export async function GET(req: Request) {
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
 
-        return NextResponse.json(combined)
+        // Privacy sanitization for non-privileged callers: they may see their own
+        // leaves in full, but for everyone else's leaves SICK is hidden and the
+        // reason is stripped. Privileged roles (ADMIN/MANAGER/VIEWER) see everything.
+        const visible = privileged ? combined : combined.reduce((acc: any[], row: any) => {
+            if (row.userId === callerId) { acc.push(row); return acc }
+            if (row.type === 'SICK') return acc
+            acc.push({ ...row, reason: null, declineReason: null })
+            return acc
+        }, [])
+
+        return NextResponse.json(visible)
     } catch (error) {
         return NextResponse.json({ error: "Failed to fetch leaves" }, { status: 500 })
     }
