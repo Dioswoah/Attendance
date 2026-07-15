@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react"
 import useSWR from "swr"
-import { format } from "date-fns"
+import { useSession } from "next-auth/react"
+import { getBrowserTimezone } from "@/lib/timezone"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -63,16 +64,23 @@ function statusInfo(status: TechDayStatus["simproStatus"]) {
     }
 }
 
-function fmtTime(iso: string | null): string {
+function fmtTime(iso: string | null, timeZone: string): string {
     if (!iso) return "—"
     try {
-        return format(new Date(iso), "h:mmaaa")
+        return new Date(iso)
+            .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone })
+            .toLowerCase()
+            .replace(" ", "")
     } catch {
         return "—"
     }
 }
 
 export default function AdminTechniciansPage() {
+    const { data: session } = useSession()
+    const userTimeZone = (session?.user as any)?.useCurrentTimezone
+        ? getBrowserTimezone()
+        : (session?.user as any)?.selectedTimezone || getBrowserTimezone()
     const [search, setSearch] = useState("")
     const [linking, setLinking] = useState(false)
     const [linkResult, setLinkResult] = useState<string | null>(null)
@@ -213,7 +221,7 @@ export default function AdminTechniciansPage() {
                                                         {info.label}
                                                     </Badge>
                                                     {t.simproStatusAt && (
-                                                        <div className="text-xs text-muted-foreground mt-0.5">{fmtTime(t.simproStatusAt)}</div>
+                                                        <div className="text-xs text-muted-foreground mt-0.5">{fmtTime(t.simproStatusAt, userTimeZone)}</div>
                                                     )}
                                                 </td>
                                                 <td className="py-2.5 pr-4">
@@ -243,18 +251,18 @@ export default function AdminTechniciansPage() {
                                                     ) : <span className="text-muted-foreground">—</span>}
                                                 </td>
                                                 <td className="py-2.5 pr-4 whitespace-nowrap">
-                                                    {t.firstJob?.startTime ? `${fmtTime(t.firstJob.startTime)} – ${fmtTime(t.firstJob.endTime)}` : "—"}
+                                                    {t.firstJob?.startTime ? `${fmtTime(t.firstJob.startTime, userTimeZone)} – ${fmtTime(t.firstJob.endTime, userTimeZone)}` : "—"}
                                                 </td>
                                                 <td className="py-2.5 pr-4">{t.jobCount || "—"}</td>
                                                 <td className="py-2.5 pr-4 whitespace-nowrap">
                                                     {t.rsa.clockedInToday ? (
                                                         <div>
                                                             <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                                                In {fmtTime(t.rsa.clockInAt)}
+                                                                In {fmtTime(t.rsa.clockInAt, userTimeZone)}
                                                             </Badge>
                                                             <div className="text-xs text-muted-foreground mt-0.5">
                                                                 {t.rsa.source === "SIMPRO" ? "via simPRO" : t.rsa.source?.toLowerCase() || ""}
-                                                                {t.rsa.clockOutAt ? ` · out ${fmtTime(t.rsa.clockOutAt)}` : ""}
+                                                                {t.rsa.clockOutAt ? ` · out ${fmtTime(t.rsa.clockOutAt, userTimeZone)}` : ""}
                                                             </div>
                                                         </div>
                                                     ) : (

@@ -61,9 +61,14 @@ export interface TechDayStatus {
 function parseMobileStatus(message: string): Exclude<SimproMobileStatus, 'NO_SCHEDULE' | 'NOT_STARTED'> | null {
     const m = message.toLowerCase()
     if (!m.includes('mobile status')) return null
-    if (/travell?ing/.test(m)) return 'TRAVELLING'
-    if (/on[\s-]?site|onsite|arrived/.test(m)) return 'ON_SITE'
-    if (/complete/.test(m)) return 'COMPLETED'
+    // simPRO can bundle several updates into one timeline entry, NEWEST FIRST,
+    // separated by <br /> — e.g. "Mobile status set to Onsite (07:50)<br />
+    // Mobile status set to Travelling (07:27)". Only the first segment is the
+    // tech's current state.
+    const latest = m.split(/<br\s*\/?>/)[0]
+    if (/on[\s-]?site|onsite|arrived/.test(latest)) return 'ON_SITE'
+    if (/travell?ing/.test(latest)) return 'TRAVELLING'
+    if (/complete/.test(latest)) return 'COMPLETED'
     return null
 }
 
