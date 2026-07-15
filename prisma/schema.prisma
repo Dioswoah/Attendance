@@ -32,6 +32,7 @@ model User {
   shiftEndTime        String?             @default("17:00")
   workingDays         String              @default("MON,TUE,WED,THU,FRI")
   managerNotificationsEnabled Boolean     @default(true)
+  simproEmployeeId    Int?                @unique
   accounts            Account[]
   attendance                    Attendance[]
   attendanceRequests            AttendanceRequest[]             @relation("AttendanceRequestUser")
@@ -142,6 +143,7 @@ model Attendance {
   breakEnd   DateTime?
   status     AttendanceStatus @default(ABSENT)
   mode       WorkMode         @default(OFFICE)
+  source     AttendanceSource @default(WEB)
   locationDetails String?
   duration   Int?
   notes      String?
@@ -322,6 +324,13 @@ enum AttendanceStatus {
   LATE
   HALF_DAY
   LEAVE
+}
+
+enum AttendanceSource {
+  WEB
+  MANUAL
+  BIOMETRIC
+  SIMPRO
 }
 
 enum WorkMode {

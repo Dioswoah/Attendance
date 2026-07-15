@@ -21,7 +21,8 @@ import {
     ScrollText,
     Sparkles,
     MapPin,
-    ShieldAlert
+    ShieldAlert,
+    HardHat
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -109,6 +110,7 @@ export default function AdminLayout({
         { href: "/admin/manager-activity", label: "Manager Activity", icon: ShieldCheck },
         { href: "/admin/user-activity", label: "User Activity", icon: ScrollText },
         { href: "/admin/biometric", label: "Biometric", icon: Fingerprint },
+        { href: "/admin/technicians", label: "Technicians", icon: HardHat },
         { href: "/admin/ai-insights", label: "AI Insights", icon: Sparkles },
         { href: "/admin/self-check", label: "Self-Check", icon: ShieldAlert },
         { href: "/admin/reports", label: "Export", icon: FileText },
