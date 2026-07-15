@@ -18,7 +18,8 @@ import {
     BellRing,
     Fingerprint,
     BarChart2,
-    ScrollText
+    ScrollText,
+    HardHat
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { SSEProvider } from "@/contexts/SSEContext"
@@ -107,6 +108,7 @@ export default function AdminLayout({
         { href: "/admin/user-activity", label: "User Activity", icon: ScrollText },
         { href: "/admin/biometric", label: "Biometric", icon: Fingerprint },
         { href: "/admin/kpi", label: "KPI", icon: BarChart2 },
+        { href: "/admin/technicians", label: "Technicians", icon: HardHat },
         { href: "/admin/reports", label: "Export", icon: FileText },
         { href: "/admin/notifications", label: "Notifications", icon: BellRing },
         { href: "/admin/settings", label: "Settings", icon: Settings },

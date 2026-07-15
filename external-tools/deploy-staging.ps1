@@ -298,6 +298,11 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "XERO_CLIENT_ID=$XERO_CLIENT_ID" `
     --set-env-vars "XERO_CLIENT_SECRET=$XERO_CLIENT_SECRET" `
     --set-env-vars "XERO_REDIRECT_URI=$XERO_REDIRECT_URI" `
+    --set-env-vars "SIMPRO_BASE_URL=$SIMPRO_BASE_URL" `
+    --set-env-vars "SIMPRO_TOKEN=$SIMPRO_TOKEN" `
+    --set-env-vars "SIMPRO_WEBHOOK_SECRET=$SIMPRO_WEBHOOK_SECRET" `
+    --set-env-vars "SIMPRO_ATTENDANCE_WRITE=$SIMPRO_ATTENDANCE_WRITE" `
+    --set-env-vars "SIMPRO_POLL_ENABLED=$SIMPRO_POLL_ENABLED" `
     --memory 1Gi `
     --cpu 1 `
     --concurrency 500 `
