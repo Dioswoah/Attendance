@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
     HardHat, RefreshCw, Search, Truck, MapPin, CheckCircle2, CalendarOff,
@@ -42,7 +43,6 @@ interface TechDayStatus {
         completedAt: string | null
     } | null
     leave: {
-        activityId: number
         name: string
     } | null
     rsa: {
@@ -82,6 +82,22 @@ function isDoneForDay(t: TechDayStatus): boolean {
     return t.simproStatus !== "ON_LEAVE" && Boolean(t.rsa.clockOutAt || t.lastJob?.completedAt)
 }
 
+// What the row's badge actually shows — used by the status filter.
+function effectiveStatus(t: TechDayStatus): TechDayStatus["simproStatus"] | "DONE" {
+    return isDoneForDay(t) ? "DONE" : t.simproStatus
+}
+
+const STATUS_FILTERS: { value: string; label: string }[] = [
+    { value: "ALL", label: "All statuses" },
+    { value: "ON_SITE", label: "On Site" },
+    { value: "TRAVELLING", label: "Travelling" },
+    { value: "NOT_STARTED", label: "Not Started" },
+    { value: "DONE", label: "Done for day" },
+    { value: "COMPLETED", label: "Completed" },
+    { value: "NO_SCHEDULE", label: "No Schedule" },
+    { value: "ON_LEAVE", label: "On Leave" },
+]
+
 function fmtTime(iso: string | null, timeZone: string): string {
     if (!iso) return "—"
     try {
@@ -103,6 +119,7 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
         ? getBrowserTimezone()
         : (session?.user as any)?.selectedTimezone || getBrowserTimezone()
     const [search, setSearch] = useState("")
+    const [statusFilter, setStatusFilter] = useState("ALL")
     const [linking, setLinking] = useState(false)
     const [linkResult, setLinkResult] = useState<string | null>(null)
 
@@ -115,11 +132,16 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
     const technicians = useMemo(() => {
         const list = data?.technicians ?? []
         const q = search.trim().toLowerCase()
-        const filtered = q ? list.filter((t) => t.name.toLowerCase().includes(q)) : list
+        let filtered = q ? list.filter((t) => t.name.toLowerCase().includes(q)) : list
+        // The board tracks who clocked in/out and where they went — techs on
+        // approved leave are hidden by default; pick "On Leave" to see them.
+        filtered = statusFilter === "ALL"
+            ? filtered.filter((t) => t.simproStatus !== "ON_LEAVE")
+            : filtered.filter((t) => effectiveStatus(t) === statusFilter)
         const rank = { ON_SITE: 0, TRAVELLING: 1, NOT_STARTED: 2, COMPLETED: 3, NO_SCHEDULE: 4, ON_LEAVE: 5 }
         const rankOf = (t: TechDayStatus) => (isDoneForDay(t) ? rank.COMPLETED : rank[t.simproStatus])
         return [...filtered].sort((a, b) => rankOf(a) - rankOf(b) || a.name.localeCompare(b.name))
-    }, [data, search])
+    }, [data, search, statusFilter])
 
     const counts = useMemo(() => {
         const list = data?.technicians ?? []
@@ -195,14 +217,26 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                 <CardHeader className="pb-3">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <CardTitle className="text-base">Field Technicians — First Job of the Day</CardTitle>
-                        <div className="relative w-full md:w-64">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search technician..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="pl-8"
-                            />
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger className="w-full sm:w-44">
+                                    <SelectValue placeholder="Filter status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {STATUS_FILTERS.map((f) => (
+                                        <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <div className="relative w-full sm:w-64">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search technician..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="pl-8"
+                                />
+                            </div>
                         </div>
                     </div>
                 </CardHeader>
