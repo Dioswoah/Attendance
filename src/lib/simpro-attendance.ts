@@ -14,8 +14,6 @@ import {
     getJob,
     getJobTimelines,
     getSchedulesForDate,
-    getSetupActivities,
-    isLeaveActivityName,
     isPlaceholderJob,
     isSimproConfigured,
     type SimproSchedule,
@@ -62,8 +60,7 @@ export interface TechDayStatus {
         completedAt: string | null // tech marked Completed on their final job of the day
     } | null
     leave: {
-        activityId: number
-        name: string // e.g. "Sick / Personal Leave" — an all-day simPRO activity means not working
+        name: string // leave type from the RSA app's APPROVED Leave record covering this day
     } | null
     rsa: {
         clockedInToday: boolean
@@ -127,47 +124,21 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
     const day = date || sydneyToday()
 
     // 1) All schedules for the day across both companies, grouped per tech.
-    // Activity definitions (leave types) are setup data — fetched alongside.
-    const [perCompany, activityNamesByCompany] = await Promise.all([
-        Promise.all(
-            SIMPRO_COMPANY_IDS.map(async (companyId) => ({
-                companyId,
-                schedules: await getSchedulesForDate(companyId, day).catch((err) => {
-                    console.error(`[simPRO] schedules fetch failed for company ${companyId}:`, err)
-                    return [] as SimproSchedule[]
-                }),
-            })),
-        ),
-        Promise.all(
-            SIMPRO_COMPANY_IDS.map(async (companyId) => ({
-                companyId,
-                names: new Map(
-                    (await getSetupActivities(companyId).catch((err) => {
-                        console.error(`[simPRO] activities fetch failed for company ${companyId}:`, err)
-                        return []
-                    })).map((a) => [a.ID, a.Name] as const),
-                ),
-            })),
-        ).then((list) => new Map(list.map((l) => [l.companyId, l.names]))),
-    ])
+    const perCompany = await Promise.all(
+        SIMPRO_COMPANY_IDS.map(async (companyId) => ({
+            companyId,
+            schedules: await getSchedulesForDate(companyId, day).catch((err) => {
+                console.error(`[simPRO] schedules fetch failed for company ${companyId}:`, err)
+                return [] as SimproSchedule[]
+            }),
+        })),
+    )
 
     const byTech = new Map<number, { companyId: number; schedule: SimproSchedule }[]>()
-    // A leave-type activity schedule ("Sick / Personal Leave", "Annual Leave",
-    // ...) means the tech is NOT working that day, even if jobs were
-    // pre-assigned to them. Reference on an activity schedule is the activity ID.
-    const leaveByTech = new Map<number, { activityId: number; name: string }>()
     for (const { companyId, schedules } of perCompany) {
         for (const s of schedules) {
-            if (s.Staff?.Type && s.Staff.Type !== 'employee') continue
-            if (s.Type === 'activity') {
-                const activityId = parseInt(s.Reference, 10)
-                const name = activityNamesByCompany.get(companyId)?.get(activityId)
-                if (name && isLeaveActivityName(name) && !leaveByTech.has(s.Staff.ID)) {
-                    leaveByTech.set(s.Staff.ID, { activityId, name })
-                }
-                continue
-            }
             if (s.Type !== 'job') continue
+            if (s.Staff?.Type && s.Staff.Type !== 'employee') continue
             const list = byTech.get(s.Staff.ID) || []
             list.push({ companyId, schedule: s })
             byTech.set(s.Staff.ID, list)
@@ -191,6 +162,20 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         orderBy: { clockIn: 'asc' },
         select: { userId: true, clockIn: true, clockOut: true, source: true },
     })
+    // On Leave is driven by the RSA app's leave feature (an APPROVED Leave
+    // record covering the day), NOT by simPRO activity schedules (Marc,
+    // 2026-07-16). Unlinked techs can't have app leave, so they never show it.
+    const leaveRows = await prisma.leave.findMany({
+        where: {
+            userId: { in: users.map((u) => u.id) },
+            status: 'APPROVED',
+            startDate: { lte: targetDate },
+            endDate: { gte: targetDate },
+            deletedAt: null,
+        },
+        select: { userId: true, type: true },
+    })
+    const leaveByUserId = new Map(leaveRows.map((l) => [l.userId, l.type]))
 
     // 3) Resolve each roster tech's first job, then fetch its details + timeline.
     const statuses = await mapWithConcurrency(SIMPRO_FIELD_ROSTER, 5, async (tech): Promise<TechDayStatus> => {
@@ -206,7 +191,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             source: att?.source ?? null,
         }
 
-        const leave = leaveByTech.get(tech.simproEmployeeId) ?? null
+        const leave = user && leaveByUserId.has(user.id) ? { name: leaveByUserId.get(user.id) as string } : null
         const jobs = (byTech.get(tech.simproEmployeeId) || []).sort((a, b) =>
             (firstBlockStart(a.schedule) || '9').localeCompare(firstBlockStart(b.schedule) || '9'),
         )
@@ -293,8 +278,8 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             simproStatusAt = latest.at
             simproStatusMessage = latest.message
         } else if (leave) {
-            // Pre-assigned jobs but an all-day leave activity and no mobile
-            // events — the tech is off, not "Not Started".
+            // Jobs pre-assigned but an approved app leave covers this day and
+            // no mobile events — the tech is off, not "Not Started".
             simproStatus = 'ON_LEAVE'
             simproStatusMessage = leave.name
         }

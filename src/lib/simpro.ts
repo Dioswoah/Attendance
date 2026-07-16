@@ -155,19 +155,6 @@ export interface SimproTimelineEntry {
     Date: string // ISO8601 with offset
 }
 
-export interface SimproActivity {
-    ID: number
-    Name: string // "Sick / Personal Leave", "Annual Leave", ...
-}
-
-// Activity names that mean the tech is NOT working that day. Covers both
-// companies' catalogs: Annual/Sick/Personal Leave, Leave Without Pay,
-// Public Holiday, COVID STAND DOWN, Unavailable (Casual Trainer),
-// "VIC CASUAL - NOT AVAILABLE" (but not "VIC CASUAL AVAILABLE").
-export function isLeaveActivityName(name: string): boolean {
-    return /\bleave\b|holiday|stand.?down|unavailable|not.?available/i.test(name)
-}
-
 // Placeholder jobs (on-call/standby rosters like "YOU ARE ON CALL****") that
 // techs never mark Completed — they must not drive the clock-out signal.
 export function isPlaceholderJob(job: SimproJob): boolean {
@@ -197,13 +184,5 @@ export async function getJobTimelines(companyId: number, jobId: number): Promise
     return simproGetAllPages<SimproTimelineEntry>(
         `/companies/${companyId}/jobs/${jobId}/timelines/`,
         45_000,
-    )
-}
-
-/** Activity definitions (ID -> name). Setup data — changes rarely, cached long. */
-export async function getSetupActivities(companyId: number): Promise<SimproActivity[]> {
-    return simproGetAllPages<SimproActivity>(
-        `/companies/${companyId}/setup/activities/`,
-        6 * 60 * 60_000,
     )
 }
