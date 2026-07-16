@@ -184,9 +184,11 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             }
         }
 
-        // Techs can hold overlapping jobs with identical start times and tap
-        // their mobile status on either one — so events are scanned across ALL
-        // of the tech's jobs for the day, never just one arbitrarily-picked job.
+        // Status + clock-in come STRICTLY from the tech's FIRST job of the day
+        // (Marc, 2026-07-16). Overlapping twins — jobs tied at the same earliest
+        // start time — count as the first job, since techs tap their status on
+        // either one. The last-job set is fetched too, only for the clock-out
+        // signal. Later jobs are never fetched.
         const uniqueJobs: { companyId: number; jobId: number; reference: string; schedule: SimproSchedule; start: string }[] = []
         const seenJobs = new Set<string>()
         for (const j of jobs) {
@@ -197,8 +199,16 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             uniqueJobs.push({ companyId: j.companyId, jobId: id, reference: j.schedule.Reference, schedule: j.schedule, start: firstBlockStart(j.schedule) || '9' })
         }
 
+        const earliestStart = uniqueJobs[0].start
+        const latestStart = uniqueJobs[uniqueJobs.length - 1].start
+        const firstTied = uniqueJobs.filter((j) => j.start === earliestStart)
+        const lastTied = uniqueJobs.filter((j) => j.start === latestStart)
+        const scanJobs = uniqueJobs.filter((j) => j.start === earliestStart || j.start === latestStart)
+        const inSet = (set: typeof uniqueJobs, e: { job: { companyId: number; jobId: number } }) =>
+            set.some((j) => j.companyId === e.job.companyId && j.jobId === e.job.jobId)
+
         const timelines = await Promise.all(
-            uniqueJobs.map(async (j) => ({
+            scanJobs.map(async (j) => ({
                 job: j,
                 timeline: await getJobTimelines(j.companyId, j.jobId).catch((err) => {
                     console.error(`[simPRO] timeline fetch failed for job ${j.jobId} (company ${j.companyId}):`, err)
@@ -222,25 +232,24 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         let simproStatusMessage: string | null = null
         let simproFirstStartedAt: string | null = null
 
-        const latest = events[events.length - 1]
+        const firstJobEvents = events.filter((e) => inSet(firstTied, e))
+        const latest = firstJobEvents[firstJobEvents.length - 1]
         if (latest) {
             simproStatus = latest.status!
             simproStatusAt = latest.at
             simproStatusMessage = latest.message
         }
-        // Clock-in time = when they FIRST went Travelling/On Site anywhere in
-        // their day — never the Completed time (unless Completed is the only
-        // event they ever set).
-        const startedEvents = events.filter((e) => e.status === 'TRAVELLING' || e.status === 'ON_SITE')
-        const earliestEvent = startedEvents[0] ?? events[0]
+        // Clock-in time = when they FIRST went Travelling/On Site on the first
+        // job — never the Completed time (unless Completed is the only event
+        // they ever set).
+        const startedEvents = firstJobEvents.filter((e) => e.status === 'TRAVELLING' || e.status === 'ON_SITE')
+        const earliestEvent = startedEvents[0] ?? firstJobEvents[0]
         if (earliestEvent) {
             simproFirstStartedAt = earliestTimeInMessage(earliestEvent.message, earliestEvent.at)
         }
 
         // "First job" column: among jobs tied at the earliest start, prefer the
         // one the tech actually worked (where their earliest event lives).
-        const earliestStart = uniqueJobs[0].start
-        const firstTied = uniqueJobs.filter((j) => j.start === earliestStart)
         const first =
             (earliestEvent && firstTied.find((j) => j.companyId === earliestEvent.job.companyId && j.jobId === earliestEvent.job.jobId)) ||
             firstTied[0]
@@ -263,11 +272,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
 
         // Clock-out signal: Completed on the LAST job of the day (any of the
         // jobs tied at the latest start time counts).
-        const latestStart = uniqueJobs[uniqueJobs.length - 1].start
-        const lastTied = uniqueJobs.filter((j) => j.start === latestStart)
-        const completedOnLast = events.filter(
-            (e) => e.status === 'COMPLETED' && lastTied.some((j) => j.companyId === e.job.companyId && j.jobId === e.job.jobId),
-        )
+        const completedOnLast = events.filter((e) => e.status === 'COMPLETED' && inSet(lastTied, e))
         const lastCompleted = completedOnLast[completedOnLast.length - 1]
         const last = lastCompleted?.job ?? lastTied[lastTied.length - 1]
 
