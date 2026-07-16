@@ -37,6 +37,13 @@ export async function POST(req: Request) {
     try {
         const body = await req.json()
         const { name, email, departmentId, roles, managerId, location, shiftStartTime, shiftEndTime, secondaryDepartmentIds } = body
+        if (Array.isArray(roles)) {
+            const validRoles = ['ADMIN', 'MANAGER', 'OPERATIONS', 'VIEWER', 'USER']
+            const invalid = roles.filter((r: string) => !validRoles.includes(r))
+            if (invalid.length) {
+                return NextResponse.json({ error: `Invalid role(s): ${invalid.join(', ')}` }, { status: 400 })
+            }
+        }
         const employee = await prisma.user.create({
             data: {
                 name,

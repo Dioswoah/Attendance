@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { SSEProvider, useSSE } from "@/contexts/SSEContext"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2, LayoutGrid } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2, LayoutGrid, HardHat } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { PatchNotesModal } from "@/components/PatchNotesModal"
 import { Button } from "@/components/ui/button"
@@ -64,6 +64,8 @@ function UserLayoutInner({
     // Determine user roles
     const userRoles = (session?.user as any)?.roles || []
     const isManagerOrAdmin = userRoles.includes('MANAGER') || userRoles.includes('ADMIN') || userRoles.includes('VIEWER')
+    // Technicians board: strictly OPERATIONS (plus admins) — NOT managers.
+    const canSeeTechnicians = userRoles.includes('ADMIN') || userRoles.includes('OPERATIONS')
 
     // Fetch pending counts
     const fetchCounts = async () => {
@@ -206,6 +208,11 @@ function UserLayoutInner({
                 { name: "Grant Leave", href: "/user/manager?tab=grant-leave", icon: FilePlus2 }
             ]
         }] : []),
+        ...(canSeeTechnicians ? [{
+            name: "Technicians",
+            href: "/user/technicians",
+            icon: HardHat
+        }] : []),
         ...(userRoles.includes('ADMIN') ? [{
             name: "Admin Portal",
             href: "/admin",
@@ -245,6 +252,7 @@ function UserLayoutInner({
     const displayName = session?.user?.name || "User"
     const userRole = userRoles.includes('ADMIN') ? 'Admin'
         : userRoles.includes('MANAGER') ? 'Manager'
+        : userRoles.includes('OPERATIONS') ? 'Operations'
         : userRoles.includes('VIEWER') ? 'Viewer'
         : 'Staff'
 
