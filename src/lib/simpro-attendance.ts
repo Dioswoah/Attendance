@@ -184,89 +184,106 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             }
         }
 
-        const first = jobs[0]
-        const jobId = parseInt(first.schedule.Reference.split('-')[0], 10)
+        // Techs can hold overlapping jobs with identical start times and tap
+        // their mobile status on either one — so events are scanned across ALL
+        // of the tech's jobs for the day, never just one arbitrarily-picked job.
+        const uniqueJobs: { companyId: number; jobId: number; reference: string; schedule: SimproSchedule; start: string }[] = []
+        const seenJobs = new Set<string>()
+        for (const j of jobs) {
+            const id = parseInt(j.schedule.Reference.split('-')[0], 10)
+            const key = `${j.companyId}:${id}`
+            if (seenJobs.has(key)) continue
+            seenJobs.add(key)
+            uniqueJobs.push({ companyId: j.companyId, jobId: id, reference: j.schedule.Reference, schedule: j.schedule, start: firstBlockStart(j.schedule) || '9' })
+        }
+
+        const timelines = await Promise.all(
+            uniqueJobs.map(async (j) => ({
+                job: j,
+                timeline: await getJobTimelines(j.companyId, j.jobId).catch((err) => {
+                    console.error(`[simPRO] timeline fetch failed for job ${j.jobId} (company ${j.companyId}):`, err)
+                    return [] as SimproTimelineEntry[]
+                }),
+            })),
+        )
+
+        const events = timelines
+            .flatMap(({ job, timeline }) =>
+                timeline
+                    .filter((t) => t.Type === 'Mobile Status' && t.Staff?.ID === tech.simproEmployeeId)
+                    .filter((t) => (t.Date || '').startsWith(day))
+                    .map((t) => ({ status: parseMobileStatus(t.Message), at: t.Date, message: t.Message, job })),
+            )
+            .filter((e) => e.status !== null)
+            .sort((a, b) => a.at.localeCompare(b.at))
+
+        let simproStatus: SimproMobileStatus = 'NOT_STARTED'
+        let simproStatusAt: string | null = null
+        let simproStatusMessage: string | null = null
+        let simproFirstStartedAt: string | null = null
+
+        const latest = events[events.length - 1]
+        if (latest) {
+            simproStatus = latest.status!
+            simproStatusAt = latest.at
+            simproStatusMessage = latest.message
+        }
+        // Clock-in time = when they FIRST went Travelling/On Site anywhere in
+        // their day — never the Completed time (unless Completed is the only
+        // event they ever set).
+        const startedEvents = events.filter((e) => e.status === 'TRAVELLING' || e.status === 'ON_SITE')
+        const earliestEvent = startedEvents[0] ?? events[0]
+        if (earliestEvent) {
+            simproFirstStartedAt = earliestTimeInMessage(earliestEvent.message, earliestEvent.at)
+        }
+
+        // "First job" column: among jobs tied at the earliest start, prefer the
+        // one the tech actually worked (where their earliest event lives).
+        const earliestStart = uniqueJobs[0].start
+        const firstTied = uniqueJobs.filter((j) => j.start === earliestStart)
+        const first =
+            (earliestEvent && firstTied.find((j) => j.companyId === earliestEvent.job.companyId && j.jobId === earliestEvent.job.jobId)) ||
+            firstTied[0]
         const blocks = first.schedule.Blocks || []
 
         let customer: string | null = null
         let site: string | null = null
         let jobStatusName: string | null = null
         let jobStatusColor: string | null = null
-        let simproStatus: SimproMobileStatus = 'NOT_STARTED'
-        let simproStatusAt: string | null = null
-        let simproStatusMessage: string | null = null
-        let simproFirstStartedAt: string | null = null
-        let firstTimeline: SimproTimelineEntry[] = []
-
         try {
-            const [job, timeline] = await Promise.all([
-                getJob(first.companyId, jobId),
-                getJobTimelines(first.companyId, jobId),
-            ])
-            firstTimeline = timeline
+            const job = await getJob(first.companyId, first.jobId)
             customer = job.Customer?.CompanyName?.trim() ||
                 [job.Customer?.GivenName, job.Customer?.FamilyName].filter(Boolean).join(' ').trim() || null
             site = job.Site?.Name ?? null
             jobStatusName = job.Status?.Name ?? null
             jobStatusColor = job.Status?.Color ?? null
-
-            // Latest mobile-status event by THIS tech on THIS job, today.
-            const events = timeline
-                .filter((t) => t.Type === 'Mobile Status' && t.Staff?.ID === tech.simproEmployeeId)
-                .filter((t) => (t.Date || '').startsWith(day))
-                .map((t) => ({ status: parseMobileStatus(t.Message), at: t.Date, message: t.Message }))
-                .filter((e) => e.status !== null)
-                .sort((a, b) => a.at.localeCompare(b.at))
-            const latest = events[events.length - 1]
-            if (latest) {
-                simproStatus = latest.status!
-                simproStatusAt = latest.at
-                simproStatusMessage = latest.message
-            }
-            // Clock-in time = when they FIRST went Travelling/On Site — never the
-            // Completed time (unless Completed is the only event they ever set).
-            const startedEvents = events.filter((e) => e.status === 'TRAVELLING' || e.status === 'ON_SITE')
-            const earliestEvent = startedEvents[0] ?? events[0]
-            if (earliestEvent) {
-                simproFirstStartedAt = earliestTimeInMessage(earliestEvent.message, earliestEvent.at)
-            }
         } catch (err) {
-            console.error(`[simPRO] job/timeline fetch failed for job ${jobId} (company ${first.companyId}):`, err)
+            console.error(`[simPRO] job fetch failed for job ${first.jobId} (company ${first.companyId}):`, err)
         }
 
-        // Last job of the day — completing it is the tech's clock-out signal.
-        const last = jobs[jobs.length - 1]
-        const lastJobId = parseInt(last.schedule.Reference.split('-')[0], 10)
-        let lastJobCompletedAt: string | null = null
-        try {
-            const lastTimeline =
-                last.companyId === first.companyId && lastJobId === jobId
-                    ? firstTimeline
-                    : await getJobTimelines(last.companyId, lastJobId)
-            const completed = lastTimeline
-                .filter((t) => t.Type === 'Mobile Status' && t.Staff?.ID === tech.simproEmployeeId)
-                .filter((t) => (t.Date || '').startsWith(day))
-                .map((t) => ({ status: parseMobileStatus(t.Message), at: t.Date }))
-                .filter((e) => e.status === 'COMPLETED')
-                .sort((a, b) => a.at.localeCompare(b.at))
-            lastJobCompletedAt = completed[completed.length - 1]?.at ?? null
-        } catch (err) {
-            console.error(`[simPRO] last-job timeline fetch failed for job ${lastJobId} (company ${last.companyId}):`, err)
-        }
+        // Clock-out signal: Completed on the LAST job of the day (any of the
+        // jobs tied at the latest start time counts).
+        const latestStart = uniqueJobs[uniqueJobs.length - 1].start
+        const lastTied = uniqueJobs.filter((j) => j.start === latestStart)
+        const completedOnLast = events.filter(
+            (e) => e.status === 'COMPLETED' && lastTied.some((j) => j.companyId === e.job.companyId && j.jobId === e.job.jobId),
+        )
+        const lastCompleted = completedOnLast[completedOnLast.length - 1]
+        const last = lastCompleted?.job ?? lastTied[lastTied.length - 1]
 
         return {
             simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
             userId: user?.id ?? null, jobCount: jobs.length,
             firstJob: {
-                companyId: first.companyId, jobId, reference: first.schedule.Reference,
+                companyId: first.companyId, jobId: first.jobId, reference: first.reference,
                 startTime: blocks[0]?.ISO8601StartTime ?? null,
                 endTime: blocks[blocks.length - 1]?.ISO8601EndTime ?? null,
                 customer, site, jobStatusName, jobStatusColor,
             },
             simproStatus, simproStatusAt, simproStatusMessage, simproFirstStartedAt,
             lastJob: {
-                companyId: last.companyId, jobId: lastJobId, reference: last.schedule.Reference,
-                completedAt: lastJobCompletedAt,
+                companyId: last.companyId, jobId: last.jobId, reference: last.reference,
+                completedAt: lastCompleted?.at ?? null,
             },
             rsa,
         }
