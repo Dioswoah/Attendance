@@ -16,6 +16,7 @@ import {
     getSchedulesForDate,
     isSimproConfigured,
     type SimproSchedule,
+    type SimproTimelineEntry,
 } from '@/lib/simpro'
 import { SIMPRO_FIELD_ROSTER } from '@/lib/simpro-roster'
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
@@ -50,6 +51,12 @@ export interface TechDayStatus {
     simproStatus: SimproMobileStatus
     simproStatusAt: string | null // ISO timestamp of the triggering mobile-status event
     simproStatusMessage: string | null
+    lastJob: {
+        companyId: number
+        jobId: number
+        reference: string
+        completedAt: string | null // tech marked Completed on their final job of the day
+    } | null
     rsa: {
         clockedInToday: boolean
         clockInAt: string | null
@@ -159,7 +166,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             return {
                 simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
                 userId: user?.id ?? null, jobCount: 0, firstJob: null,
-                simproStatus: 'NO_SCHEDULE', simproStatusAt: null, simproStatusMessage: null, rsa,
+                simproStatus: 'NO_SCHEDULE', simproStatusAt: null, simproStatusMessage: null, lastJob: null, rsa,
             }
         }
 
@@ -174,12 +181,14 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         let simproStatus: SimproMobileStatus = 'NOT_STARTED'
         let simproStatusAt: string | null = null
         let simproStatusMessage: string | null = null
+        let firstTimeline: SimproTimelineEntry[] = []
 
         try {
             const [job, timeline] = await Promise.all([
                 getJob(first.companyId, jobId),
                 getJobTimelines(first.companyId, jobId),
             ])
+            firstTimeline = timeline
             customer = job.Customer?.CompanyName?.trim() ||
                 [job.Customer?.GivenName, job.Customer?.FamilyName].filter(Boolean).join(' ').trim() || null
             site = job.Site?.Name ?? null
@@ -203,6 +212,26 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             console.error(`[simPRO] job/timeline fetch failed for job ${jobId} (company ${first.companyId}):`, err)
         }
 
+        // Last job of the day — completing it is the tech's clock-out signal.
+        const last = jobs[jobs.length - 1]
+        const lastJobId = parseInt(last.schedule.Reference.split('-')[0], 10)
+        let lastJobCompletedAt: string | null = null
+        try {
+            const lastTimeline =
+                last.companyId === first.companyId && lastJobId === jobId
+                    ? firstTimeline
+                    : await getJobTimelines(last.companyId, lastJobId)
+            const completed = lastTimeline
+                .filter((t) => t.Type === 'Mobile Status' && t.Staff?.ID === tech.simproEmployeeId)
+                .filter((t) => (t.Date || '').startsWith(day))
+                .map((t) => ({ status: parseMobileStatus(t.Message), at: t.Date }))
+                .filter((e) => e.status === 'COMPLETED')
+                .sort((a, b) => a.at.localeCompare(b.at))
+            lastJobCompletedAt = completed[completed.length - 1]?.at ?? null
+        } catch (err) {
+            console.error(`[simPRO] last-job timeline fetch failed for job ${lastJobId} (company ${last.companyId}):`, err)
+        }
+
         return {
             simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
             userId: user?.id ?? null, jobCount: jobs.length,
@@ -212,7 +241,12 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
                 endTime: blocks[blocks.length - 1]?.ISO8601EndTime ?? null,
                 customer, site, jobStatusName, jobStatusColor,
             },
-            simproStatus, simproStatusAt, simproStatusMessage, rsa,
+            simproStatus, simproStatusAt, simproStatusMessage,
+            lastJob: {
+                companyId: last.companyId, jobId: lastJobId, reference: last.schedule.Reference,
+                completedAt: lastJobCompletedAt,
+            },
+            rsa,
         }
     })
 
@@ -224,18 +258,21 @@ export interface SimproClockInResult {
     date: string
     checked: number
     created: number
+    clockedOut: number
     skipped: { name: string; reason: string }[]
 }
 
 /**
- * Turn Travelling/On Site first-job events into RSA clock-ins.
+ * Turn simPRO mobile-status events into RSA attendance:
+ * - first job Travelling/On Site/Completed  -> clock-in at that event time
+ * - LAST job of the day marked Completed    -> clock-out at that event time
  * Only writes when SIMPRO_ATTENDANCE_WRITE=true; never touches simPRO.
  */
 export async function processSimproClockIns(date?: string): Promise<SimproClockInResult> {
     const day = date || sydneyToday()
     const writeEnabled = process.env.SIMPRO_ATTENDANCE_WRITE === 'true'
     const statuses = await getTechDayStatuses(day)
-    const result: SimproClockInResult = { writeEnabled, date: day, checked: statuses.length, created: 0, skipped: [] }
+    const result: SimproClockInResult = { writeEnabled, date: day, checked: statuses.length, created: 0, clockedOut: 0, skipped: [] }
     if (!writeEnabled) return result
 
     const targetDate = new Date(`${day}T00:00:00Z`)
@@ -291,6 +328,59 @@ export async function processSimproClockIns(date?: string): Promise<SimproClockI
                 simproJob: t.firstJob?.reference,
                 simproStatus: t.simproStatus,
                 simproEvent: t.simproStatusMessage,
+            },
+        }).catch(() => {})
+    }
+
+    // Clock-outs: tech marked Completed on their final job of the day.
+    // Closes any open session for the day regardless of how it was opened
+    // (manual/web/biometric/simPRO) — one rule for all field techs.
+    for (const t of statuses) {
+        if (!t.userId || !t.lastJob?.completedAt) continue
+
+        const open = await prisma.attendance.findFirst({
+            where: { userId: t.userId, date: targetDate, deletedAt: null, clockIn: { not: null }, clockOut: null },
+            orderBy: { clockIn: 'desc' },
+        })
+        if (!open) continue
+
+        const clockOut = new Date(t.lastJob.completedAt)
+        if (open.clockIn && clockOut <= open.clockIn) {
+            result.skipped.push({ name: t.name, reason: 'last-job completion is before clock-in' })
+            continue
+        }
+
+        // Guarded update so a concurrent manual clock-out can't be overwritten.
+        const updated = await prisma.attendance.updateMany({
+            where: { id: open.id, clockOut: null },
+            data: {
+                clockOut,
+                status: 'PRESENT',
+                ...(open.breakStart && !open.breakEnd ? { breakEnd: clockOut } : {}),
+            },
+        })
+        if (updated.count === 0) continue
+        await prisma.break.updateMany({
+            where: { attendanceId: open.id, endTime: null, deletedAt: null },
+            data: { endTime: clockOut },
+        })
+        result.clockedOut++
+
+        await prisma.user.update({ where: { id: t.userId }, data: { availabilityStatus: 'APPEAR_OFFLINE' } })
+        await invalidateCache(CacheKeys.staffDashboard)
+        broadcastUpdate('attendance', { ...open, clockOut, status: 'PRESENT' })
+        updateAttendanceSummary(t.userId, targetDate).catch((e) =>
+            console.error('[simPRO] summary update failed:', e),
+        )
+        logActivity({
+            userId: t.userId,
+            action: 'CLOCK_OUT',
+            entityType: 'ATTENDANCE',
+            entityId: open.id,
+            details: {
+                source: 'SIMPRO',
+                simproJob: t.lastJob.reference,
+                simproEvent: `Completed last job of day at ${t.lastJob.completedAt}`,
             },
         }).catch(() => {})
     }
