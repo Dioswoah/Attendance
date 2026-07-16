@@ -27,6 +27,11 @@ export async function PATCH(
         }
 
         if (roles !== undefined && Array.isArray(roles)) {
+            const validRoles = ['DEVELOPER', 'ADMIN', 'MANAGER', 'OPERATIONS', 'VIEWER', 'USER']
+            const invalid = roles.filter((r: string) => !validRoles.includes(r))
+            if (invalid.length) {
+                return NextResponse.json({ error: `Invalid role(s): ${invalid.join(', ')}` }, { status: 400 })
+            }
             updateData.roles = { set: roles }
         }
 

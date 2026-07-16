@@ -12,7 +12,9 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
         const roles = session.user.roles || []
-        if (!roles.includes('ADMIN') && !roles.includes('DEVELOPER') && !roles.includes('MANAGER')) {
+        // Strictly OPERATIONS + admins/developers (Marc, 2026-07-16) — managers
+        // are deliberately NOT included.
+        if (!roles.includes('ADMIN') && !roles.includes('DEVELOPER') && !roles.includes('OPERATIONS')) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
         if (!isSimproConfigured()) {

@@ -798,7 +798,7 @@ export default function EmployeesPage() {
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
                                     <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
-                                        {['USER', 'VIEWER', 'MANAGER', 'ADMIN'].map((role) => (
+                                        {['USER', 'VIEWER', 'OPERATIONS', 'MANAGER', 'ADMIN'].map((role) => (
                                             <div key={role} className="flex items-center gap-2">
                                                 <input
                                                     type="checkbox"
@@ -1035,7 +1035,8 @@ export default function EmployeesPage() {
                                                     variant="secondary"
                                                     className={`text-xs font-medium border-transparent ${role === 'ADMIN' ? 'bg-red-100 text-red-700' :
                                                         role === 'MANAGER' ? 'bg-blue-100 text-blue-700' :
-                                                            'bg-slate-100 text-slate-700'
+                                                            role === 'OPERATIONS' ? 'bg-orange-100 text-orange-700' :
+                                                                'bg-slate-100 text-slate-700'
                                                         }`}
                                                 >
                                                     {role}
@@ -1311,7 +1312,7 @@ export default function EmployeesPage() {
                             <div className="space-y-2">
                                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Roles</Label>
                                 <div className="flex flex-wrap gap-2 p-2.5 bg-muted/30 rounded-lg border border-border h-11 items-center">
-                                    {['USER', 'VIEWER', 'MANAGER', 'ADMIN'].map((role) => (
+                                    {['USER', 'VIEWER', 'OPERATIONS', 'MANAGER', 'ADMIN'].map((role) => (
                                         <div key={role} className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"

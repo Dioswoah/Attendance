@@ -314,6 +314,7 @@ enum Role {
   DEVELOPER
   ADMIN
   MANAGER
+  OPERATIONS
   VIEWER
   USER
 }
