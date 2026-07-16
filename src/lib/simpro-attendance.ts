@@ -306,8 +306,23 @@ export interface SimproClockInResult {
  * - first job Travelling/On Site/Completed  -> clock-in at that event time
  * - LAST job of the day marked Completed    -> clock-out at that event time
  * Only writes when SIMPRO_ATTENDANCE_WRITE=true; never touches simPRO.
+ *
+ * All entry points (cron route, webhook, page piggyback) are serialized
+ * through a single in-process queue — two concurrent sweeps both passed the
+ * duplicate check before either wrote, producing double clock-ins.
+ * NOTE for prod promotion: this only serializes within one instance; with
+ * max-instances > 1 a cross-instance guard (partial unique index or Postgres
+ * advisory lock) is needed.
  */
-export async function processSimproClockIns(date?: string): Promise<SimproClockInResult> {
+let sweepChain: Promise<unknown> = Promise.resolve()
+
+export function processSimproClockIns(date?: string): Promise<SimproClockInResult> {
+    const run = sweepChain.then(() => runSimproAttendanceSweep(date))
+    sweepChain = run.then(() => undefined, () => undefined)
+    return run
+}
+
+async function runSimproAttendanceSweep(date?: string): Promise<SimproClockInResult> {
     const day = date || sydneyToday()
     const writeEnabled = process.env.SIMPRO_ATTENDANCE_WRITE === 'true'
     const statuses = await getTechDayStatuses(day)
