@@ -49,8 +49,9 @@ export interface TechDayStatus {
         jobStatusColor: string | null
     } | null
     simproStatus: SimproMobileStatus
-    simproStatusAt: string | null // ISO timestamp of the triggering mobile-status event
+    simproStatusAt: string | null // ISO timestamp of the latest mobile-status event
     simproStatusMessage: string | null
+    simproFirstStartedAt: string | null // when the tech FIRST went Travelling/On Site on the first job — this is the clock-in time
     lastJob: {
         companyId: number
         jobId: number
@@ -77,6 +78,19 @@ function parseMobileStatus(message: string): Exclude<SimproMobileStatus, 'NO_SCH
     if (/travell?ing/.test(latest)) return 'TRAVELLING'
     if (/complete/.test(latest)) return 'COMPLETED'
     return null
+}
+
+// A bundled entry ("Onsite (07:50)<br />Travelling (07:27)") carries the earlier
+// status change only inside the text — recover the earliest (HH:MM) so clock-in
+// reflects when the tech actually started, not when simPRO synced the events.
+function earliestTimeInMessage(message: string, entryAt: string): string {
+    const times = [...message.matchAll(/\((\d{1,2}):(\d{2})\)/g)]
+        .map((m) => `${m[1].padStart(2, '0')}:${m[2]}`)
+        .sort()
+    if (!times.length) return entryAt
+    const m = entryAt.match(/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2})?(.*)$/)
+    if (!m) return entryAt
+    return `${m[1]}T${times[0]}:00${m[2] || ''}`
 }
 
 function firstBlockStart(s: SimproSchedule): string | null {
@@ -166,7 +180,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             return {
                 simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
                 userId: user?.id ?? null, jobCount: 0, firstJob: null,
-                simproStatus: 'NO_SCHEDULE', simproStatusAt: null, simproStatusMessage: null, lastJob: null, rsa,
+                simproStatus: 'NO_SCHEDULE', simproStatusAt: null, simproStatusMessage: null, simproFirstStartedAt: null, lastJob: null, rsa,
             }
         }
 
@@ -181,6 +195,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         let simproStatus: SimproMobileStatus = 'NOT_STARTED'
         let simproStatusAt: string | null = null
         let simproStatusMessage: string | null = null
+        let simproFirstStartedAt: string | null = null
         let firstTimeline: SimproTimelineEntry[] = []
 
         try {
@@ -207,6 +222,13 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
                 simproStatus = latest.status!
                 simproStatusAt = latest.at
                 simproStatusMessage = latest.message
+            }
+            // Clock-in time = when they FIRST went Travelling/On Site — never the
+            // Completed time (unless Completed is the only event they ever set).
+            const startedEvents = events.filter((e) => e.status === 'TRAVELLING' || e.status === 'ON_SITE')
+            const earliestEvent = startedEvents[0] ?? events[0]
+            if (earliestEvent) {
+                simproFirstStartedAt = earliestTimeInMessage(earliestEvent.message, earliestEvent.at)
             }
         } catch (err) {
             console.error(`[simPRO] job/timeline fetch failed for job ${jobId} (company ${first.companyId}):`, err)
@@ -241,7 +263,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
                 endTime: blocks[blocks.length - 1]?.ISO8601EndTime ?? null,
                 customer, site, jobStatusName, jobStatusColor,
             },
-            simproStatus, simproStatusAt, simproStatusMessage,
+            simproStatus, simproStatusAt, simproStatusMessage, simproFirstStartedAt,
             lastJob: {
                 companyId: last.companyId, jobId: lastJobId, reference: last.schedule.Reference,
                 completedAt: lastJobCompletedAt,
@@ -298,7 +320,7 @@ export async function processSimproClockIns(date?: string): Promise<SimproClockI
         })
         if (existing) continue
 
-        const clockIn = new Date(t.simproStatusAt)
+        const clockIn = new Date(t.simproFirstStartedAt ?? t.simproStatusAt)
         const attendance = await prisma.attendance.create({
             data: {
                 userId: t.userId,

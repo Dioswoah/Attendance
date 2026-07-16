@@ -42,24 +42,69 @@ function cacheSet(key: string, data: unknown, ttlMs: number) {
     memCache.set(key, { expires: Date.now() + ttlMs, data })
 }
 
+// Global throttle + retry: a full technician sweep fans out ~80 GETs
+// (27 techs x job + timelines), which trips simPRO's rate limit (HTTP 429).
+// Keep a small number in flight, retry 429s with backoff, and dedupe
+// identical concurrent requests (the UI route and the clock-in processor
+// sweep the same paths back-to-back).
+const MAX_CONCURRENT = 4
+let activeRequests = 0
+const slotQueue: (() => void)[] = []
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+    if (activeRequests >= MAX_CONCURRENT) {
+        await new Promise<void>((resolve) => slotQueue.push(resolve))
+    }
+    activeRequests++
+    try {
+        return await fn()
+    } finally {
+        activeRequests--
+        slotQueue.shift()?.()
+    }
+}
+
+const inflight = new Map<string, Promise<unknown>>()
+
 async function simproGet<T>(path: string, ttlMs: number): Promise<T> {
     const cached = cacheGet<T>(path)
     if (cached !== undefined) return cached
 
-    const res = await fetch(`${baseUrl()}/api/v1.0${path}`, {
-        method: 'GET',
-        headers: {
-            Authorization: `Bearer ${token()}`,
-            Accept: 'application/json',
-        },
-        cache: 'no-store',
-    })
-    if (!res.ok) {
-        throw new Error(`simPRO GET ${path} failed with HTTP ${res.status}`)
-    }
-    const data = (await res.json()) as T
-    cacheSet(path, data, ttlMs)
-    return data
+    const pending = inflight.get(path)
+    if (pending) return pending as Promise<T>
+
+    const request = withSlot(async () => {
+        // A concurrent caller may have populated the cache while we queued.
+        const recheck = cacheGet<T>(path)
+        if (recheck !== undefined) return recheck
+
+        for (let attempt = 1; attempt <= 4; attempt++) {
+            const res = await fetch(`${baseUrl()}/api/v1.0${path}`, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token()}`,
+                    Accept: 'application/json',
+                },
+                cache: 'no-store',
+            })
+            if (res.status === 429 && attempt < 4) {
+                const retryAfter = Number(res.headers.get('retry-after'))
+                const waitSec = Math.min(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : attempt, 10)
+                await new Promise((r) => setTimeout(r, waitSec * 1000))
+                continue
+            }
+            if (!res.ok) {
+                throw new Error(`simPRO GET ${path} failed with HTTP ${res.status}`)
+            }
+            const data = (await res.json()) as T
+            cacheSet(path, data, ttlMs)
+            return data
+        }
+        throw new Error(`simPRO GET ${path} rate-limited after retries`)
+    }).finally(() => inflight.delete(path))
+
+    inflight.set(path, request)
+    return request as Promise<T>
 }
 
 async function simproGetAllPages<T>(pathWithQuery: string, ttlMs: number): Promise<T[]> {
