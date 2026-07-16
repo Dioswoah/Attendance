@@ -14,6 +14,9 @@ import {
     getJob,
     getJobTimelines,
     getSchedulesForDate,
+    getSetupActivities,
+    isLeaveActivityName,
+    isPlaceholderJob,
     isSimproConfigured,
     type SimproSchedule,
     type SimproTimelineEntry,
@@ -29,7 +32,7 @@ export function sydneyToday(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: SYDNEY_TZ })
 }
 
-export type SimproMobileStatus = 'NO_SCHEDULE' | 'NOT_STARTED' | 'TRAVELLING' | 'ON_SITE' | 'COMPLETED'
+export type SimproMobileStatus = 'NO_SCHEDULE' | 'NOT_STARTED' | 'TRAVELLING' | 'ON_SITE' | 'COMPLETED' | 'ON_LEAVE'
 
 export interface TechDayStatus {
     simproEmployeeId: number
@@ -57,6 +60,10 @@ export interface TechDayStatus {
         jobId: number
         reference: string
         completedAt: string | null // tech marked Completed on their final job of the day
+    } | null
+    leave: {
+        activityId: number
+        name: string // e.g. "Sick / Personal Leave" — an all-day simPRO activity means not working
     } | null
     rsa: {
         clockedInToday: boolean
@@ -120,21 +127,47 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
     const day = date || sydneyToday()
 
     // 1) All schedules for the day across both companies, grouped per tech.
-    const perCompany = await Promise.all(
-        SIMPRO_COMPANY_IDS.map(async (companyId) => ({
-            companyId,
-            schedules: await getSchedulesForDate(companyId, day).catch((err) => {
-                console.error(`[simPRO] schedules fetch failed for company ${companyId}:`, err)
-                return [] as SimproSchedule[]
-            }),
-        })),
-    )
+    // Activity definitions (leave types) are setup data — fetched alongside.
+    const [perCompany, activityNamesByCompany] = await Promise.all([
+        Promise.all(
+            SIMPRO_COMPANY_IDS.map(async (companyId) => ({
+                companyId,
+                schedules: await getSchedulesForDate(companyId, day).catch((err) => {
+                    console.error(`[simPRO] schedules fetch failed for company ${companyId}:`, err)
+                    return [] as SimproSchedule[]
+                }),
+            })),
+        ),
+        Promise.all(
+            SIMPRO_COMPANY_IDS.map(async (companyId) => ({
+                companyId,
+                names: new Map(
+                    (await getSetupActivities(companyId).catch((err) => {
+                        console.error(`[simPRO] activities fetch failed for company ${companyId}:`, err)
+                        return []
+                    })).map((a) => [a.ID, a.Name] as const),
+                ),
+            })),
+        ).then((list) => new Map(list.map((l) => [l.companyId, l.names]))),
+    ])
 
     const byTech = new Map<number, { companyId: number; schedule: SimproSchedule }[]>()
+    // A leave-type activity schedule ("Sick / Personal Leave", "Annual Leave",
+    // ...) means the tech is NOT working that day, even if jobs were
+    // pre-assigned to them. Reference on an activity schedule is the activity ID.
+    const leaveByTech = new Map<number, { activityId: number; name: string }>()
     for (const { companyId, schedules } of perCompany) {
         for (const s of schedules) {
-            if (s.Type !== 'job') continue
             if (s.Staff?.Type && s.Staff.Type !== 'employee') continue
+            if (s.Type === 'activity') {
+                const activityId = parseInt(s.Reference, 10)
+                const name = activityNamesByCompany.get(companyId)?.get(activityId)
+                if (name && isLeaveActivityName(name) && !leaveByTech.has(s.Staff.ID)) {
+                    leaveByTech.set(s.Staff.ID, { activityId, name })
+                }
+                continue
+            }
+            if (s.Type !== 'job') continue
             const list = byTech.get(s.Staff.ID) || []
             list.push({ companyId, schedule: s })
             byTech.set(s.Staff.ID, list)
@@ -173,6 +206,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             source: att?.source ?? null,
         }
 
+        const leave = leaveByTech.get(tech.simproEmployeeId) ?? null
         const jobs = (byTech.get(tech.simproEmployeeId) || []).sort((a, b) =>
             (firstBlockStart(a.schedule) || '9').localeCompare(firstBlockStart(b.schedule) || '9'),
         )
@@ -180,7 +214,8 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             return {
                 simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
                 userId: user?.id ?? null, jobCount: 0, firstJob: null,
-                simproStatus: 'NO_SCHEDULE', simproStatusAt: null, simproStatusMessage: null, simproFirstStartedAt: null, lastJob: null, rsa,
+                simproStatus: leave ? 'ON_LEAVE' : 'NO_SCHEDULE',
+                simproStatusAt: null, simproStatusMessage: null, simproFirstStartedAt: null, lastJob: null, leave, rsa,
             }
         }
 
@@ -200,10 +235,29 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         }
 
         const earliestStart = uniqueJobs[0].start
-        const latestStart = uniqueJobs[uniqueJobs.length - 1].start
         const firstTied = uniqueJobs.filter((j) => j.start === earliestStart)
-        const lastTied = uniqueJobs.filter((j) => j.start === latestStart)
-        const scanJobs = uniqueJobs.filter((j) => j.start === earliestStart || j.start === latestStart)
+
+        // Last job = clock-out signal. Placeholder jobs (on-call rosters like
+        // "YOU ARE ON CALL****") are never marked Completed, so walk the
+        // start-time groups from the latest backwards until a real job is
+        // found. getJob is cached, so this normally costs one extra call.
+        const distinctStarts = [...new Set(uniqueJobs.map((j) => j.start))]
+        let lastTied = uniqueJobs.filter((j) => j.start === distinctStarts[distinctStarts.length - 1])
+        for (let i = distinctStarts.length - 1; i >= 0; i--) {
+            const tied = uniqueJobs.filter((j) => j.start === distinctStarts[i])
+            const real: typeof tied = []
+            for (const j of tied) {
+                try {
+                    if (!isPlaceholderJob(await getJob(j.companyId, j.jobId))) real.push(j)
+                } catch {
+                    real.push(j) // can't tell — treat as a real job
+                }
+            }
+            if (real.length) { lastTied = real; break }
+        }
+
+        const scanKeys = new Set([...firstTied, ...lastTied].map((j) => `${j.companyId}:${j.jobId}`))
+        const scanJobs = uniqueJobs.filter((j) => scanKeys.has(`${j.companyId}:${j.jobId}`))
         const inSet = (set: typeof uniqueJobs, e: { job: { companyId: number; jobId: number } }) =>
             set.some((j) => j.companyId === e.job.companyId && j.jobId === e.job.jobId)
 
@@ -238,6 +292,11 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             simproStatus = latest.status!
             simproStatusAt = latest.at
             simproStatusMessage = latest.message
+        } else if (leave) {
+            // Pre-assigned jobs but an all-day leave activity and no mobile
+            // events — the tech is off, not "Not Started".
+            simproStatus = 'ON_LEAVE'
+            simproStatusMessage = leave.name
         }
         // Clock-in time = when they FIRST went Travelling/On Site on the first
         // job — never the Completed time (unless Completed is the only event
@@ -290,6 +349,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
                 companyId: last.companyId, jobId: last.jobId, reference: last.reference,
                 completedAt: lastCompleted?.at ?? null,
             },
+            leave,
             rsa,
         }
     })

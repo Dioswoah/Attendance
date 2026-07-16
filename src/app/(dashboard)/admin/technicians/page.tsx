@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
     HardHat, RefreshCw, Search, Truck, MapPin, CheckCircle2, CalendarOff,
-    Clock, Link2, AlertCircle,
+    Clock, Link2, AlertCircle, Umbrella,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -32,9 +32,19 @@ interface TechDayStatus {
         jobStatusName: string | null
         jobStatusColor: string | null
     } | null
-    simproStatus: "NO_SCHEDULE" | "NOT_STARTED" | "TRAVELLING" | "ON_SITE" | "COMPLETED"
+    simproStatus: "NO_SCHEDULE" | "NOT_STARTED" | "TRAVELLING" | "ON_SITE" | "COMPLETED" | "ON_LEAVE"
     simproStatusAt: string | null
     simproStatusMessage: string | null
+    lastJob: {
+        companyId: number
+        jobId: number
+        reference: string
+        completedAt: string | null
+    } | null
+    leave: {
+        activityId: number
+        name: string
+    } | null
     rsa: {
         clockedInToday: boolean
         clockInAt: string | null
@@ -61,7 +71,15 @@ function statusInfo(status: TechDayStatus["simproStatus"]) {
         case "COMPLETED": return { label: "Completed", icon: CheckCircle2, className: "bg-blue-100 text-blue-800 border-blue-200" }
         case "NOT_STARTED": return { label: "Not Started", icon: Clock, className: "bg-slate-100 text-slate-600 border-slate-200" }
         case "NO_SCHEDULE": return { label: "No Schedule", icon: CalendarOff, className: "bg-slate-50 text-slate-400 border-slate-100" }
+        case "ON_LEAVE": return { label: "On Leave", icon: Umbrella, className: "bg-violet-100 text-violet-700 border-violet-200" }
     }
+}
+
+// A tech is done for the day once they've clocked out or marked their last
+// job Completed — the first-job status badge would otherwise stay frozen at
+// "On Site" (techs rarely tap Completed on job #1 before moving on).
+function isDoneForDay(t: TechDayStatus): boolean {
+    return t.simproStatus !== "ON_LEAVE" && Boolean(t.rsa.clockOutAt || t.lastJob?.completedAt)
 }
 
 function fmtTime(iso: string | null, timeZone: string): string {
@@ -95,15 +113,16 @@ export default function AdminTechniciansPage() {
         const list = data?.technicians ?? []
         const q = search.trim().toLowerCase()
         const filtered = q ? list.filter((t) => t.name.toLowerCase().includes(q)) : list
-        const rank = { ON_SITE: 0, TRAVELLING: 1, NOT_STARTED: 2, COMPLETED: 3, NO_SCHEDULE: 4 }
-        return [...filtered].sort((a, b) => rank[a.simproStatus] - rank[b.simproStatus] || a.name.localeCompare(b.name))
+        const rank = { ON_SITE: 0, TRAVELLING: 1, NOT_STARTED: 2, COMPLETED: 3, NO_SCHEDULE: 4, ON_LEAVE: 5 }
+        const rankOf = (t: TechDayStatus) => (isDoneForDay(t) ? rank.COMPLETED : rank[t.simproStatus])
+        return [...filtered].sort((a, b) => rankOf(a) - rankOf(b) || a.name.localeCompare(b.name))
     }, [data, search])
 
     const counts = useMemo(() => {
         const list = data?.technicians ?? []
         return {
             active: list.filter((t) => t.simproStatus === "TRAVELLING" || t.simproStatus === "ON_SITE").length,
-            scheduled: list.filter((t) => t.simproStatus !== "NO_SCHEDULE").length,
+            scheduled: list.filter((t) => t.simproStatus !== "NO_SCHEDULE" && t.simproStatus !== "ON_LEAVE").length,
             clockedIn: list.filter((t) => t.rsa.clockedInToday).length,
             unlinked: list.filter((t) => !t.userId).length,
         }
@@ -206,7 +225,10 @@ export default function AdminTechniciansPage() {
                                 </thead>
                                 <tbody>
                                     {technicians.map((t) => {
-                                        const info = statusInfo(t.simproStatus)
+                                        const done = isDoneForDay(t)
+                                        const info = done
+                                            ? { label: "Done for day", icon: CheckCircle2, className: "bg-blue-50 text-blue-700 border-blue-200" }
+                                            : statusInfo(t.simproStatus)
                                         return (
                                             <tr key={t.simproEmployeeId} className="border-b last:border-0 hover:bg-muted/40">
                                                 <td className="py-2.5 pr-4">
@@ -220,9 +242,15 @@ export default function AdminTechniciansPage() {
                                                         <info.icon className="h-3 w-3" />
                                                         {info.label}
                                                     </Badge>
-                                                    {t.simproStatusAt && (
+                                                    {done ? (
+                                                        <div className="text-xs text-muted-foreground mt-0.5">
+                                                            {fmtTime(t.rsa.clockOutAt || t.lastJob?.completedAt || null, userTimeZone)}
+                                                        </div>
+                                                    ) : t.simproStatus === "ON_LEAVE" ? (
+                                                        <div className="text-xs text-violet-600 mt-0.5">{t.leave?.name}</div>
+                                                    ) : t.simproStatusAt ? (
                                                         <div className="text-xs text-muted-foreground mt-0.5">{fmtTime(t.simproStatusAt, userTimeZone)}</div>
-                                                    )}
+                                                    ) : null}
                                                 </td>
                                                 <td className="py-2.5 pr-4">
                                                     {t.firstJob ? (
