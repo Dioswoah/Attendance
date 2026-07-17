@@ -36,7 +36,7 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { name, email, departmentId, roles, managerId, location, shiftStartTime, secondaryDepartmentIds } = body
+        const { name, email, departmentId, roles, managerId, location, shiftStartTime, shiftEndTime, secondaryDepartmentIds } = body
         const employee = await prisma.user.create({
             data: {
                 name,
@@ -44,6 +44,7 @@ export async function POST(req: Request) {
                 roles: roles || ['USER'],
                 employmentLocation: location || null,
                 shiftStartTime: shiftStartTime || "09:00",
+                shiftEndTime: shiftEndTime || "17:00",
                 department: departmentId ? { connect: { id: departmentId } } : undefined,
                 manager: managerId ? { connect: { id: managerId } } : undefined,
                 secondaryDepartments: secondaryDepartmentIds?.length
