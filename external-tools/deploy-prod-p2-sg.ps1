@@ -236,6 +236,7 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "BIOMETRIC_APPS_SCRIPT_URL=$BIOMETRIC_APPS_SCRIPT_URL" `
     --set-env-vars "REDIS_URL=$REDIS_URL" `
     --set-env-vars "VERTEX_PROJECT_ID=$VERTEX_PROJECT_ID" `
+    --set-env-vars "ENABLE_CRON=true" `
     --memory 2Gi `
     --cpu 1 `
     --concurrency 1000 `
