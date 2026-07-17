@@ -236,6 +236,11 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "BIOMETRIC_APPS_SCRIPT_URL=$BIOMETRIC_APPS_SCRIPT_URL" `
     --set-env-vars "REDIS_URL=$REDIS_URL" `
     --set-env-vars "VERTEX_PROJECT_ID=$VERTEX_PROJECT_ID" `
+    --set-env-vars "SIMPRO_BASE_URL=$SIMPRO_BASE_URL" `
+    --set-env-vars "SIMPRO_TOKEN=$SIMPRO_TOKEN" `
+    --set-env-vars "SIMPRO_WEBHOOK_SECRET=$SIMPRO_WEBHOOK_SECRET" `
+    --set-env-vars "SIMPRO_ATTENDANCE_WRITE=$SIMPRO_ATTENDANCE_WRITE" `
+    --set-env-vars "SIMPRO_POLL_ENABLED=$SIMPRO_POLL_ENABLED" `
     --set-env-vars "ENABLE_CRON=true" `
     --memory 2Gi `
     --cpu 1 `
