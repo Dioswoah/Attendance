@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { auth } from '@/auth'
 import { getCache, setCache, invalidateCache, invalidateCachePattern, CacheKeys, TTL } from '@/lib/cache'
 
 export async function GET() {
@@ -35,8 +36,18 @@ export async function GET() {
 
 export async function POST(req: Request) {
     try {
+        const session = await auth() as any
+        const callerRoles: string[] = session?.user?.roles || []
+        if (!callerRoles.includes('ADMIN') && !callerRoles.includes('DEVELOPER')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
         const body = await req.json()
-        const { name, email, departmentId, roles, managerId, location, shiftStartTime, secondaryDepartmentIds } = body
+        const { name, email, departmentId, roles, managerId, location, shiftStartTime, shiftEndTime, secondaryDepartmentIds } = body
+
+        if (!name?.trim() || !email?.trim()) {
+            return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
+        }
         if (Array.isArray(roles)) {
             const validRoles = ['DEVELOPER', 'ADMIN', 'MANAGER', 'OPERATIONS', 'VIEWER', 'USER']
             const invalid = roles.filter((r: string) => !validRoles.includes(r))
@@ -51,6 +62,7 @@ export async function POST(req: Request) {
                 roles: roles || ['USER'],
                 employmentLocation: location || null,
                 shiftStartTime: shiftStartTime || "09:00",
+                shiftEndTime: shiftEndTime || "17:00",
                 department: departmentId ? { connect: { id: departmentId } } : undefined,
                 manager: managerId ? { connect: { id: managerId } } : undefined,
                 secondaryDepartments: secondaryDepartmentIds?.length
@@ -67,6 +79,10 @@ export async function POST(req: Request) {
         await invalidateCache(CacheKeys.employees, CacheKeys.managers, CacheKeys.staffDashboard)
         return NextResponse.json(employee)
     } catch (error) {
+        // Unique constraint (duplicate email) → friendly message instead of generic 500
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+            return NextResponse.json({ error: 'A staff member with this email already exists' }, { status: 409 })
+        }
         console.error("Create employee error:", error)
         return NextResponse.json({ error: 'Failed to create employee' }, { status: 500 })
     }

@@ -723,6 +723,28 @@ export default function EmployeesPage() {
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assigned Manager</Label>
+                                    <div onClickCapture={(e) => {
+                                        if (!newDeptId) {
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                            setShowDeptWarning(true)
+                                        }
+                                    }}>
+                                        <Select value={newManagerId} onValueChange={setNewManagerId}>
+                                            <SelectTrigger className="h-11">
+                                                <SelectValue placeholder="Select Manager" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
+                                                {employees.filter(e => e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
+                                                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Shift Start Time</Label>
                                     <Input
                                         type="time"
@@ -770,29 +792,6 @@ export default function EmployeesPage() {
                                     <p className="text-[9px] text-muted-foreground font-medium italic">
                                         * The system automatically handles Daylight Saving shifts based on the staff member's location.
                                     </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assigned Manager</Label>
-                                    <div onClickCapture={(e) => {
-                                        if (!newDeptId) {
-                                            e.preventDefault()
-                                            e.stopPropagation()
-                                            setShowDeptWarning(true)
-                                        }
-                                    }}>
-                                        <Select value={newManagerId} onValueChange={setNewManagerId}>
-                                            <SelectTrigger className="h-11">
-                                                <SelectValue placeholder="Select Manager" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="unassigned" className="text-muted-foreground">No Manager</SelectItem>
-                                                {employees.filter(e => e.roles?.includes('MANAGER') || e.roles?.includes('ADMIN') || e.role === 'MANAGER' || e.role === 'ADMIN').map(m => (
-                                                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
