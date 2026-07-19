@@ -87,7 +87,7 @@ $RequiredVars = @(
     "DATABASE_NAME","DATABASE_USER","DATABASE_PASS_ENCODED",
     "AUTH_GOOGLE_ID","AUTH_GOOGLE_SECRET","ADMIN_PASSWORD","NEXTAUTH_SECRET",
     "SERVICE_URL","GOOGLE_GENERATIVE_AI_API_KEY","ALLOWED_WORKSPACE_DOMAINS",
-    "ZEPTOMAIL_PASSWORD","BIOMETRIC_APPS_SCRIPT_URL"
+    "ZEPTOMAIL_PASSWORD","BIOMETRIC_APPS_SCRIPT_URL","CRON_SECRET"
 )
 foreach ($var in $RequiredVars) {
     if (-not (Get-Variable -Name $var -ErrorAction SilentlyContinue) -or
@@ -242,6 +242,7 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "SIMPRO_ATTENDANCE_WRITE=$SIMPRO_ATTENDANCE_WRITE" `
     --set-env-vars "SIMPRO_POLL_ENABLED=$SIMPRO_POLL_ENABLED" `
     --set-env-vars "ENABLE_CRON=true" `
+    --set-env-vars "CRON_SECRET=$CRON_SECRET" `
     --memory 2Gi `
     --cpu 1 `
     --concurrency 1000 `
