@@ -60,9 +60,26 @@ model User {
   selfCheckRuns             SelfCheckRun[]
   selfCheckFindings         SelfCheckFinding[] @relation("SelfCheckFindingUser")
   selfCheckFindingsResolved SelfCheckFinding[] @relation("SelfCheckFindingResolver")
+  apiKeys              ApiKey[]
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
+}
+
+// Developer-portal API keys for the public read-only v1 API. Only the
+// SHA-256 hash of a key is stored; the plaintext is shown once at creation.
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  userId     String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Account {

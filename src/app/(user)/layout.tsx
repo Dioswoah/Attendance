@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react"
-import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2, Fingerprint, HardHat } from "lucide-react"
+import { Flame, LayoutDashboard, CalendarDays, FileText, Menu, X, Users, ChevronLeft, ChevronRight, LogOut, Clock, Edit, Settings, Globe, Shield, History, Building2, ListChecks, TrendingUp, Download, FilePlus2, Fingerprint, HardHat, KeyRound } from "lucide-react"
 import { NotificationBell } from "@/components/NotificationBell"
 import { PatchNotesModal } from "@/components/PatchNotesModal"
 import { Button } from "@/components/ui/button"
@@ -234,6 +234,11 @@ function UserLayoutInner({
             name: "Technicians",
             href: "/user/technicians",
             icon: HardHat
+        }] : []),
+        ...(isDeveloper ? [{
+            name: "Developer",
+            href: "/user/developer",
+            icon: KeyRound
         }] : []),
         ...((isDeveloper || userRoles.includes('ADMIN')) ? [{
             name: "Admin Portal",
