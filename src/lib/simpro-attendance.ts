@@ -9,6 +9,7 @@
 // simPRO itself is never written to (see src/lib/simpro.ts — GET only).
 
 import { prisma } from '@/lib/prisma'
+import type { Attendance } from '@prisma/client'
 import {
     SIMPRO_COMPANY_IDS,
     getJob,
@@ -360,9 +361,9 @@ export interface SimproClockInResult {
  * All entry points (cron route, webhook, page piggyback) are serialized
  * through a single in-process queue — two concurrent sweeps both passed the
  * duplicate check before either wrote, producing double clock-ins.
- * NOTE for prod promotion: this only serializes within one instance; with
- * max-instances > 1 a cross-instance guard (partial unique index or Postgres
- * advisory lock) is needed.
+ * Across instances (prod runs max-instances=3) the write phase additionally
+ * takes a Postgres advisory lock inside runSimproAttendanceSweep, so two
+ * instances can never double-write.
  */
 let sweepChain: Promise<unknown> = Promise.resolve()
 
@@ -380,50 +381,124 @@ async function runSimproAttendanceSweep(date?: string): Promise<SimproClockInRes
     if (!writeEnabled) return result
 
     const targetDate = new Date(`${day}T00:00:00Z`)
-    for (const t of statuses) {
-        const started = t.simproStatus === 'TRAVELLING' || t.simproStatus === 'ON_SITE' || t.simproStatus === 'COMPLETED'
-        if (!started || !t.simproStatusAt) continue
-        if (!t.userId) {
-            result.skipped.push({ name: t.name, reason: 'no RSA user linked' })
-            continue
-        }
-        if (t.rsa.clockedInToday) continue // manual/web/biometric clock-in already exists — never duplicate
 
-        // Concurrency/safety guards mirroring the manual clock-in route.
-        const activeSession = await prisma.attendance.findFirst({
-            where: { userId: t.userId, clockOut: null, deletedAt: null },
-        })
-        if (activeSession) {
-            result.skipped.push({ name: t.name, reason: 'already has an open session' })
-            continue
-        }
-        const existing = await prisma.attendance.findFirst({
-            where: { userId: t.userId, date: targetDate, deletedAt: null, clockIn: { not: null } },
-        })
-        if (existing) continue
+    // DB writes are collected here and their side effects (cache, broadcast,
+    // summary, activity log) fired only after the transaction commits — a
+    // summary computed inside the transaction would not see the new rows.
+    const clockInEvents: { userId: string; t: TechDayStatus; attendance: Attendance }[] = []
+    const clockOutEvents: { userId: string; t: TechDayStatus; open: Attendance; clockOut: Date }[] = []
 
-        const clockIn = new Date(t.simproFirstStartedAt ?? t.simproStatusAt)
-        const attendance = await prisma.attendance.create({
-            data: {
-                userId: t.userId,
-                date: targetDate,
-                clockIn, // always set — no placeholder rows, ever
-                mode: 'ONSITE',
-                status: 'PRESENT',
-                source: 'SIMPRO',
-                notes: `Auto clock-in from simPRO: ${t.simproStatusMessage || t.simproStatus} on job ${t.firstJob?.reference ?? ''}`.trim(),
-            },
-        })
-        result.created++
+    // Cross-instance guard: the in-process queue only serializes sweeps within
+    // ONE instance; prod runs up to 3, and two instances can both pass the
+    // duplicate checks before either writes. A transaction-scoped advisory
+    // lock makes the write phase mutually exclusive across all instances; a
+    // concurrent sweep skips instead of queueing — the next poll re-covers
+    // the same simPRO data.
+    const lockAcquired = await prisma.$transaction(
+        async (tx) => {
+            const [{ locked }] = await tx.$queryRaw<[{ locked: boolean }]>`
+                SELECT pg_try_advisory_xact_lock(hashtext('simpro-attendance-sweep')) AS locked`
+            if (!locked) return false
 
-        await prisma.user.update({ where: { id: t.userId }, data: { availabilityStatus: 'AVAILABLE' } })
+            for (const t of statuses) {
+                const started = t.simproStatus === 'TRAVELLING' || t.simproStatus === 'ON_SITE' || t.simproStatus === 'COMPLETED'
+                if (!started || !t.simproStatusAt) continue
+                if (!t.userId) {
+                    result.skipped.push({ name: t.name, reason: 'no RSA user linked' })
+                    continue
+                }
+                if (t.rsa.clockedInToday) continue // manual/web/biometric clock-in already exists — never duplicate
+
+                // Concurrency/safety guards mirroring the manual clock-in route.
+                const activeSession = await tx.attendance.findFirst({
+                    where: { userId: t.userId, clockOut: null, deletedAt: null },
+                })
+                if (activeSession) {
+                    result.skipped.push({ name: t.name, reason: 'already has an open session' })
+                    continue
+                }
+                const existing = await tx.attendance.findFirst({
+                    where: { userId: t.userId, date: targetDate, deletedAt: null, clockIn: { not: null } },
+                })
+                if (existing) continue
+
+                const clockIn = new Date(t.simproFirstStartedAt ?? t.simproStatusAt)
+                const attendance = await tx.attendance.create({
+                    data: {
+                        userId: t.userId,
+                        date: targetDate,
+                        clockIn, // always set — no placeholder rows, ever
+                        mode: 'ONSITE',
+                        status: 'PRESENT',
+                        source: 'SIMPRO',
+                        notes: `Auto clock-in from simPRO: ${t.simproStatusMessage || t.simproStatus} on job ${t.firstJob?.reference ?? ''}`.trim(),
+                    },
+                })
+                result.created++
+
+                await tx.user.update({ where: { id: t.userId }, data: { availabilityStatus: 'AVAILABLE' } })
+                clockInEvents.push({ userId: t.userId, t, attendance })
+            }
+
+            // Clock-outs: tech marked Completed on their final job of the day.
+            // Closes any open session for the day regardless of how it was opened
+            // (manual/web/biometric/simPRO) — one rule for all field techs.
+            for (const t of statuses) {
+                if (!t.userId || !t.lastJob?.completedAt) continue
+
+                const open = await tx.attendance.findFirst({
+                    where: { userId: t.userId, date: targetDate, deletedAt: null, clockIn: { not: null }, clockOut: null },
+                    orderBy: { clockIn: 'desc' },
+                })
+                if (!open) continue
+
+                const clockOut = new Date(t.lastJob.completedAt)
+                if (open.clockIn && clockOut <= open.clockIn) {
+                    result.skipped.push({ name: t.name, reason: 'last-job completion is before clock-in' })
+                    continue
+                }
+
+                // Guarded update so a concurrent manual clock-out can't be overwritten.
+                const updated = await tx.attendance.updateMany({
+                    where: { id: open.id, clockOut: null },
+                    data: {
+                        clockOut,
+                        status: 'PRESENT',
+                        ...(open.breakStart && !open.breakEnd ? { breakEnd: clockOut } : {}),
+                    },
+                })
+                if (updated.count === 0) continue
+                await tx.break.updateMany({
+                    where: { attendanceId: open.id, endTime: null, deletedAt: null },
+                    data: { endTime: clockOut },
+                })
+                result.clockedOut++
+
+                await tx.user.update({ where: { id: t.userId }, data: { availabilityStatus: 'APPEAR_OFFLINE' } })
+                clockOutEvents.push({ userId: t.userId, t, open, clockOut })
+            }
+            return true
+        },
+        // Sweep runs many small queries over the SG->AU cross-region link;
+        // the default 5s interactive-transaction timeout is far too tight.
+        { timeout: 120_000, maxWait: 10_000 },
+    )
+
+    if (!lockAcquired) {
+        result.skipped.push({ name: '(sweep)', reason: 'another instance holds the sweep lock' })
+        return result
+    }
+
+    if (clockInEvents.length > 0 || clockOutEvents.length > 0) {
         await invalidateCache(CacheKeys.staffDashboard)
+    }
+    for (const { userId, t, attendance } of clockInEvents) {
         broadcastUpdate('attendance', attendance)
-        updateAttendanceSummary(t.userId, targetDate).catch((e) =>
+        updateAttendanceSummary(userId, targetDate).catch((e) =>
             console.error('[simPRO] summary update failed:', e),
         )
         logActivity({
-            userId: t.userId,
+            userId,
             action: 'CLOCK_IN',
             entityType: 'ATTENDANCE',
             entityId: attendance.id,
@@ -435,56 +510,20 @@ async function runSimproAttendanceSweep(date?: string): Promise<SimproClockInRes
             },
         }).catch(() => {})
     }
-
-    // Clock-outs: tech marked Completed on their final job of the day.
-    // Closes any open session for the day regardless of how it was opened
-    // (manual/web/biometric/simPRO) — one rule for all field techs.
-    for (const t of statuses) {
-        if (!t.userId || !t.lastJob?.completedAt) continue
-
-        const open = await prisma.attendance.findFirst({
-            where: { userId: t.userId, date: targetDate, deletedAt: null, clockIn: { not: null }, clockOut: null },
-            orderBy: { clockIn: 'desc' },
-        })
-        if (!open) continue
-
-        const clockOut = new Date(t.lastJob.completedAt)
-        if (open.clockIn && clockOut <= open.clockIn) {
-            result.skipped.push({ name: t.name, reason: 'last-job completion is before clock-in' })
-            continue
-        }
-
-        // Guarded update so a concurrent manual clock-out can't be overwritten.
-        const updated = await prisma.attendance.updateMany({
-            where: { id: open.id, clockOut: null },
-            data: {
-                clockOut,
-                status: 'PRESENT',
-                ...(open.breakStart && !open.breakEnd ? { breakEnd: clockOut } : {}),
-            },
-        })
-        if (updated.count === 0) continue
-        await prisma.break.updateMany({
-            where: { attendanceId: open.id, endTime: null, deletedAt: null },
-            data: { endTime: clockOut },
-        })
-        result.clockedOut++
-
-        await prisma.user.update({ where: { id: t.userId }, data: { availabilityStatus: 'APPEAR_OFFLINE' } })
-        await invalidateCache(CacheKeys.staffDashboard)
+    for (const { userId, t, open, clockOut } of clockOutEvents) {
         broadcastUpdate('attendance', { ...open, clockOut, status: 'PRESENT' })
-        updateAttendanceSummary(t.userId, targetDate).catch((e) =>
+        updateAttendanceSummary(userId, targetDate).catch((e) =>
             console.error('[simPRO] summary update failed:', e),
         )
         logActivity({
-            userId: t.userId,
+            userId,
             action: 'CLOCK_OUT',
             entityType: 'ATTENDANCE',
             entityId: open.id,
             details: {
                 source: 'SIMPRO',
-                simproJob: t.lastJob.reference,
-                simproEvent: `Completed last job of day at ${t.lastJob.completedAt}`,
+                simproJob: t.lastJob?.reference,
+                simproEvent: `Completed last job of day at ${t.lastJob?.completedAt}`,
             },
         }).catch(() => {})
     }
