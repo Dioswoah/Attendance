@@ -62,16 +62,18 @@ async function main() {
         })
     }
 
-    // Set marcr@redadair.com.au as ADMIN and MANAGER
+    // Set marcr@redadair.com.au as ADMIN, MANAGER and DEVELOPER. The seed runs
+    // on every staging deploy, so this list is what his roles get reset to —
+    // keep it in sync with roles granted directly in the DB.
     await prisma.user.upsert({
         where: { email: 'marcr@redadair.com.au' },
         update: {
-            roles: [Role.ADMIN, Role.MANAGER, Role.USER]
+            roles: [Role.ADMIN, Role.MANAGER, Role.USER, Role.DEVELOPER]
         },
         create: {
             email: 'marcr@redadair.com.au',
             name: 'Marcr Admin',
-            roles: [Role.ADMIN, Role.MANAGER, Role.USER],
+            roles: [Role.ADMIN, Role.MANAGER, Role.USER, Role.DEVELOPER],
             departmentId: managementDept.id
         }
     })
