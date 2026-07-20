@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import {
-    AlertTriangle, Check, Copy, KeyRound, Loader2, Play, Plus, Trash2,
+    AlertTriangle, Check, ChevronDown, Copy, FileText, KeyRound, Loader2, Play, Plus, Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
     Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -393,27 +396,151 @@ function KeysPanel() {
     )
 }
 
+const AUTH_HEADER_EXAMPLE = `Authorization: Bearer rsa_your_key_here
+# or
+x-api-key: rsa_your_key_here`
+
+const AUTH_ERRORS_EXAMPLE = `401 Unauthorized   {"error": "Invalid or missing API key"}     — key missing, wrong, or revoked
+400 Bad Request    {"error": "from must be YYYY-MM-DD"}        — invalid query parameter
+Content-Type: application/json on every response`
+
+function authMarkdown(): string {
+    return [
+        "## Authentication",
+        "",
+        "All v1 endpoints are read-only (GET). Send your API key with every request, either way:",
+        "",
+        "```",
+        AUTH_HEADER_EXAMPLE,
+        "```",
+        "",
+        "### Error responses",
+        "",
+        "```",
+        AUTH_ERRORS_EXAMPLE,
+        "```",
+    ].join("\n")
+}
+
+function endpointMarkdown(ep: Endpoint): string {
+    const lines: string[] = []
+    lines.push(`## ${ep.method} ${ep.path} — ${ep.title}`, "")
+    lines.push(ep.description, "")
+    if (ep.params.length) {
+        lines.push("**Query parameters**", "")
+        for (const p of ep.params) lines.push(`- \`${p.name}\` (${p.type}) — ${p.description}`)
+        lines.push("")
+    }
+    lines.push("**Example request**", "")
+    lines.push("```bash")
+    lines.push(`curl -H "x-api-key: rsa_…" "https://<staging-host>${ep.path}"`)
+    lines.push("```", "")
+    lines.push("**Example response — 200 OK**", "")
+    if (ep.responseNotes) lines.push(ep.responseNotes, "")
+    lines.push("```json")
+    lines.push(ep.exampleResponse)
+    lines.push("```")
+    return lines.join("\n")
+}
+
+function fullDocMarkdown(): string {
+    return ["# RSA API Reference", "", authMarkdown(), "", ...ENDPOINTS.map(endpointMarkdown)].join("\n\n")
+}
+
+/** Small copy icon that appears in the corner of a code block on hover. */
+function CodeBlock({ code, className }: { code: string; className?: string }) {
+    const [copied, setCopied] = useState(false)
+    const copy = async () => {
+        await navigator.clipboard.writeText(code)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
+    return (
+        <div className="relative group">
+            <pre className={`rounded bg-muted p-3 pr-10 text-xs font-mono overflow-x-auto ${className || ""}`}>{code}</pre>
+            <button
+                type="button"
+                onClick={copy}
+                title="Copy"
+                className="absolute top-2 right-2 h-6 w-6 flex items-center justify-center rounded border bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            >
+                {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
+            </button>
+        </div>
+    )
+}
+
+/** "Copy page" split button — main click copies Markdown, dropdown offers Copy / View as Markdown. */
+function MarkdownAccessButton({ getMarkdown, label = "Copy page" }: { getMarkdown: () => string; label?: string }) {
+    const [copied, setCopied] = useState(false)
+
+    const copy = async () => {
+        await navigator.clipboard.writeText(getMarkdown())
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
+
+    const viewAsMarkdown = () => {
+        const blob = new Blob([getMarkdown()], { type: "text/plain;charset=utf-8" })
+        const url = URL.createObjectURL(blob)
+        window.open(url, "_blank")
+        setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    }
+
+    return (
+        <div className="flex shrink-0">
+            <Button variant="outline" size="sm" className="rounded-r-none border-r-0" onClick={copy}>
+                {copied ? <Check className="h-4 w-4 mr-1.5 text-green-600" /> : <Copy className="h-4 w-4 mr-1.5" />}
+                {copied ? "Copied" : label}
+            </Button>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="rounded-l-none px-1.5">
+                        <ChevronDown className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={copy}>
+                        <Copy className="h-4 w-4 mr-2" /> Copy page
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={viewAsMarkdown}>
+                        <FileText className="h-4 w-4 mr-2" /> View as Markdown
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+}
+
 function DocsPanel() {
     const [tryKey, setTryKey] = useState("")
 
     return (
         <div className="space-y-4">
+            <div className="flex items-start justify-between gap-2">
+                <div>
+                    <h2 className="text-lg font-semibold">API Reference</h2>
+                    <p className="text-xs text-muted-foreground">
+                        Copy this documentation as Markdown to paste into an AI assistant or LLM.
+                    </p>
+                </div>
+                <MarkdownAccessButton getMarkdown={fullDocMarkdown} />
+            </div>
             <Card>
-                <CardHeader>
-                    <CardTitle>Authentication</CardTitle>
-                    <CardDescription>
-                        All v1 endpoints are read-only (GET). Send your API key with every request, either way:
-                    </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-2">
+                    <div>
+                        <CardTitle>Authentication</CardTitle>
+                        <CardDescription>
+                            All v1 endpoints are read-only (GET). Send your API key with every request, either way:
+                        </CardDescription>
+                    </div>
+                    <MarkdownAccessButton getMarkdown={authMarkdown} label="Copy section" />
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto">{`Authorization: Bearer rsa_your_key_here
-# or
-x-api-key: rsa_your_key_here`}</pre>
+                    <CodeBlock code={AUTH_HEADER_EXAMPLE} />
                     <div className="space-y-1">
                         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Error responses</p>
-                        <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto">{`401 Unauthorized   {"error": "Invalid or missing API key"}     — key missing, wrong, or revoked
-400 Bad Request    {"error": "from must be YYYY-MM-DD"}        — invalid query parameter
-Content-Type: application/json on every response`}</pre>
+                        <CodeBlock code={AUTH_ERRORS_EXAMPLE} />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="try-key">API key for “Try it” requests (kept only in this page)</Label>
@@ -470,12 +597,17 @@ function EndpointCard({ endpoint, tryKey }: { endpoint: Endpoint; tryKey: string
     return (
         <Card>
             <CardHeader>
-                <div className="flex items-center gap-2">
-                    <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 font-mono">GET</Badge>
-                    <code className="text-sm font-mono">{endpoint.path}</code>
+                <div className="flex items-start justify-between gap-2">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 font-mono">GET</Badge>
+                            <code className="text-sm font-mono">{endpoint.path}</code>
+                        </div>
+                        <CardTitle className="text-base mt-1">{endpoint.title}</CardTitle>
+                        <CardDescription>{endpoint.description}</CardDescription>
+                    </div>
+                    <MarkdownAccessButton getMarkdown={() => endpointMarkdown(endpoint)} label="Copy section" />
                 </div>
-                <CardTitle className="text-base mt-1">{endpoint.title}</CardTitle>
-                <CardDescription>{endpoint.description}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 {endpoint.params.length > 0 && (
@@ -501,14 +633,14 @@ function EndpointCard({ endpoint, tryKey }: { endpoint: Endpoint; tryKey: string
                 )}
                 <div className="space-y-1">
                     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Example request</p>
-                    <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto">{curl}</pre>
+                    <CodeBlock code={curl} />
                 </div>
                 <div className="space-y-1">
                     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Example response — 200 OK</p>
                     {endpoint.responseNotes && (
                         <p className="text-xs text-muted-foreground">{endpoint.responseNotes}</p>
                     )}
-                    <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto">{endpoint.exampleResponse}</pre>
+                    <CodeBlock code={endpoint.exampleResponse} className="max-h-96 overflow-y-auto" />
                 </div>
                 <div className="flex items-center gap-2">
                     <Button size="sm" onClick={runRequest} disabled={running || !tryKey.trim()}>
@@ -522,7 +654,7 @@ function EndpointCard({ endpoint, tryKey }: { endpoint: Endpoint; tryKey: string
                         <Badge variant={result.status >= 200 && result.status < 300 ? "default" : "destructive"}>
                             {result.status || "Network error"}
                         </Badge>
-                        <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto">{result.body}</pre>
+                        <CodeBlock code={result.body} className="max-h-80 overflow-y-auto" />
                     </div>
                 )}
             </CardContent>
