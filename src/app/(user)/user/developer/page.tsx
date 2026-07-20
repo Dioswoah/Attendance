@@ -34,6 +34,8 @@ type Endpoint = {
     title: string
     description: string
     params: EndpointParam[]
+    responseNotes?: string
+    exampleResponse: string
 }
 
 const ENDPOINTS: Endpoint[] = [
@@ -49,6 +51,33 @@ const ENDPOINTS: Endpoint[] = [
             { name: "page", type: "number", description: "Page number (default 1)" },
             { name: "pageSize", type: "number", description: "Rows per page (default 50, max 100)" },
         ],
+        responseNotes: "All timestamps are UTC ISO-8601. clockOut is null while a session is still open. duration is minutes worked (null until clock-out). source is one of WEB, SIMPRO, BIOMETRIC, MANUAL. Records are ordered newest first.",
+        exampleResponse: `{
+  "page": 1,
+  "pageSize": 50,
+  "total": 128,
+  "records": [
+    {
+      "id": "cmrsfzj0n0051388zrpwt9y0k",
+      "date": "2026-07-20T00:00:00.000Z",
+      "clockIn": "2026-07-19T23:02:00.000Z",
+      "clockOut": null,
+      "status": "PRESENT",
+      "mode": "ONSITE",
+      "source": "SIMPRO",
+      "duration": null,
+      "notes": "Auto clock-in from simPRO: Mobile status set to Onsite (09:02) on job 446103-368817",
+      "user": {
+        "id": "cmro2suic0005pxabdapcekc5",
+        "name": "Dylan Jackson",
+        "email": "dylanj@redadair.com.au"
+      },
+      "breaks": [
+        { "startTime": "2026-07-20T02:00:00.000Z", "endTime": "2026-07-20T02:30:00.000Z" }
+      ]
+    }
+  ]
+}`,
     },
     {
         method: "GET",
@@ -61,6 +90,26 @@ const ENDPOINTS: Endpoint[] = [
             { name: "page", type: "number", description: "Page number (default 1)" },
             { name: "pageSize", type: "number", description: "Rows per page (default 50, max 100)" },
         ],
+        responseNotes: "Only active (non-archived) employees are returned, ordered by name. workingDays is a comma-separated list. shift times are the employee's local wall-clock times. department and manager are null when unassigned.",
+        exampleResponse: `{
+  "page": 1,
+  "pageSize": 50,
+  "total": 101,
+  "employees": [
+    {
+      "id": "cmro2stwq0001pxabcuh58egz",
+      "name": "Adam Swindail",
+      "email": "adams@redadair.com.au",
+      "roles": ["USER"],
+      "employmentLocation": "Australia",
+      "shiftStartTime": "08:00",
+      "shiftEndTime": "17:00",
+      "workingDays": "MON,TUE,WED,THU,FRI",
+      "department": { "id": "cmocgir5q0003ilknkg7i6jew", "name": "Redmen" },
+      "manager": { "id": "cmnzbxoqw009e1209nfswgm6j", "name": "Chris Wyborn", "email": "chrisw@redadair.com.au" }
+    }
+  ]
+}`,
     },
     {
         method: "GET",
@@ -75,6 +124,27 @@ const ENDPOINTS: Endpoint[] = [
             { name: "page", type: "number", description: "Page number (default 1)" },
             { name: "pageSize", type: "number", description: "Rows per page (default 50, max 100)" },
         ],
+        responseNotes: "startDate/endDate are UTC ISO-8601; a leave overlaps the from/to range if any of its days fall inside it. status is APPROVED, PENDING or DECLINED. type values include VACATION, SICK, PERSONAL. duration is human-readable (e.g. \"28 Days\", \"Half Day\"). Ordered by startDate, newest first.",
+        exampleResponse: `{
+  "page": 1,
+  "pageSize": 50,
+  "total": 27,
+  "leaves": [
+    {
+      "id": "cmomgg0qb003512bhv53jxwr6",
+      "startDate": "2026-12-07T00:00:00.000Z",
+      "endDate": "2027-01-03T00:00:00.000Z",
+      "type": "VACATION",
+      "status": "APPROVED",
+      "duration": "28 Days",
+      "user": {
+        "id": "cmnzbxoqw009e1209nfswgm6j",
+        "name": "Beau Hannan",
+        "email": "beauh@redadair.com.au"
+      }
+    }
+  ]
+}`,
     },
     {
         method: "GET",
@@ -82,6 +152,25 @@ const ENDPOINTS: Endpoint[] = [
         title: "Departments",
         description: "All departments with manager and active-employee headcount.",
         params: [],
+        responseNotes: "Not paginated — always returns the full list, ordered by name. employeeCount counts active (non-archived) staff whose primary department this is. manager is null when unassigned.",
+        exampleResponse: `{
+  "departments": [
+    {
+      "id": "cmocgi34t0000ilkngcwms3ks",
+      "name": "Adair",
+      "shiftStartTime": "09:00",
+      "manager": null,
+      "employeeCount": 14
+    },
+    {
+      "id": "cmocgir5q0003ilknkg7i6jew",
+      "name": "Redmen",
+      "shiftStartTime": "08:00",
+      "manager": { "id": "cmnzbxoqw009e1209nfswgm6j", "name": "Chris Wyborn", "email": "chrisw@redadair.com.au" },
+      "employeeCount": 27
+    }
+  ]
+}`,
     },
 ]
 
@@ -320,6 +409,12 @@ function DocsPanel() {
                     <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto">{`Authorization: Bearer rsa_your_key_here
 # or
 x-api-key: rsa_your_key_here`}</pre>
+                    <div className="space-y-1">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Error responses</p>
+                        <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto">{`401 Unauthorized   {"error": "Invalid or missing API key"}     — key missing, wrong, or revoked
+400 Bad Request    {"error": "from must be YYYY-MM-DD"}        — invalid query parameter
+Content-Type: application/json on every response`}</pre>
+                    </div>
                     <div className="space-y-2">
                         <Label htmlFor="try-key">API key for “Try it” requests (kept only in this page)</Label>
                         <Input
@@ -384,6 +479,9 @@ function EndpointCard({ endpoint, tryKey }: { endpoint: Endpoint; tryKey: string
             </CardHeader>
             <CardContent className="space-y-4">
                 {endpoint.params.length > 0 && (
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Query parameters</p>
+                )}
+                {endpoint.params.length > 0 && (
                     <div className="grid gap-2 sm:grid-cols-2">
                         {endpoint.params.map((p) => (
                             <div key={p.name} className="space-y-1">
@@ -401,7 +499,17 @@ function EndpointCard({ endpoint, tryKey }: { endpoint: Endpoint; tryKey: string
                         ))}
                     </div>
                 )}
-                <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto">{curl}</pre>
+                <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Example request</p>
+                    <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto">{curl}</pre>
+                </div>
+                <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Example response — 200 OK</p>
+                    {endpoint.responseNotes && (
+                        <p className="text-xs text-muted-foreground">{endpoint.responseNotes}</p>
+                    )}
+                    <pre className="rounded bg-muted p-3 text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto">{endpoint.exampleResponse}</pre>
+                </div>
                 <div className="flex items-center gap-2">
                     <Button size="sm" onClick={runRequest} disabled={running || !tryKey.trim()}>
                         {running ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
