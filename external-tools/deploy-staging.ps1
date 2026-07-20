@@ -9,13 +9,14 @@
 #
 # FLAGS:
 #   -SkipBuild          Skip Docker build (use last pushed image)
-#   -SkipDataCopy       Skip copying data from production Cloud SQL
-#   -SkipInfrastructure Skip Cloud SQL / Redis / VPC setup (already exists)
+#   -CopyProdData       DANGER: overwrite the staging DB with a copy of prod data
+#                       (opt-in since 2026-07-20; used to run by default)
+#   -SkipInfrastructure Skip Cloud SQL existence check (staging has no Redis/VPC)
 # ============================================================
 
 param(
     [switch]$SkipBuild,
-    [switch]$SkipDataCopy,
+    [switch]$CopyProdData,
     [switch]$SkipInfrastructure
 )
 
@@ -93,51 +94,14 @@ gcloud services enable `
     --project=$PROJECT_ID --quiet
 Write-Host "  APIs enabled." -ForegroundColor Green
 
-# ── STEP 2 — Infrastructure (Cloud SQL, Redis, VPC) ────────
+# ── STEP 2 — Infrastructure (Cloud SQL only) ───────────────
+# NOTE: staging deliberately has NO Redis and NO VPC connector — those belong to
+# prod SG only (attendance-redis-sg / attendance-vpc-sg). Staging connects
+# directly to Cloud SQL. Do not re-add provisioning for them here; doing so
+# recreates the orphaned Sydney resources that were cleaned up on 2026-06-22.
 if (-not $SkipInfrastructure) {
     Write-Host ""
-    Write-Host "Step 2: Setting up staging infrastructure..." -ForegroundColor Yellow
-
-    # VPC Connector
-    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $vpcExists = gcloud compute networks vpc-access connectors describe attendance-vpc-connector `
-        --region=$REGION --project=$PROJECT_ID --quiet 2>$null
-    $ErrorActionPreference = $prevEAP
-    if (-not $vpcExists) {
-        Write-Host "  Creating VPC connector..." -ForegroundColor Cyan
-        gcloud compute networks vpc-access connectors create attendance-vpc-connector `
-            --region=$REGION `
-            --network=default `
-            --range=10.9.0.0/28 `
-            --min-instances=2 `
-            --max-instances=3 `
-            --machine-type=e2-micro `
-            --project=$PROJECT_ID `
-            --quiet
-        Write-Host "  VPC connector created." -ForegroundColor Green
-    } else {
-        Write-Host "  VPC connector already exists, skipping." -ForegroundColor DarkGray
-    }
-
-    # Redis (Memorystore)
-    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $redisExists = gcloud redis instances describe attendance-redis `
-        --region=$REGION --project=$PROJECT_ID --quiet 2>$null
-    $ErrorActionPreference = $prevEAP
-    if (-not $redisExists) {
-        Write-Host "  Creating Redis instance (this takes ~5 min)..." -ForegroundColor Cyan
-        gcloud redis instances create attendance-redis `
-            --size=1 `
-            --region=$REGION `
-            --tier=BASIC `
-            --redis-version=redis_7_0 `
-            --network=default `
-            --project=$PROJECT_ID `
-            --quiet
-        Write-Host "  Redis instance created." -ForegroundColor Green
-    } else {
-        Write-Host "  Redis instance already exists, skipping." -ForegroundColor DarkGray
-    }
+    Write-Host "Step 2: Setting up staging infrastructure (Cloud SQL only)..." -ForegroundColor Yellow
 
     # Cloud SQL Instance
     $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
@@ -182,8 +146,8 @@ Write-Host ""
 Write-Host "Step 3: Skipping Redis — staging connects directly to Cloud SQL." -ForegroundColor DarkGray
 $script:REDIS_URL = ""
 
-# ── STEP 4 — Copy Data from Production ────────────────────
-if (-not $SkipDataCopy) {
+# ── STEP 4 — Copy Data from Production (opt-in: -CopyProdData) ──
+if ($CopyProdData) {
     Write-Host ""
     Write-Host "Step 4: Copying production data to staging..." -ForegroundColor Yellow
 
@@ -247,7 +211,7 @@ if (-not $SkipDataCopy) {
         --quiet
     Write-Host "  Data copy complete — staging DB mirrors production." -ForegroundColor Green
 } else {
-    Write-Host "Step 4: Skipping data copy (-SkipDataCopy)." -ForegroundColor DarkGray
+    Write-Host "Step 4: Skipping data copy (pass -CopyProdData to overwrite staging DB with prod data)." -ForegroundColor DarkGray
 }
 
 # ── STEP 5 — Build Docker Image ────────────────────────────
@@ -264,7 +228,7 @@ if (-not $SkipBuild) {
 # Skip when data copy ran: the prod dump already contains the full schema.
 # Running migrations after a data copy hits Cloud SQL connection limits on db-g1-small.
 Write-Host ""
-if (-not $SkipDataCopy) {
+if ($CopyProdData) {
     Write-Host "Step 6: Skipping migrations — schema already included in prod data dump." -ForegroundColor DarkGray
 } else {
 Write-Host "Step 6: Running database migrations on staging..." -ForegroundColor Yellow
@@ -387,7 +351,7 @@ Write-Host ""
 Write-Host " NEXT STEPS:" -ForegroundColor Yellow
 Write-Host "  1. Open the staging URL above and test your changes"           -ForegroundColor White
 Write-Host "  2. If .env.staging SERVICE_URL is blank, update it with the"  -ForegroundColor White
-Write-Host "     URL above and re-run this script (-SkipBuild -SkipDataCopy -SkipInfrastructure)" -ForegroundColor White
+Write-Host "     URL above and re-run this script (-SkipBuild -SkipInfrastructure)" -ForegroundColor White
 Write-Host "  3. Add the staging callback URL to Google OAuth Console:"      -ForegroundColor White
 Write-Host "     $STAGING_URL/api/auth/callback/google"                      -ForegroundColor Cyan
 Write-Host "  4. Happy with staging? Run deploy.ps1 to push to LIVE."        -ForegroundColor White
