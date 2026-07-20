@@ -33,6 +33,7 @@ model User {
   workingDays         String              @default("MON,TUE,WED,THU,FRI")
   managerNotificationsEnabled Boolean     @default(true)
   simproEmployeeId    Int?                @unique
+  xeroEmployeeId      String?             @unique
   accounts            Account[]
   attendance                    Attendance[]
   attendanceRequests            AttendanceRequest[]             @relation("AttendanceRequestUser")

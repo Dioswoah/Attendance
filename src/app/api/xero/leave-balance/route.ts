@@ -28,13 +28,17 @@ export async function GET(req: Request) {
     // Look up user and their cached balances from DB
     const user = await prisma.user.findUnique({
         where: { email },
-        select: { id: true, xeroLeaveBalances: { select: { leaveName: true, hours: true, syncedAt: true } } },
+        select: { id: true, xeroEmployeeId: true, xeroLeaveBalances: { select: { leaveName: true, hours: true, syncedAt: true } } },
     })
 
     if (!user) return NextResponse.json({ connected: true, found: false, email })
 
     const balances = user.xeroLeaveBalances
-    if (!balances.length) return NextResponse.json({ connected: true, found: false, email })
+    // Linked via xeroEmployeeId but no balances yet -> "found" so the UI says
+    // "no balances configured" instead of the misleading "not linked"
+    if (!balances.length) {
+        return NextResponse.json({ connected: true, found: Boolean(user.xeroEmployeeId), email, leaveBalances: [] })
+    }
 
     return NextResponse.json({
         connected: true,

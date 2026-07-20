@@ -12,7 +12,7 @@ export async function syncXeroLeaveBalances(): Promise<{ synced: number; skipped
     // Fetch all Australia-based staff from our DB
     const australiaUsers = await prisma.user.findMany({
         where: { employmentLocation: 'Australia', isArchived: false, email: { not: '' } },
-        select: { id: true, email: true },
+        select: { id: true, email: true, xeroEmployeeId: true },
     })
 
     if (!australiaUsers.length) return { synced: 0, skipped: 0 }
@@ -25,8 +25,12 @@ export async function syncXeroLeaveBalances(): Promise<{ synced: number; skipped
     let skipped = 0
 
     for (const user of australiaUsers) {
+        // Explicit mapping first (Xero mostly stores personal emails, so email
+        // match only works for the few staff whose work email is in Xero)
         const email = user.email.toLowerCase().trim()
-        const xeroMatch = xeroEmployees.find((e: any) => (e.Email || '').toLowerCase() === email)
+        const xeroMatch = user.xeroEmployeeId
+            ? xeroEmployees.find((e: any) => e.EmployeeID === user.xeroEmployeeId)
+            : xeroEmployees.find((e: any) => (e.Email || '').toLowerCase() === email)
 
         if (!xeroMatch) { skipped++; continue }
 
