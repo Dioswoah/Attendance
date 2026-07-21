@@ -4,11 +4,18 @@ import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-const DAYS = 30
+const MAX_RANGE_DAYS = 366
 
-// Usage stats for one key — calls/day for the chart, plus totals and the
+function toDate(value: string | null, fallback: Date): Date {
+    if (!value) return fallback
+    const parsed = new Date(value + 'T00:00:00.000Z')
+    return isNaN(parsed.getTime()) ? fallback : parsed
+}
+
+// Usage stats for one key — calls/day for the chart over a caller-chosen
+// date range (defaults to month-to-date), plus lifetime totals and the
 // most-hit endpoints. Viewable by the key's own owner, or any ADMIN.
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await auth()
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -20,20 +27,32 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const isAdmin = (session.user.roles || []).includes('ADMIN')
     if (!isOwner && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const since = new Date()
-    since.setDate(since.getDate() - (DAYS - 1))
-    since.setHours(0, 0, 0, 0)
+    const { searchParams } = new URL(request.url)
+    const now = new Date()
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+
+    let from = toDate(searchParams.get('from'), monthStart)
+    let to = toDate(searchParams.get('to'), now)
+    if (from > to) [from, to] = [to, from]
+
+    const rangeDays = Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1
+    if (rangeDays > MAX_RANGE_DAYS) {
+        from = new Date(to.getTime() - (MAX_RANGE_DAYS - 1) * 86_400_000)
+    }
+
+    const rangeEnd = new Date(to)
+    rangeEnd.setUTCHours(23, 59, 59, 999)
 
     const logs = await prisma.apiKeyUsageLog.findMany({
-        where: { apiKeyId: id, createdAt: { gte: since } },
+        where: { apiKeyId: id, createdAt: { gte: from, lte: rangeEnd } },
         select: { endpoint: true, createdAt: true },
     })
 
     const dayCounts = new Map<string, number>()
-    for (let i = 0; i < DAYS; i++) {
-        const d = new Date(since)
-        d.setDate(d.getDate() + i)
-        dayCounts.set(d.toISOString().slice(0, 10), 0)
+    const cursor = new Date(from)
+    while (cursor <= to) {
+        dayCounts.set(cursor.toISOString().slice(0, 10), 0)
+        cursor.setUTCDate(cursor.getUTCDate() + 1)
     }
     const endpointCounts = new Map<string, number>()
     for (const log of logs) {
@@ -46,7 +65,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({
         totalCalls,
-        last30Days: Array.from(dayCounts, ([date, count]) => ({ date, count })),
+        rangeFrom: from.toISOString().slice(0, 10),
+        rangeTo: to.toISOString().slice(0, 10),
+        dailyCounts: Array.from(dayCounts, ([date, count]) => ({ date, count })),
         topEndpoints: Array.from(endpointCounts, ([endpoint, count]) => ({ endpoint, count }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 5),

@@ -522,41 +522,108 @@ function AllKeysPanel() {
 
 type UsageData = {
     totalCalls: number
-    last30Days: { date: string; count: number }[]
+    rangeFrom: string
+    rangeTo: string
+    dailyCounts: { date: string; count: number }[]
     topEndpoints: { endpoint: string; count: number }[]
 }
+
+type RangePreset = "mtd" | "7d" | "30d" | "90d" | "custom"
+
+function ymd(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function presetRange(preset: RangePreset): { from: string; to: string } {
+    const now = new Date()
+    const to = ymd(now)
+    if (preset === "mtd") return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to }
+    if (preset === "7d") { const d = new Date(now); d.setDate(d.getDate() - 6); return { from: ymd(d), to } }
+    if (preset === "90d") { const d = new Date(now); d.setDate(d.getDate() - 89); return { from: ymd(d), to } }
+    const d = new Date(now); d.setDate(d.getDate() - 29); return { from: ymd(d), to } // "30d" and fallback
+}
+
+const RANGE_PRESETS: { key: RangePreset; label: string }[] = [
+    { key: "mtd", label: "This month" },
+    { key: "7d", label: "7 days" },
+    { key: "30d", label: "30 days" },
+    { key: "90d", label: "90 days" },
+    { key: "custom", label: "Custom" },
+]
 
 // Shared by KeysPanel ("my keys") and AllKeysPanel (admin oversight) — calls
 // this component's own /usage endpoint, which is owner-or-ADMIN gated.
 function KeyUsageDialog({ keyId, keyName, onClose }: { keyId: string; keyName: string; onClose: () => void }) {
     const [data, setData] = useState<UsageData | null>(null)
     const [loading, setLoading] = useState(true)
+    const [preset, setPreset] = useState<RangePreset>("mtd")
+    const [range, setRange] = useState(() => presetRange("mtd"))
+
+    const selectPreset = (key: RangePreset) => {
+        setPreset(key)
+        if (key !== "custom") setRange(presetRange(key))
+    }
 
     const load = useCallback(async () => {
         setLoading(true)
         try {
-            const res = await fetch(`/api/developer/keys/${keyId}/usage`)
+            const res = await fetch(`/api/developer/keys/${keyId}/usage?from=${range.from}&to=${range.to}`)
             setData(await res.json())
         } finally {
             setLoading(false)
         }
-    }, [keyId])
+    }, [keyId, range.from, range.to])
 
     useEffect(() => { load() }, [load])
 
-    const chartData = (data?.last30Days || []).map((d) => ({
+    const chartData = (data?.dailyCounts || []).map((d) => ({
         day: new Date(d.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
         calls: d.count,
     }))
-    const last30Total = (data?.last30Days || []).reduce((sum, d) => sum + d.count, 0)
+    const rangeTotal = (data?.dailyCounts || []).reduce((sum, d) => sum + d.count, 0)
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="sm:max-w-xl">
                 <DialogHeader>
                     <DialogTitle>Usage — {keyName}</DialogTitle>
-                    <DialogDescription>Calls per day over the last 30 days.</DialogDescription>
+                    <DialogDescription>Calls per day — pick a range, defaults to this month (MTD).</DialogDescription>
                 </DialogHeader>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    {RANGE_PRESETS.map((p) => (
+                        <Button
+                            key={p.key}
+                            variant={preset === p.key ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => selectPreset(p.key)}
+                        >
+                            {p.label}
+                        </Button>
+                    ))}
+                    {preset === "custom" && (
+                        <div className="flex items-center gap-1.5 ml-1">
+                            <Input
+                                type="date"
+                                value={range.from}
+                                max={range.to}
+                                onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+                                className="h-7 w-[140px] text-xs"
+                            />
+                            <span className="text-xs text-muted-foreground">to</span>
+                            <Input
+                                type="date"
+                                value={range.to}
+                                min={range.from}
+                                max={ymd(new Date())}
+                                onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+                                className="h-7 w-[140px] text-xs"
+                            />
+                        </div>
+                    )}
+                </div>
+
                 {loading ? (
                     <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
                 ) : !data ? (
@@ -569,8 +636,10 @@ function KeyUsageDialog({ keyId, keyName, onClose }: { keyId: string; keyName: s
                                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Total calls (all time)</p>
                             </div>
                             <div>
-                                <p className="text-2xl font-bold">{last30Total}</p>
-                                <p className="text-xs text-muted-foreground uppercase tracking-wide">Last 30 days</p>
+                                <p className="text-2xl font-bold">{rangeTotal}</p>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                                    {data.rangeFrom} – {data.rangeTo}
+                                </p>
                             </div>
                         </div>
                         <div className="h-[220px] w-full">
