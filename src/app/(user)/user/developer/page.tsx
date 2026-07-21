@@ -93,7 +93,7 @@ const ENDPOINTS: Endpoint[] = [
             { name: "page", type: "number", description: "Page number (default 1)" },
             { name: "pageSize", type: "number", description: "Rows per page (default 50, max 100)" },
         ],
-        responseNotes: "Only active (non-archived) employees are returned, ordered by name. workingDays is a comma-separated list. shift times are the employee's local wall-clock times. department and manager are null when unassigned.",
+        responseNotes: "Only active (non-archived) employees are returned, ordered by name. workingDays is a comma-separated list. shift times are the employee's local wall-clock times. department and manager are null when unassigned. isTechnician is true when the employee is linked to simPRO (see the Technicians board).",
         exampleResponse: `{
   "page": 1,
   "pageSize": 50,
@@ -108,6 +108,7 @@ const ENDPOINTS: Endpoint[] = [
       "shiftStartTime": "08:00",
       "shiftEndTime": "17:00",
       "workingDays": "MON,TUE,WED,THU,FRI",
+      "isTechnician": true,
       "department": { "id": "cmocgir5q0003ilknkg7i6jew", "name": "Redmen" },
       "manager": { "id": "cmnzbxoqw009e1209nfswgm6j", "name": "Chris Wyborn", "email": "chrisw@redadair.com.au" }
     }

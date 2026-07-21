@@ -39,11 +39,18 @@ export async function GET(request: Request) {
                 shiftStartTime: true,
                 shiftEndTime: true,
                 workingDays: true,
+                simproEmployeeId: true,
                 department: { select: { id: true, name: true } },
                 manager: { select: { id: true, name: true, email: true } },
             },
         }),
     ])
 
-    return NextResponse.json({ page, pageSize, total, employees })
+    // simproEmployeeId is an internal link ID — expose only whether it's set, not the ID itself.
+    const withTechnicianFlag = employees.map(({ simproEmployeeId, ...rest }) => ({
+        ...rest,
+        isTechnician: simproEmployeeId !== null,
+    }))
+
+    return NextResponse.json({ page, pageSize, total, employees: withTechnicianFlag })
 }
