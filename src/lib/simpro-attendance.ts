@@ -162,6 +162,26 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         orderBy: { clockIn: 'asc' },
         select: { userId: true, clockIn: true, clockOut: true, source: true },
     })
+    // A tech can end up with more than one attendance row for the same day
+    // (a stray/incorrect session gets closed, then a fresh one is opened) —
+    // always prefer their currently-open session over a stale closed one, and
+    // otherwise the most recently started row. Picking the earliest row here
+    // used to show a tech as clocked out for the day even while they had a
+    // live open session (Marc, 2026-07-22).
+    const latestAttendanceByUserId = new Map<string, (typeof attendanceRows)[number]>()
+    for (const row of attendanceRows) {
+        const current = latestAttendanceByUserId.get(row.userId)
+        if (!current) {
+            latestAttendanceByUserId.set(row.userId, row)
+            continue
+        }
+        const rowIsOpen = row.clockOut === null
+        const currentIsOpen = current.clockOut === null
+        const rowIsNewer = rowIsOpen === currentIsOpen && (row.clockIn?.getTime() ?? 0) > (current.clockIn?.getTime() ?? 0)
+        if ((rowIsOpen && !currentIsOpen) || rowIsNewer) {
+            latestAttendanceByUserId.set(row.userId, row)
+        }
+    }
     // On Leave is driven by the RSA app's leave feature (an APPROVED Leave
     // record covering the day), NOT by simPRO activity schedules (Marc,
     // 2026-07-16). Unlinked techs can't have app leave, so they never show it.
@@ -183,7 +203,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             users.find((u) => u.simproEmployeeId === tech.simproEmployeeId) ||
             users.find((u) => u.email.toLowerCase() === tech.rsaEmail.toLowerCase()) ||
             null
-        const att = user ? attendanceRows.find((a) => a.userId === user.id) : undefined
+        const att = user ? latestAttendanceByUserId.get(user.id) : undefined
         const rsa = {
             clockedInToday: Boolean(att),
             clockInAt: att?.clockIn?.toISOString() ?? null,
@@ -222,14 +242,19 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         const earliestStart = uniqueJobs[0].start
         const firstTied = uniqueJobs.filter((j) => j.start === earliestStart)
 
-        // Clock-out signal: completion of the tech's "SAFETY CHECK" job — the
-        // one reliable end-of-day marker (Marc, 2026-07-21). Techs don't
-        // always work jobs in scheduled order, so "last job by start time"
-        // produced false clock-outs while other jobs were still open. If no
-        // SAFETY CHECK job is scheduled for this tech today, no simPRO
-        // clock-out fires at all — the nightly shift-end auto clock-out
-        // covers them instead. getJob is cached, so this is cheap on repeat
-        // sweeps within the cache TTL.
+        // Clock-out signal: completion of the tech's AFTERNOON SAFETY CHECK
+        // job — the one reliable end-of-day marker (Marc, 2026-07-21). Techs
+        // don't always work jobs in scheduled order, so "last job by start
+        // time" produced false clock-outs while other jobs were still open.
+        // Matching on name text alone isn't enough — a job scheduled first
+        // thing in the morning can also contain "safety check" in its
+        // name/site/customer, which would wrongly close the whole day the
+        // moment that early job is completed. Require the job's own schedule
+        // to actually start in the afternoon (Marc, 2026-07-22 — caught a
+        // false clock-out this produced). If no such job is scheduled for
+        // this tech today, no simPRO clock-out fires at all — the nightly
+        // shift-end auto clock-out covers them instead. getJob is cached, so
+        // this is cheap on repeat sweeps within the cache TTL.
         const jobDetails = await mapWithConcurrency(uniqueJobs, 5, async (j) => {
             try {
                 return { job: j, detail: await getJob(j.companyId, j.jobId) }
@@ -237,9 +262,20 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
                 return { job: j, detail: null }
             }
         })
-        const isSafetyCheckJob = (detail: Awaited<ReturnType<typeof getJob>> | null) =>
-            Boolean(detail) && /safety\s*check/i.test(`${detail!.Name ?? ''} ${detail!.Site?.Name ?? ''} ${detail!.Customer?.CompanyName ?? ''}`)
-        const safetyCheckJobs = jobDetails.filter((d) => isSafetyCheckJob(d.detail)).map((d) => d.job)
+        const startHour = (j: { start: string }) => {
+            const m = j.start.match(/T(\d{2}):/)
+            return m ? parseInt(m[1], 10) : null
+        }
+        const isAfternoonSafetyCheckJob = (entry: { job: (typeof uniqueJobs)[number]; detail: Awaited<ReturnType<typeof getJob>> | null }) => {
+            if (!entry.detail) return false
+            const textMatch = /safety\s*check/i.test(
+                `${entry.detail.Name ?? ''} ${entry.detail.Site?.Name ?? ''} ${entry.detail.Customer?.CompanyName ?? ''}`,
+            )
+            if (!textMatch) return false
+            const hour = startHour(entry.job)
+            return hour !== null && hour >= 12
+        }
+        const safetyCheckJobs = jobDetails.filter(isAfternoonSafetyCheckJob).map((d) => d.job)
 
         const scanKeys = new Set([...firstTied, ...safetyCheckJobs].map((j) => `${j.companyId}:${j.jobId}`))
         const scanJobs = uniqueJobs.filter((j) => scanKeys.has(`${j.companyId}:${j.jobId}`))
