@@ -15,7 +15,6 @@ import {
     getJob,
     getJobTimelines,
     getSchedulesForDate,
-    isPlaceholderJob,
     isSimproConfigured,
     type SimproSchedule,
     type SimproTimelineEntry,
@@ -223,26 +222,26 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
         const earliestStart = uniqueJobs[0].start
         const firstTied = uniqueJobs.filter((j) => j.start === earliestStart)
 
-        // Last job = clock-out signal. Placeholder jobs (on-call rosters like
-        // "YOU ARE ON CALL****") are never marked Completed, so walk the
-        // start-time groups from the latest backwards until a real job is
-        // found. getJob is cached, so this normally costs one extra call.
-        const distinctStarts = [...new Set(uniqueJobs.map((j) => j.start))]
-        let lastTied = uniqueJobs.filter((j) => j.start === distinctStarts[distinctStarts.length - 1])
-        for (let i = distinctStarts.length - 1; i >= 0; i--) {
-            const tied = uniqueJobs.filter((j) => j.start === distinctStarts[i])
-            const real: typeof tied = []
-            for (const j of tied) {
-                try {
-                    if (!isPlaceholderJob(await getJob(j.companyId, j.jobId))) real.push(j)
-                } catch {
-                    real.push(j) // can't tell — treat as a real job
-                }
+        // Clock-out signal: completion of the tech's "SAFETY CHECK" job — the
+        // one reliable end-of-day marker (Marc, 2026-07-21). Techs don't
+        // always work jobs in scheduled order, so "last job by start time"
+        // produced false clock-outs while other jobs were still open. If no
+        // SAFETY CHECK job is scheduled for this tech today, no simPRO
+        // clock-out fires at all — the nightly shift-end auto clock-out
+        // covers them instead. getJob is cached, so this is cheap on repeat
+        // sweeps within the cache TTL.
+        const jobDetails = await mapWithConcurrency(uniqueJobs, 5, async (j) => {
+            try {
+                return { job: j, detail: await getJob(j.companyId, j.jobId) }
+            } catch {
+                return { job: j, detail: null }
             }
-            if (real.length) { lastTied = real; break }
-        }
+        })
+        const isSafetyCheckJob = (detail: Awaited<ReturnType<typeof getJob>> | null) =>
+            Boolean(detail) && /safety\s*check/i.test(`${detail!.Name ?? ''} ${detail!.Site?.Name ?? ''} ${detail!.Customer?.CompanyName ?? ''}`)
+        const safetyCheckJobs = jobDetails.filter((d) => isSafetyCheckJob(d.detail)).map((d) => d.job)
 
-        const scanKeys = new Set([...firstTied, ...lastTied].map((j) => `${j.companyId}:${j.jobId}`))
+        const scanKeys = new Set([...firstTied, ...safetyCheckJobs].map((j) => `${j.companyId}:${j.jobId}`))
         const scanJobs = uniqueJobs.filter((j) => scanKeys.has(`${j.companyId}:${j.jobId}`))
         const inSet = (set: typeof uniqueJobs, e: { job: { companyId: number; jobId: number } }) =>
             set.some((j) => j.companyId === e.job.companyId && j.jobId === e.job.jobId)
@@ -315,11 +314,11 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
             console.error(`[simPRO] job fetch failed for job ${first.jobId} (company ${first.companyId}):`, err)
         }
 
-        // Clock-out signal: Completed on the LAST job of the day (any of the
-        // jobs tied at the latest start time counts).
-        const completedOnLast = events.filter((e) => e.status === 'COMPLETED' && inSet(lastTied, e))
+        // Clock-out signal: Completed on the SAFETY CHECK job specifically —
+        // not just any job that happens to be scheduled last.
+        const completedOnLast = events.filter((e) => e.status === 'COMPLETED' && inSet(safetyCheckJobs, e))
         const lastCompleted = completedOnLast[completedOnLast.length - 1]
-        const last = lastCompleted?.job ?? lastTied[lastTied.length - 1]
+        const last = lastCompleted?.job ?? safetyCheckJobs[safetyCheckJobs.length - 1] ?? null
 
         return {
             simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
@@ -331,10 +330,10 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
                 customer, site, jobStatusName, jobStatusColor,
             },
             simproStatus, simproStatusAt, simproStatusMessage, simproFirstStartedAt,
-            lastJob: {
+            lastJob: last ? {
                 companyId: last.companyId, jobId: last.jobId, reference: last.reference,
                 completedAt: lastCompleted?.at ?? null,
-            },
+            } : null,
             leave,
             rsa,
         }

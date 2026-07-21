@@ -155,12 +155,6 @@ export interface SimproTimelineEntry {
     Date: string // ISO8601 with offset
 }
 
-// Placeholder jobs (on-call/standby rosters like "YOU ARE ON CALL****") that
-// techs never mark Completed — they must not drive the clock-out signal.
-export function isPlaceholderJob(job: SimproJob): boolean {
-    return /\bon.?call\b|\bstand.?by\b|\*{3,}/i.test(`${job.Site?.Name ?? ''} ${job.Name ?? ''}`)
-}
-
 // ── Read-only fetchers ─────────────────────────────────────────────────────
 
 /** All schedule entries for one company on one date (YYYY-MM-DD). */

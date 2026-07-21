@@ -11,8 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-    HardHat, RefreshCw, Search, Truck, MapPin, CheckCircle2, CalendarOff,
-    Clock, Link2, AlertCircle, Umbrella,
+    HardHat, RefreshCw, Search, Link2, AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -63,17 +62,6 @@ const fetcher = (url: string) => fetch(url).then(async (r) => {
     if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || `HTTP ${r.status}`)
     return r.json()
 })
-
-function statusInfo(status: TechDayStatus["simproStatus"]) {
-    switch (status) {
-        case "TRAVELLING": return { label: "Travelling", icon: Truck, className: "bg-amber-100 text-amber-800 border-amber-200" }
-        case "ON_SITE": return { label: "On Site", icon: MapPin, className: "bg-green-100 text-green-800 border-green-200" }
-        case "COMPLETED": return { label: "Completed", icon: CheckCircle2, className: "bg-blue-100 text-blue-800 border-blue-200" }
-        case "NOT_STARTED": return { label: "Not Started", icon: Clock, className: "bg-slate-100 text-slate-600 border-slate-200" }
-        case "NO_SCHEDULE": return { label: "No Schedule", icon: CalendarOff, className: "bg-slate-50 text-slate-400 border-slate-100" }
-        case "ON_LEAVE": return { label: "On Leave", icon: Umbrella, className: "bg-violet-100 text-violet-700 border-violet-200" }
-    }
-}
 
 // A tech is done for the day once they've clocked out or marked their last
 // job Completed — the first-job status badge would otherwise stay frozen at
@@ -133,10 +121,8 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
         const list = data?.technicians ?? []
         const q = search.trim().toLowerCase()
         let filtered = q ? list.filter((t) => t.name.toLowerCase().includes(q)) : list
-        // The board tracks who clocked in/out and where they went — techs on
-        // approved leave are hidden by default; pick "On Leave" to see them.
         filtered = statusFilter === "ALL"
-            ? filtered.filter((t) => t.simproStatus !== "ON_LEAVE")
+            ? filtered
             : filtered.filter((t) => effectiveStatus(t) === statusFilter)
         const rank = { ON_SITE: 0, TRAVELLING: 1, NOT_STARTED: 2, COMPLETED: 3, NO_SCHEDULE: 4, ON_LEAVE: 5 }
         const rankOf = (t: TechDayStatus) => (isDoneForDay(t) ? rank.COMPLETED : rank[t.simproStatus])
@@ -147,8 +133,8 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
         const list = data?.technicians ?? []
         return {
             active: list.filter((t) => t.simproStatus === "TRAVELLING" || t.simproStatus === "ON_SITE").length,
-            scheduled: list.filter((t) => t.simproStatus !== "NO_SCHEDULE" && t.simproStatus !== "ON_LEAVE").length,
-            clockedIn: list.filter((t) => t.rsa.clockedInToday).length,
+            notStarted: list.filter((t) => t.simproStatus === "NOT_STARTED").length,
+            onLeave: list.filter((t) => t.simproStatus === "ON_LEAVE").length,
             unlinked: list.filter((t) => !t.userId).length,
         }
     }, [data])
@@ -206,8 +192,8 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
 
             <div className={cn("grid grid-cols-2 gap-4", showLinkTools ? "md:grid-cols-4" : "md:grid-cols-3")}>
                 <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{counts.active}</p><p className="text-xs text-muted-foreground">Travelling / On Site now</p></CardContent></Card>
-                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{counts.scheduled}</p><p className="text-xs text-muted-foreground">Scheduled today</p></CardContent></Card>
-                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{counts.clockedIn}</p><p className="text-xs text-muted-foreground">Clocked in (RSA)</p></CardContent></Card>
+                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{counts.notStarted}</p><p className="text-xs text-muted-foreground">Not started</p></CardContent></Card>
+                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{counts.onLeave}</p><p className="text-xs text-muted-foreground">On leave</p></CardContent></Card>
                 {showLinkTools && (
                     <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{counts.unlinked}</p><p className="text-xs text-muted-foreground">Not linked to RSA user</p></CardContent></Card>
                 )}
@@ -256,20 +242,14 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                 <thead>
                                     <tr className="border-b text-left text-xs uppercase text-muted-foreground">
                                         <th className="py-2 pr-4">Technician</th>
-                                        <th className="py-2 pr-4">simPRO Status</th>
                                         <th className="py-2 pr-4">First Job</th>
                                         <th className="py-2 pr-4">Customer / Site</th>
                                         <th className="py-2 pr-4">Scheduled</th>
-                                        <th className="py-2 pr-4">Jobs</th>
                                         <th className="py-2 pr-4">RSA Attendance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {technicians.map((t) => {
-                                        const done = isDoneForDay(t)
-                                        const info = done
-                                            ? { label: "Done for day", icon: CheckCircle2, className: "bg-blue-50 text-blue-700 border-blue-200" }
-                                            : statusInfo(t.simproStatus)
                                         return (
                                             <tr key={t.simproEmployeeId} className="border-b last:border-0 hover:bg-muted/40">
                                                 <td className="py-2.5 pr-4">
@@ -277,21 +257,6 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                                     {showLinkTools && !t.userId && (
                                                         <div className="text-xs text-amber-600">not linked to RSA user</div>
                                                     )}
-                                                </td>
-                                                <td className="py-2.5 pr-4">
-                                                    <Badge variant="outline" className={cn("gap-1", info.className)}>
-                                                        <info.icon className="h-3 w-3" />
-                                                        {info.label}
-                                                    </Badge>
-                                                    {done ? (
-                                                        <div className="text-xs text-muted-foreground mt-0.5">
-                                                            {fmtTime(t.rsa.clockOutAt || t.lastJob?.completedAt || null, userTimeZone)}
-                                                        </div>
-                                                    ) : t.simproStatus === "ON_LEAVE" ? (
-                                                        <div className="text-xs text-violet-600 mt-0.5">{t.leave?.name}</div>
-                                                    ) : t.simproStatusAt ? (
-                                                        <div className="text-xs text-muted-foreground mt-0.5">{fmtTime(t.simproStatusAt, userTimeZone)}</div>
-                                                    ) : null}
                                                 </td>
                                                 <td className="py-2.5 pr-4">
                                                     {t.firstJob ? (
@@ -322,17 +287,23 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                                 <td className="py-2.5 pr-4 whitespace-nowrap">
                                                     {t.firstJob?.startTime ? `${fmtTime(t.firstJob.startTime, userTimeZone)} – ${fmtTime(t.firstJob.endTime, userTimeZone)}` : "—"}
                                                 </td>
-                                                <td className="py-2.5 pr-4">{t.jobCount || "—"}</td>
                                                 <td className="py-2.5 pr-4 whitespace-nowrap">
                                                     {t.rsa.clockedInToday ? (
                                                         <div>
-                                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                                                In {fmtTime(t.rsa.clockInAt, userTimeZone)}
-                                                            </Badge>
-                                                            <div className="text-xs text-muted-foreground mt-0.5">
-                                                                {t.rsa.source === "SIMPRO" ? "via simPRO" : t.rsa.source?.toLowerCase() || ""}
-                                                                {t.rsa.clockOutAt ? ` · out ${fmtTime(t.rsa.clockOutAt, userTimeZone)}` : ""}
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                                                    In {fmtTime(t.rsa.clockInAt, userTimeZone)}
+                                                                </Badge>
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className={t.rsa.clockOutAt ? "bg-slate-50 text-slate-600 border-slate-200" : "bg-slate-50 text-slate-400 border-slate-100"}
+                                                                >
+                                                                    Out {t.rsa.clockOutAt ? fmtTime(t.rsa.clockOutAt, userTimeZone) : "—"}
+                                                                </Badge>
                                                             </div>
+                                                            {t.rsa.source === "SIMPRO" && (
+                                                                <div className="text-xs text-muted-foreground mt-0.5">via simPRO</div>
+                                                            )}
                                                         </div>
                                                     ) : (
                                                         <span className="text-muted-foreground text-xs">Not clocked in</span>
@@ -342,7 +313,7 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                         )
                                     })}
                                     {technicians.length === 0 && (
-                                        <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">No technicians match.</td></tr>
+                                        <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">No technicians match.</td></tr>
                                     )}
                                 </tbody>
                             </table>
