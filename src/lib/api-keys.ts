@@ -43,9 +43,12 @@ export async function authenticateApiKey(request: Request): Promise<ApiKeyAuth |
     if (!key || key.revokedAt) return null
     if (key.user.isArchived || key.user.deletedAt || !key.user.roles.includes('DEVELOPER')) return null
 
-    // Best-effort usage stamp — never blocks or fails the request.
+    // Best-effort usage stamp + log — never blocks or fails the request.
     prisma.apiKey
         .update({ where: { id: key.id }, data: { lastUsedAt: new Date() } })
+        .catch(() => {})
+    prisma.apiKeyUsageLog
+        .create({ data: { apiKeyId: key.id, endpoint: new URL(request.url).pathname } })
         .catch(() => {})
 
     return { userId: key.user.id, keyId: key.id, userName: key.user.name }

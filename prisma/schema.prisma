@@ -79,8 +79,22 @@ model ApiKey {
   lastUsedAt DateTime?
   revokedAt  DateTime?
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageLogs  ApiKeyUsageLog[]
 
   @@index([userId])
+}
+
+// One row per authenticated v1 API request — powers the usage dashboard
+// (calls/day, top endpoints) in the Developer tab.
+model ApiKeyUsageLog {
+  id        String   @id @default(cuid())
+  apiKeyId  String
+  endpoint  String
+  createdAt DateTime @default(now())
+
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, createdAt])
 }
 
 model Account {

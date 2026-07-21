@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import {
-    AlertTriangle, Check, ChevronDown, Copy, FileText, KeyRound, Loader2, Play, Plus, Trash2,
+    AlertTriangle, BarChart3, Check, ChevronDown, Copy, FileText, KeyRound, Loader2, Play, Plus, Trash2,
 } from "lucide-react"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -246,6 +247,7 @@ function KeysPanel() {
     const [createdKey, setCreatedKey] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [usageKey, setUsageKey] = useState<{ id: string; name: string } | null>(null)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -336,7 +338,10 @@ function KeysPanel() {
                                             ? <Badge variant="secondary">Revoked</Badge>
                                             : <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>}
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right space-x-1">
+                                        <Button variant="ghost" size="sm" onClick={() => setUsageKey({ id: k.id, name: k.name })} title="Usage">
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                        </Button>
                                         {!k.revokedAt && (
                                             <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)} title="Revoke key">
                                                 <Trash2 className="h-4 w-4 text-destructive" />
@@ -349,6 +354,10 @@ function KeysPanel() {
                     </Table>
                 )}
             </CardContent>
+
+            {usageKey && (
+                <KeyUsageDialog keyId={usageKey.id} keyName={usageKey.name} onClose={() => setUsageKey(null)} />
+            )}
 
             <Dialog open={createOpen} onOpenChange={(open) => { if (!open) { setCreateOpen(false); setCreatedKey(null) } }}>
                 <DialogContent>
@@ -412,6 +421,7 @@ function AllKeysPanel() {
     const [keys, setKeys] = useState<AllApiKeyRow[]>([])
     const [loading, setLoading] = useState(true)
     const [revokingId, setRevokingId] = useState<string | null>(null)
+    const [usageKey, setUsageKey] = useState<{ id: string; name: string } | null>(null)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -478,7 +488,10 @@ function AllKeysPanel() {
                                             ? <Badge variant="secondary">Revoked</Badge>
                                             : <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>}
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right space-x-1">
+                                        <Button variant="ghost" size="sm" onClick={() => setUsageKey({ id: k.id, name: k.name })} title="Usage">
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                        </Button>
                                         {!k.revokedAt && (
                                             <Button
                                                 variant="ghost"
@@ -499,7 +512,102 @@ function AllKeysPanel() {
                     </Table>
                 )}
             </CardContent>
+
+            {usageKey && (
+                <KeyUsageDialog keyId={usageKey.id} keyName={usageKey.name} onClose={() => setUsageKey(null)} />
+            )}
         </Card>
+    )
+}
+
+type UsageData = {
+    totalCalls: number
+    last30Days: { date: string; count: number }[]
+    topEndpoints: { endpoint: string; count: number }[]
+}
+
+// Shared by KeysPanel ("my keys") and AllKeysPanel (admin oversight) — calls
+// this component's own /usage endpoint, which is owner-or-ADMIN gated.
+function KeyUsageDialog({ keyId, keyName, onClose }: { keyId: string; keyName: string; onClose: () => void }) {
+    const [data, setData] = useState<UsageData | null>(null)
+    const [loading, setLoading] = useState(true)
+
+    const load = useCallback(async () => {
+        setLoading(true)
+        try {
+            const res = await fetch(`/api/developer/keys/${keyId}/usage`)
+            setData(await res.json())
+        } finally {
+            setLoading(false)
+        }
+    }, [keyId])
+
+    useEffect(() => { load() }, [load])
+
+    const chartData = (data?.last30Days || []).map((d) => ({
+        day: new Date(d.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        calls: d.count,
+    }))
+    const last30Total = (data?.last30Days || []).reduce((sum, d) => sum + d.count, 0)
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Usage — {keyName}</DialogTitle>
+                    <DialogDescription>Calls per day over the last 30 days.</DialogDescription>
+                </DialogHeader>
+                {loading ? (
+                    <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : !data ? (
+                    <p className="text-sm text-muted-foreground py-6 text-center">Failed to load usage data.</p>
+                ) : (
+                    <div className="space-y-4">
+                        <div className="flex gap-8">
+                            <div>
+                                <p className="text-2xl font-bold">{data.totalCalls}</p>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wide">Total calls (all time)</p>
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold">{last30Total}</p>
+                                <p className="text-xs text-muted-foreground uppercase tracking-wide">Last 30 days</p>
+                            </div>
+                        </div>
+                        <div className="h-[220px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={chartData}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis
+                                        dataKey="day"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 10, fontWeight: 600, fill: "#64748b" }}
+                                        interval={Math.max(0, Math.ceil(chartData.length / 8) - 1)}
+                                    />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: "#64748b" }} allowDecimals={false} />
+                                    <Tooltip contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }} />
+                                    <Bar dataKey="calls" fill="#8B2323" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        {data.topEndpoints.length > 0 && (
+                            <div className="space-y-1">
+                                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Top endpoints</p>
+                                {data.topEndpoints.map((e) => (
+                                    <div key={e.endpoint} className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0">
+                                        <code className="font-mono text-xs">{e.endpoint}</code>
+                                        <span className="text-muted-foreground">{e.count} calls</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
 
