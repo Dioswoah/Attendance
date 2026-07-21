@@ -22,7 +22,8 @@ import {
     Sparkles,
     MapPin,
     ShieldAlert,
-    HardHat
+    HardHat,
+    Wallet
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -100,6 +101,9 @@ export default function AdminLayout({
         router.push("/user")
     }
 
+    const currentRoles = (session?.user as any)?.roles || []
+    const isAdmin = currentRoles.includes("ADMIN")
+
     const navItems = [
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
         { href: "/admin/employees", label: "Staff", icon: Users },
@@ -111,6 +115,7 @@ export default function AdminLayout({
         { href: "/admin/user-activity", label: "User Activity", icon: ScrollText },
         { href: "/admin/biometric", label: "Biometric", icon: Fingerprint },
         { href: "/admin/technicians", label: "Technicians", icon: HardHat },
+        ...(isAdmin ? [{ href: "/admin/xero", label: "Xero", icon: Wallet }] : []),
         { href: "/admin/ai-insights", label: "AI Insights", icon: Sparkles },
         { href: "/admin/self-check", label: "Self-Check", icon: ShieldAlert },
         { href: "/admin/reports", label: "Export", icon: FileText },

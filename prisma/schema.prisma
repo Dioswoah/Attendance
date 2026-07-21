@@ -57,6 +57,7 @@ model User {
   secondaryDepartments Department[]        @relation("UserSecondaryDepartments")
   leaveHistoryActed    LeaveRequestHistory[] @relation("LeaveHistoryActor")
   xeroLeaveBalances    XeroLeaveBalance[]
+  xeroLeaveSyncLogs    XeroLeaveSyncLog[]
   selfCheckRuns             SelfCheckRun[]
   selfCheckFindings         SelfCheckFinding[] @relation("SelfCheckFindingUser")
   selfCheckFindingsResolved SelfCheckFinding[] @relation("SelfCheckFindingResolver")
@@ -431,17 +432,36 @@ model ActivityLog {
 }
 
 model XeroLeaveBalance {
-  id        String   @id @default(cuid())
-  userId    String
-  xeroId    String?
-  leaveName String
-  hours     Float
-  syncedAt  DateTime @default(now()) @updatedAt
+  id           String   @id @default(cuid())
+  userId       String
+  xeroId       String?
+  xeroTenantId String?
+  leaveName    String
+  hours        Float
+  syncedAt     DateTime @default(now()) @updatedAt
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, leaveName])
   @@index([userId])
+}
+
+// Append-only history of every Xero leave-balance fetch (never overwritten,
+// unlike XeroLeaveBalance which holds only the current value per staff/leave type).
+model XeroLeaveSyncLog {
+  id           String   @id @default(cuid())
+  userId       String
+  xeroId       String?
+  xeroTenantId String?
+  leaveName    String
+  hours        Float
+  fetchedAt    DateTime @default(now())
+  triggeredBy  String?  // "cron" or the admin userId who clicked "Refresh from Xero"
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fetchedAt])
 }
 
 enum SelfCheckStatus {

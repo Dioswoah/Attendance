@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { xeroFetch, getXeroToken } from '@/lib/xero'
 
-export async function syncXeroLeaveBalances(): Promise<{ synced: number; skipped: number; error?: string }> {
+export async function syncXeroLeaveBalances(triggeredBy: string = 'cron'): Promise<{ synced: number; skipped: number; error?: string }> {
     // Verify Xero is connected before doing anything
     try {
         await getXeroToken()
@@ -44,7 +44,8 @@ export async function syncXeroLeaveBalances(): Promise<{ synced: number; skipped
 
         if (!leaveBalances.length) { skipped++; continue }
 
-        // Upsert each leave type balance
+        // Upsert the current-state row, and separately append a history row —
+        // the log is never overwritten so past balances stay visible.
         await Promise.all(
             leaveBalances.map(lb =>
                 prisma.xeroLeaveBalance.upsert({
@@ -54,6 +55,15 @@ export async function syncXeroLeaveBalances(): Promise<{ synced: number; skipped
                 })
             )
         )
+        await prisma.xeroLeaveSyncLog.createMany({
+            data: leaveBalances.map(lb => ({
+                userId: user.id,
+                xeroId: xeroMatch.EmployeeID,
+                leaveName: lb.name,
+                hours: lb.units,
+                triggeredBy,
+            })),
+        })
 
         synced++
     }

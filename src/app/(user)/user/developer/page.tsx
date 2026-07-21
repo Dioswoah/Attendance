@@ -203,6 +203,8 @@ export default function DeveloperPage() {
         )
     }
 
+    const isAdmin = ((session?.user as any)?.roles || []).includes("ADMIN")
+
     return (
         <div className="space-y-6">
             <div>
@@ -217,6 +219,7 @@ export default function DeveloperPage() {
                 <TabsList>
                     <TabsTrigger value="keys">API Keys</TabsTrigger>
                     <TabsTrigger value="docs">API Reference</TabsTrigger>
+                    {isAdmin && <TabsTrigger value="all-keys">All API Keys</TabsTrigger>}
                 </TabsList>
                 <TabsContent value="keys" className="mt-4">
                     <KeysPanel />
@@ -224,6 +227,11 @@ export default function DeveloperPage() {
                 <TabsContent value="docs" className="mt-4">
                     <DocsPanel />
                 </TabsContent>
+                {isAdmin && (
+                    <TabsContent value="all-keys" className="mt-4">
+                        <AllKeysPanel />
+                    </TabsContent>
+                )}
             </Tabs>
         </div>
     )
@@ -393,6 +401,104 @@ function KeysPanel() {
                     )}
                 </DialogContent>
             </Dialog>
+        </Card>
+    )
+}
+
+type AllApiKeyRow = ApiKeyRow & { user: { id: string; name: string | null; email: string } }
+
+// ADMIN-only oversight of every developer's API keys (never exposes hashes/plaintext).
+function AllKeysPanel() {
+    const [keys, setKeys] = useState<AllApiKeyRow[]>([])
+    const [loading, setLoading] = useState(true)
+    const [revokingId, setRevokingId] = useState<string | null>(null)
+
+    const load = useCallback(async () => {
+        setLoading(true)
+        try {
+            const res = await fetch("/api/developer/keys/all")
+            const data = await res.json()
+            setKeys(data.keys || [])
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
+    useEffect(() => { load() }, [load])
+
+    const revokeKey = async (id: string) => {
+        setRevokingId(id)
+        try {
+            await fetch(`/api/developer/keys/${id}`, { method: "DELETE" })
+            await load()
+        } finally {
+            setRevokingId(null)
+        }
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>All API Keys</CardTitle>
+                <CardDescription>
+                    Every key across all developer-role staff — oversight only, keys themselves are never shown.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {loading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : keys.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-6 text-center">No API keys have been created yet.</p>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Owner</TableHead>
+                                <TableHead>Name</TableHead>
+                                <TableHead>Key</TableHead>
+                                <TableHead>Created</TableHead>
+                                <TableHead>Last used</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {keys.map((k) => (
+                                <TableRow key={k.id}>
+                                    <TableCell>
+                                        <p className="font-medium">{k.user.name || "—"}</p>
+                                        <p className="text-xs text-muted-foreground">{k.user.email}</p>
+                                    </TableCell>
+                                    <TableCell className="font-medium">{k.name}</TableCell>
+                                    <TableCell className="font-mono text-xs">{k.keyPrefix}…</TableCell>
+                                    <TableCell>{new Date(k.createdAt).toLocaleDateString()}</TableCell>
+                                    <TableCell>{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : "Never"}</TableCell>
+                                    <TableCell>
+                                        {k.revokedAt
+                                            ? <Badge variant="secondary">Revoked</Badge>
+                                            : <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        {!k.revokedAt && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => revokeKey(k.id)}
+                                                disabled={revokingId === k.id}
+                                                title="Revoke key"
+                                            >
+                                                {revokingId === k.id
+                                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                    : <Trash2 className="h-4 w-4 text-destructive" />}
+                                            </Button>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
+            </CardContent>
         </Card>
     )
 }
