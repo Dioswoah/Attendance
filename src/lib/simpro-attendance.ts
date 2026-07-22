@@ -96,9 +96,11 @@ async function buildDbTechnicianList(includeArchived: boolean): Promise<TechEntr
         where: {
             isTechnician: true,
             deletedAt: null,
-            ...(includeArchived ? {} : { technicianArchivedAt: null }),
+            // Archiving a technician also archives the staff member, so either
+            // flag hides them from the default board (shown under includeArchived).
+            ...(includeArchived ? {} : { technicianArchivedAt: null, isArchived: false }),
         },
-        select: { id: true, name: true, email: true, simproEmployeeId: true, technicianDisplayName: true, technicianArchivedAt: true },
+        select: { id: true, name: true, email: true, simproEmployeeId: true, technicianDisplayName: true, technicianArchivedAt: true, isArchived: true },
     })
     const dbBySimproId = new Set(
         techUsers.map((u) => u.simproEmployeeId).filter((v): v is number => v != null),
@@ -113,7 +115,7 @@ async function buildDbTechnicianList(includeArchived: boolean): Promise<TechEntr
             rsaEmail: u.email,
             displayName: label,
             userId: u.id,
-            archived: Boolean(u.technicianArchivedAt),
+            archived: Boolean(u.technicianArchivedAt) || u.isArchived,
         }
     })
 

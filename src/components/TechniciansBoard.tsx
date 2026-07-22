@@ -316,13 +316,13 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
 
     function archiveTech(t: TechDayStatus) {
         if (!t.userId) return
-        if (!window.confirm(`Archive ${t.name} from the Technicians board? They stay a staff member and can be restored later.`)) return
-        void withBusy(t.userId, "Technician archived", () => patchEmployee(t.userId!, { technicianArchivedAt: new Date().toISOString() }))
+        if (!window.confirm(`Archive ${t.name}? This archives them as a staff member too (they move to the archived list) and removes them from this board. Reversible via Show archived → Unarchive.`)) return
+        void withBusy(t.userId, "Technician & staff member archived", () => patchEmployee(t.userId!, { technicianArchivedAt: new Date().toISOString(), isArchived: true }))
     }
 
     function unarchiveTech(t: TechDayStatus) {
         if (!t.userId) return
-        void withBusy(t.userId, "Technician restored", () => patchEmployee(t.userId!, { technicianArchivedAt: null }))
+        void withBusy(t.userId, "Technician & staff member restored", () => patchEmployee(t.userId!, { technicianArchivedAt: null, isArchived: false }))
     }
 
     function deleteTech(t: TechDayStatus) {
