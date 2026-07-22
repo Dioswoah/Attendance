@@ -104,3 +104,70 @@ export async function syncCalendarStatusForUser(opts: {
 
     return { changed: true, status }
 }
+
+/**
+ * Sweep every currently clocked-in user and sync their availability from
+ * Google Calendar. Only clocked-in users are touched (offline stays
+ * attendance-driven), and only accounts with a calendar-scoped refresh token
+ * can be synced server-side — everyone else is skipped harmlessly. Safe to
+ * call from a cron; never throws (individual failures are logged and skipped).
+ */
+export async function syncAllClockedInUsers(): Promise<{ checked: number; synced: number; skipped: number }> {
+    // Distinct users with a live (open) attendance session.
+    const openSessions = await prisma.attendance.findMany({
+        where: { clockOut: null, clockIn: { not: null }, deletedAt: null },
+        select: { userId: true },
+        distinct: ['userId'],
+    })
+    const userIds = openSessions.map((s) => s.userId)
+    if (userIds.length === 0) return { checked: 0, synced: 0, skipped: 0 }
+
+    const users = await prisma.user.findMany({
+        where: { id: { in: userIds }, deletedAt: null },
+        select: {
+            id: true,
+            selectedTimezone: true,
+            availabilityStatus: true,
+            accounts: {
+                where: { refresh_token: { not: null }, scope: { contains: 'calendar' } },
+                select: { access_token: true, refresh_token: true, expires_at: true },
+                take: 1,
+            },
+        },
+    })
+
+    let synced = 0
+    let skipped = 0
+    const limit = 5
+    let idx = 0
+    async function worker() {
+        while (idx < users.length) {
+            const u = users[idx++]
+            const account = u.accounts[0]
+            if (!account) {
+                skipped++
+                continue
+            }
+            try {
+                const accessToken = await getFreshGoogleAccessToken(account)
+                if (!accessToken) {
+                    skipped++
+                    continue
+                }
+                const result = await syncCalendarStatusForUser({
+                    userId: u.id,
+                    accessToken,
+                    timezone: u.selectedTimezone || 'UTC',
+                    currentStatus: u.availabilityStatus,
+                })
+                if (result.changed) synced++
+            } catch (e) {
+                console.error(`[StatusSync] failed for user ${u.id}:`, e)
+                skipped++
+            }
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, users.length) }, worker))
+
+    return { checked: users.length, synced, skipped }
+}

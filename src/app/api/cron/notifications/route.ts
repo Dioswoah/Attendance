@@ -348,6 +348,20 @@ export async function GET(request: Request) {
         await cleanupOldSessions();
         await cleanupDuplicateBreaks();
 
+        // Calendar → availability sync for all clocked-in users (folded in here
+        // instead of a separate scheduler job — Marc, 2026-07-22). Gated by its
+        // own flag and fully isolated: a failure here must never break the
+        // attendance-monitor cron.
+        if (process.env.CALENDAR_STATUS_SYNC_ENABLED === 'true') {
+            try {
+                const { syncAllClockedInUsers } = await import("@/lib/status-sync");
+                const r = await syncAllClockedInUsers();
+                console.log(`[StatusSync] cron sweep: checked=${r.checked} synced=${r.synced} skipped=${r.skipped}`);
+            } catch (e) {
+                console.error("[StatusSync] cron sweep failed:", e);
+            }
+        }
+
         return NextResponse.json({ success: true, message: "Cron jobs executed successfully." });
 
     } catch (error) {
