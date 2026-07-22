@@ -28,7 +28,11 @@ export async function GET(request: Request) {
         }
         const date = dateParam || sydneyToday()
 
-        const technicians = await getTechDayStatuses(date)
+        // Archived technicians are an admin-only view (used by the board's
+        // "Show archived" toggle to offer un-archive).
+        const includeArchived = searchParams.get('includeArchived') === '1' && roles.includes('ADMIN')
+
+        const technicians = await getTechDayStatuses(date, undefined, { includeArchived })
 
         // Piggy-back the (flag-gated) clock-in processor for today's data so the
         // feature works even before a Cloud Scheduler job / webhook is set up.

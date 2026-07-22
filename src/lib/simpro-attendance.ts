@@ -33,10 +33,12 @@ export function sydneyToday(): string {
 export type SimproMobileStatus = 'NO_SCHEDULE' | 'NOT_STARTED' | 'TRAVELLING' | 'ON_SITE' | 'COMPLETED' | 'ON_LEAVE'
 
 export interface TechDayStatus {
-    simproEmployeeId: number
+    simproEmployeeId: number | null // null for manually-added technicians (no simPRO link)
     name: string
     rsaEmail: string
     userId: string | null
+    canManage: boolean // true when a mutable RSA User backs this row (edit name / attendance / archive / delete)
+    archived: boolean // technicianArchivedAt is set (only ever true when includeArchived was requested)
     jobCount: number
     firstJob: {
         companyId: number
@@ -67,7 +69,60 @@ export interface TechDayStatus {
         clockInAt: string | null
         clockOutAt: string | null
         source: string | null
+        attendanceId: string | null // the picked Attendance row id, for inline admin edit/clear
     }
+}
+
+// The effective technician the board renders — either a static roster entry or
+// a DB-flagged User (manual or migrated). `simproEmployeeId` is null for a
+// manually-added tech; `userId` is pre-resolved for DB-driven records.
+interface TechEntry {
+    simproEmployeeId: number | null
+    simproName: string
+    rsaEmail: string
+    displayName: string
+    userId: string | null
+    archived: boolean
+}
+
+/**
+ * DB-driven technician list for the board: every User flagged isTechnician,
+ * plus any static-roster entry not yet represented in the DB (so nobody who is
+ * visible today disappears before the backfill/link runs). Archived techs are
+ * excluded unless includeArchived is set.
+ */
+async function buildDbTechnicianList(includeArchived: boolean): Promise<TechEntry[]> {
+    const techUsers = await prisma.user.findMany({
+        where: {
+            isTechnician: true,
+            deletedAt: null,
+            ...(includeArchived ? {} : { technicianArchivedAt: null }),
+        },
+        select: { id: true, name: true, email: true, simproEmployeeId: true, technicianDisplayName: true, technicianArchivedAt: true },
+    })
+    const dbBySimproId = new Set(
+        techUsers.map((u) => u.simproEmployeeId).filter((v): v is number => v != null),
+    )
+    const dbByEmail = new Set(techUsers.map((u) => u.email.toLowerCase()))
+
+    const fromDb: TechEntry[] = techUsers.map((u) => {
+        const label = u.technicianDisplayName ?? u.name ?? u.email
+        return {
+            simproEmployeeId: u.simproEmployeeId ?? null,
+            simproName: label,
+            rsaEmail: u.email,
+            displayName: label,
+            userId: u.id,
+            archived: Boolean(u.technicianArchivedAt),
+        }
+    })
+
+    // Read-only supplement: roster entries no DB technician covers yet.
+    const supplement: TechEntry[] = SIMPRO_FIELD_ROSTER
+        .filter((r) => !dbBySimproId.has(r.simproEmployeeId) && !dbByEmail.has(r.rsaEmail.toLowerCase()))
+        .map((r) => ({ ...r, userId: null, archived: false }))
+
+    return [...fromDb, ...supplement]
 }
 
 function parseMobileStatus(message: string): Exclude<SimproMobileStatus, 'NO_SCHEDULE' | 'NOT_STARTED'> | null {
@@ -123,9 +178,19 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
  * refresh specific tech(s) (e.g. a webhook targeting one job) can pass a
  * narrower subset to skip fetching/scanning everyone else.
  */
-export async function getTechDayStatuses(date?: string, roster: SimproRosterEntry[] = SIMPRO_FIELD_ROSTER): Promise<TechDayStatus[]> {
+export async function getTechDayStatuses(
+    date?: string,
+    roster?: SimproRosterEntry[],
+    opts?: { includeArchived?: boolean },
+): Promise<TechDayStatus[]> {
     if (!isSimproConfigured()) throw new Error('simPRO is not configured on this deployment')
     const day = date || sydneyToday()
+
+    // When an explicit roster subset is passed (webhook/sweep targeting specific
+    // simPRO techs) honour it as-is; otherwise the board is DB-driven.
+    const effectiveTechs: TechEntry[] = roster
+        ? roster.map((r) => ({ ...r, userId: null, archived: false }))
+        : await buildDbTechnicianList(opts?.includeArchived ?? false)
 
     // 1) All schedules for the day across both companies, grouped per tech.
     const perCompany = await Promise.all(
@@ -149,12 +214,16 @@ export async function getTechDayStatuses(date?: string, roster: SimproRosterEntr
         }
     }
 
-    // 2) RSA users + today's attendance for the whole roster in two queries.
+    // 2) RSA users + today's attendance for the effective tech list in two queries.
+    const techUserIds = effectiveTechs.map((t) => t.userId).filter((v): v is string => v != null)
+    const techSimproIds = effectiveTechs.map((t) => t.simproEmployeeId).filter((v): v is number => v != null)
+    const techEmails = effectiveTechs.map((t) => t.rsaEmail)
     const users = await prisma.user.findMany({
         where: {
             OR: [
-                { simproEmployeeId: { in: roster.map((r) => r.simproEmployeeId) } },
-                { email: { in: roster.map((r) => r.rsaEmail), mode: 'insensitive' } },
+                { id: { in: techUserIds } },
+                { simproEmployeeId: { in: techSimproIds } },
+                { email: { in: techEmails, mode: 'insensitive' } },
             ],
             deletedAt: null,
         },
@@ -164,7 +233,7 @@ export async function getTechDayStatuses(date?: string, roster: SimproRosterEntr
     const attendanceRows = await prisma.attendance.findMany({
         where: { userId: { in: users.map((u) => u.id) }, date: targetDate, deletedAt: null, clockIn: { not: null } },
         orderBy: { clockIn: 'asc' },
-        select: { userId: true, clockIn: true, clockOut: true, source: true },
+        select: { id: true, userId: true, clockIn: true, clockOut: true, source: true },
     })
     // A tech can end up with more than one attendance row for the same day
     // (a stray/incorrect session gets closed, then a fresh one is opened) —
@@ -201,10 +270,11 @@ export async function getTechDayStatuses(date?: string, roster: SimproRosterEntr
     })
     const leaveByUserId = new Map(leaveRows.map((l) => [l.userId, l.type]))
 
-    // 3) Resolve each roster tech's first job, then fetch its details + timeline.
-    const statuses = await mapWithConcurrency(roster, 5, async (tech): Promise<TechDayStatus> => {
+    // 3) Resolve each tech's first job, then fetch its details + timeline.
+    const statuses = await mapWithConcurrency(effectiveTechs, 5, async (tech): Promise<TechDayStatus> => {
         const user =
-            users.find((u) => u.simproEmployeeId === tech.simproEmployeeId) ||
+            (tech.userId ? users.find((u) => u.id === tech.userId) : undefined) ||
+            (tech.simproEmployeeId != null ? users.find((u) => u.simproEmployeeId === tech.simproEmployeeId) : undefined) ||
             users.find((u) => u.email.toLowerCase() === tech.rsaEmail.toLowerCase()) ||
             null
         const att = user ? latestAttendanceByUserId.get(user.id) : undefined
@@ -213,16 +283,21 @@ export async function getTechDayStatuses(date?: string, roster: SimproRosterEntr
             clockInAt: att?.clockIn?.toISOString() ?? null,
             clockOutAt: att?.clockOut?.toISOString() ?? null,
             source: att?.source ?? null,
+            attendanceId: att?.id ?? null,
         }
+        const canManage = Boolean(user)
 
         const leave = user && leaveByUserId.has(user.id) ? { name: leaveByUserId.get(user.id) as string } : null
-        const jobs = (byTech.get(tech.simproEmployeeId) || []).sort((a, b) =>
-            (firstBlockStart(a.schedule) || '9').localeCompare(firstBlockStart(b.schedule) || '9'),
-        )
+        // Manually-added techs (no simPRO link) never have simPRO jobs; skip the fetch.
+        const jobs = tech.simproEmployeeId != null
+            ? (byTech.get(tech.simproEmployeeId) || []).sort((a, b) =>
+                (firstBlockStart(a.schedule) || '9').localeCompare(firstBlockStart(b.schedule) || '9'),
+            )
+            : []
         if (jobs.length === 0) {
             return {
                 simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
-                userId: user?.id ?? null, jobCount: 0, firstJob: null,
+                userId: user?.id ?? null, canManage, archived: tech.archived, jobCount: 0, firstJob: null,
                 simproStatus: leave ? 'ON_LEAVE' : 'NO_SCHEDULE',
                 simproStatusAt: null, simproStatusMessage: null, simproFirstStartedAt: null, lastJob: null, leave, rsa,
             }
@@ -362,7 +437,7 @@ export async function getTechDayStatuses(date?: string, roster: SimproRosterEntr
 
         return {
             simproEmployeeId: tech.simproEmployeeId, name: tech.displayName, rsaEmail: tech.rsaEmail,
-            userId: user?.id ?? null, jobCount: jobs.length,
+            userId: user?.id ?? null, canManage, archived: tech.archived, jobCount: jobs.length,
             firstJob: {
                 companyId: first.companyId, jobId: first.jobId, reference: first.reference,
                 startTime: blocks[0]?.ISO8601StartTime ?? null,

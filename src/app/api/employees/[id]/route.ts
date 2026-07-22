@@ -15,10 +15,27 @@ export async function PATCH(
         const session = await auth() as any
         console.log(`Updating employee ${id} with body:`, JSON.stringify(body, null, 2))
 
-        const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime, secondaryDepartmentIds, workingDays } = body
+        const { name, email, departmentId, roles, managerId, isArchived, location, shiftStartTime, secondaryDepartmentIds, workingDays, isTechnician, technicianDisplayName, technicianArchivedAt } = body
         const updateData: any = {}
         if (name !== undefined) updateData.name = name
         if (email !== undefined) updateData.email = email
+
+        // Technician-board fields are admin-only (add a server-side gate scoped to
+        // just these fields — the rest of this route mirrors existing behaviour).
+        const touchesTechnician = isTechnician !== undefined || technicianDisplayName !== undefined || technicianArchivedAt !== undefined
+        if (touchesTechnician) {
+            const actorRoles: string[] = session?.user?.roles || []
+            if (!actorRoles.includes('ADMIN')) {
+                return NextResponse.json({ error: 'Only admins can manage technicians' }, { status: 403 })
+            }
+            if (isTechnician !== undefined) updateData.isTechnician = isTechnician === true
+            if (technicianDisplayName !== undefined) {
+                updateData.technicianDisplayName = technicianDisplayName ? String(technicianDisplayName).trim() : null
+            }
+            if (technicianArchivedAt !== undefined) {
+                updateData.technicianArchivedAt = technicianArchivedAt ? new Date(technicianArchivedAt) : null
+            }
+        }
 
         // Use relation updates instead of scalars as the client seems out of sync
         if (departmentId !== undefined) {

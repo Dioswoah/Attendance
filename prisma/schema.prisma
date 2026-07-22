@@ -23,6 +23,9 @@ model User {
   roles               Role[]              @default([USER])
   isArchived          Boolean             @default(false)
   deletedAt           DateTime?
+  isTechnician          Boolean           @default(false)
+  technicianDisplayName String?
+  technicianArchivedAt  DateTime?
   availabilityStatus  UserStatus          @default(AVAILABLE)
   employmentLocation  String?             @map("location")
   customStatusMessage String?

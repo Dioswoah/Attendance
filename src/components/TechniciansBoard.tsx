@@ -11,16 +11,25 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import {
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 import {
     HardHat, RefreshCw, Search, Link2, AlertCircle,
+    MoreHorizontal, Pencil, Clock, Archive, ArchiveRestore, Trash2,
 } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 interface TechDayStatus {
-    simproEmployeeId: number
+    simproEmployeeId: number | null
     name: string
     rsaEmail: string
     userId: string | null
+    canManage: boolean
+    archived: boolean
     jobCount: number
     firstJob: {
         companyId: number
@@ -50,6 +59,7 @@ interface TechDayStatus {
         clockInAt: string | null
         clockOutAt: string | null
         source: string | null
+        attendanceId: string | null
     }
 }
 
@@ -99,6 +109,31 @@ function fmtTime(iso: string | null, timeZone: string): string {
     }
 }
 
+// "HH:mm" in the given IANA tz, for prefilling <input type="time">.
+function toHHmm(iso: string | null, timeZone: string): string {
+    if (!iso) return ""
+    try {
+        return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone })
+    } catch {
+        return ""
+    }
+}
+
+// Turn a wall-clock date + "HH:mm" in a tz into a real instant (mirrors the
+// Manual Entry admin editor so times land at the same UTC offset).
+function parseTimeInTimezone(dateStr: string, timeStr: string, tz: string): Date {
+    try {
+        const part = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" })
+            .formatToParts(new Date(`${dateStr}T12:00:00`))
+            .find((p) => p.type === "timeZoneName")
+        let offset = part?.value.replace("GMT", "") || "+00:00"
+        if (offset === "") offset = "Z"
+        return new Date(`${dateStr}T${timeStr}:00${offset}`)
+    } catch {
+        return new Date(`${dateStr}T${timeStr}:00`)
+    }
+}
+
 // showLinkTools: admin portal gets the "Link simPRO Staff" button, unlinked
 // warnings and the unlinked stat card; the user-portal (OPERATIONS) view is
 // read-only field status.
@@ -111,9 +146,20 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
     const [statusFilter, setStatusFilter] = useState("ALL")
     const [linking, setLinking] = useState(false)
     const [linkResult, setLinkResult] = useState<string | null>(null)
+    const [includeArchived, setIncludeArchived] = useState(false)
+    const [busyId, setBusyId] = useState<string | null>(null)
+
+    // Edit-name dialog
+    const [nameDialog, setNameDialog] = useState<{ userId: string; original: string } | null>(null)
+    const [nameInput, setNameInput] = useState("")
+    // Edit-attendance dialog
+    const [attDialog, setAttDialog] = useState<{ userId: string; attendanceId: string | null; name: string } | null>(null)
+    const [clockInInput, setClockInInput] = useState("")
+    const [clockOutInput, setClockOutInput] = useState("")
+    const [savingDialog, setSavingDialog] = useState(false)
 
     const { data, error, isLoading, isValidating, mutate } = useSWR<TechStatusResponse>(
-        "/api/simpro/tech-status",
+        `/api/simpro/tech-status${includeArchived ? "?includeArchived=1" : ""}`,
         fetcher,
         { refreshInterval: 60_000, revalidateOnFocus: true },
     )
@@ -163,6 +209,128 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
         }
     }
 
+    async function patchEmployee(userId: string, body: Record<string, unknown>) {
+        const res = await fetch(`/api/employees/${userId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+            const d = await res.json().catch(() => null)
+            throw new Error(d?.error || `HTTP ${res.status}`)
+        }
+    }
+
+    async function withBusy(userId: string, label: string, fn: () => Promise<void>) {
+        setBusyId(userId)
+        try {
+            await fn()
+            await mutate()
+            toast.success(label)
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Action failed")
+        } finally {
+            setBusyId(null)
+        }
+    }
+
+    function openNameDialog(t: TechDayStatus) {
+        if (!t.userId) return
+        setNameDialog({ userId: t.userId, original: t.name })
+        setNameInput(t.name)
+    }
+
+    function openAttendanceDialog(t: TechDayStatus) {
+        if (!t.userId) return
+        setAttDialog({ userId: t.userId, attendanceId: t.rsa.attendanceId, name: t.name })
+        setClockInInput(toHHmm(t.rsa.clockInAt, userTimeZone))
+        setClockOutInput(toHHmm(t.rsa.clockOutAt, userTimeZone))
+    }
+
+    async function saveName() {
+        if (!nameDialog) return
+        const value = nameInput.trim()
+        if (!value) { toast.error("Name can't be empty"); return }
+        setSavingDialog(true)
+        try {
+            await patchEmployee(nameDialog.userId, { technicianDisplayName: value })
+            await mutate()
+            toast.success("Technician name updated")
+            setNameDialog(null)
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to update name")
+        } finally {
+            setSavingDialog(false)
+        }
+    }
+
+    async function saveAttendance() {
+        if (!attDialog) return
+        const day = data?.date
+        if (!day) { toast.error("No active date"); return }
+        if (!clockInInput) { toast.error("Clock-in time is required"); return }
+        setSavingDialog(true)
+        try {
+            const clockIn = parseTimeInTimezone(day, clockInInput, userTimeZone).toISOString()
+            const clockOut = clockOutInput ? parseTimeInTimezone(day, clockOutInput, userTimeZone).toISOString() : null
+            if (attDialog.attendanceId) {
+                const res = await fetch(`/api/attendance/${attDialog.attendanceId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ clockIn, clockOut }),
+                })
+                if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`)
+            } else {
+                const res = await fetch(`/api/attendance`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: attDialog.userId, date: day, clockIn, clockOut, mode: "OFFICE", locationDetails: "Manual (Technicians board)" }),
+                })
+                if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`)
+            }
+            await mutate()
+            toast.success("RSA attendance updated")
+            setAttDialog(null)
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to update attendance")
+        } finally {
+            setSavingDialog(false)
+        }
+    }
+
+    async function clearAttendance() {
+        if (!attDialog?.attendanceId) { setAttDialog(null); return }
+        setSavingDialog(true)
+        try {
+            const res = await fetch(`/api/attendance/${attDialog.attendanceId}`, { method: "DELETE" })
+            if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`)
+            await mutate()
+            toast.success("RSA attendance cleared")
+            setAttDialog(null)
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to clear attendance")
+        } finally {
+            setSavingDialog(false)
+        }
+    }
+
+    function archiveTech(t: TechDayStatus) {
+        if (!t.userId) return
+        if (!window.confirm(`Archive ${t.name} from the Technicians board? They stay a staff member and can be restored later.`)) return
+        void withBusy(t.userId, "Technician archived", () => patchEmployee(t.userId!, { technicianArchivedAt: new Date().toISOString() }))
+    }
+
+    function unarchiveTech(t: TechDayStatus) {
+        if (!t.userId) return
+        void withBusy(t.userId, "Technician restored", () => patchEmployee(t.userId!, { technicianArchivedAt: null }))
+    }
+
+    function deleteTech(t: TechDayStatus) {
+        if (!t.userId) return
+        if (!window.confirm(`Remove ${t.name} from the Technicians board? This does NOT delete the staff member — it just takes them off this board.`)) return
+        void withBusy(t.userId, "Technician removed from board", () => patchEmployee(t.userId!, { isTechnician: false }))
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -181,6 +349,16 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    {showLinkTools && (
+                        <Button
+                            variant={includeArchived ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setIncludeArchived((v) => !v)}
+                        >
+                            <Archive className="h-4 w-4 mr-2" />
+                            {includeArchived ? "Hide archived" : "Show archived"}
+                        </Button>
+                    )}
                     {showLinkTools && (
                         <Button variant="outline" size="sm" onClick={runLinkStaff} disabled={linking}>
                             <Link2 className={cn("h-4 w-4 mr-2", linking && "animate-spin")} />
@@ -254,14 +432,20 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                         <th className="py-2 pr-4">Customer / Site</th>
                                         <th className="py-2 pr-4">Scheduled</th>
                                         <th className="py-2 pr-4">RSA Attendance</th>
+                                        {showLinkTools && <th className="py-2 pr-2 text-right">Actions</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {technicians.map((t) => {
+                                        const rowKey = t.userId ?? (t.simproEmployeeId != null ? `simpro-${t.simproEmployeeId}` : t.rsaEmail)
                                         return (
-                                            <tr key={t.simproEmployeeId} className="border-b last:border-0 hover:bg-muted/40">
+                                            <tr key={rowKey} className={cn("border-b last:border-0 hover:bg-muted/40", t.archived && "opacity-60")}>
                                                 <td className="py-2.5 pr-4">
-                                                    <div className="font-medium">{t.name}</div>
+                                                    <div className="font-medium flex items-center gap-2">
+                                                        {t.name}
+                                                        {t.archived && <Badge variant="outline" className="text-[10px] text-slate-500">Archived</Badge>}
+                                                        {t.simproEmployeeId == null && <Badge variant="outline" className="text-[10px] text-slate-500">Manual</Badge>}
+                                                    </div>
                                                     {showLinkTools && !t.userId && (
                                                         <div className="text-xs text-amber-600">not linked to RSA user</div>
                                                     )}
@@ -317,11 +501,47 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                                         <span className="text-muted-foreground text-xs">Not clocked in</span>
                                                     )}
                                                 </td>
+                                                {showLinkTools && (
+                                                    <td className="py-2.5 pr-2 text-right whitespace-nowrap">
+                                                        {t.canManage && t.userId ? (
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={busyId === t.userId}>
+                                                                        <MoreHorizontal className={cn("h-4 w-4", busyId === t.userId && "animate-pulse")} />
+                                                                    </Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end">
+                                                                    <DropdownMenuItem onClick={() => openNameDialog(t)}>
+                                                                        <Pencil className="h-4 w-4 mr-2" /> Edit name
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem onClick={() => openAttendanceDialog(t)}>
+                                                                        <Clock className="h-4 w-4 mr-2" /> Edit RSA attendance
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuSeparator />
+                                                                    {t.archived ? (
+                                                                        <DropdownMenuItem onClick={() => unarchiveTech(t)}>
+                                                                            <ArchiveRestore className="h-4 w-4 mr-2" /> Unarchive
+                                                                        </DropdownMenuItem>
+                                                                    ) : (
+                                                                        <DropdownMenuItem onClick={() => archiveTech(t)}>
+                                                                            <Archive className="h-4 w-4 mr-2" /> Archive
+                                                                        </DropdownMenuItem>
+                                                                    )}
+                                                                    <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => deleteTech(t)}>
+                                                                        <Trash2 className="h-4 w-4 mr-2" /> Remove from board
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">—</span>
+                                                        )}
+                                                    </td>
+                                                )}
                                             </tr>
                                         )
                                     })}
                                     {technicians.length === 0 && (
-                                        <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">No technicians match.</td></tr>
+                                        <tr><td colSpan={showLinkTools ? 6 : 5} className="py-8 text-center text-muted-foreground">No technicians match.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -329,6 +549,60 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                     )}
                 </CardContent>
             </Card>
+
+            {/* Edit technician name */}
+            <Dialog open={!!nameDialog} onOpenChange={(o) => !o && setNameDialog(null)}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Edit technician name</DialogTitle>
+                        <DialogDescription>Board display name only — does not change the staff member&apos;s legal name.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-2">
+                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Display name</Label>
+                        <Input value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="Technician name" />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setNameDialog(null)} disabled={savingDialog}>Cancel</Button>
+                        <Button onClick={saveName} disabled={savingDialog}>Save</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit RSA attendance */}
+            <Dialog open={!!attDialog} onOpenChange={(o) => !o && setAttDialog(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Edit RSA attendance</DialogTitle>
+                        <DialogDescription>
+                            {attDialog?.name} — {data?.date}. Times are in your timezone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-2 gap-4 py-2">
+                        <div className="space-y-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Clock In</Label>
+                            <Input type="time" value={clockInInput} onChange={(e) => setClockInInput(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Clock Out</Label>
+                            <Input type="time" value={clockOutInput} onChange={(e) => setClockOutInput(e.target.value)} />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2 sm:justify-between">
+                        <Button
+                            variant="ghost"
+                            className="text-red-600 hover:text-red-600"
+                            onClick={clearAttendance}
+                            disabled={savingDialog || !attDialog?.attendanceId}
+                        >
+                            <Trash2 className="h-4 w-4 mr-2" /> Clear
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setAttDialog(null)} disabled={savingDialog}>Cancel</Button>
+                            <Button onClick={saveAttendance} disabled={savingDialog}>Save</Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

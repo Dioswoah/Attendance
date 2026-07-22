@@ -36,7 +36,7 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json()
-        const { name, email, departmentId, roles, managerId, location, shiftStartTime, shiftEndTime, secondaryDepartmentIds } = body
+        const { name, email, departmentId, roles, managerId, location, shiftStartTime, shiftEndTime, secondaryDepartmentIds, isTechnician } = body
         if (Array.isArray(roles)) {
             const validRoles = ['ADMIN', 'MANAGER', 'OPERATIONS', 'VIEWER', 'USER']
             const invalid = roles.filter((r: string) => !validRoles.includes(r))
@@ -49,6 +49,7 @@ export async function POST(req: Request) {
                 name,
                 email: email.toLowerCase(),
                 roles: roles || ['USER'],
+                isTechnician: isTechnician === true,
                 employmentLocation: location || null,
                 shiftStartTime: shiftStartTime || "09:00",
                 shiftEndTime: shiftEndTime || "17:00",

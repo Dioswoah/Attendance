@@ -30,6 +30,7 @@ export default function EmployeesPage() {
     const [newDeptId, setNewDeptId] = useState("")
     const [newSecondaryDeptIds, setNewSecondaryDeptIds] = useState<string[]>([])
     const [newRoles, setNewRoles] = useState<string[]>(["USER"])
+    const [newIsTechnician, setNewIsTechnician] = useState(false)
     const [newManagerId, setNewManagerId] = useState("")
     const [newLocation, setNewLocation] = useState("")
     const [newShiftStart, setNewShiftStart] = useState("09:00")
@@ -43,6 +44,7 @@ export default function EmployeesPage() {
     const [editDeptId, setEditDeptId] = useState("")
     const [editSecondaryDeptIds, setEditSecondaryDeptIds] = useState<string[]>([])
     const [editRoles, setEditRoles] = useState<string[]>([])
+    const [editIsTechnician, setEditIsTechnician] = useState(false)
     const [editManagerId, setEditManagerId] = useState("")
     const [editLocation, setEditLocation] = useState("")
     const [editShiftStart, setEditShiftStart] = useState("09:00")
@@ -176,6 +178,7 @@ export default function EmployeesPage() {
                     departmentId: newDeptId || null,
                     secondaryDepartmentIds: newSecondaryDeptIds,
                     roles: newRoles,
+                    isTechnician: newIsTechnician,
                     managerId: newManagerId && newManagerId !== "unassigned" ? newManagerId : null,
                     location: newLocation,
                     shiftStartTime: newShiftStart,
@@ -190,6 +193,7 @@ export default function EmployeesPage() {
                 setNewDeptId("")
                 setNewSecondaryDeptIds([])
                 setNewRoles(["USER"])
+                setNewIsTechnician(false)
                 setNewManagerId("")
                 setNewLocation("")
                 setNewShiftStart("09:00")
@@ -220,6 +224,7 @@ export default function EmployeesPage() {
         setEditShiftStart(emp.shiftStartTime || "09:00")
         setEditShiftEnd(emp.shiftEndTime || "17:00")
         setEditWorkingDays(emp.workingDays ? emp.workingDays.split(',') : ["MON","TUE","WED","THU","FRI"])
+        setEditIsTechnician(emp.isTechnician === true)
         setIsEditOpen(true)
     }
 
@@ -241,7 +246,8 @@ export default function EmployeesPage() {
                     location: editLocation,
                     shiftStartTime: editShiftStart,
                     shiftEndTime: editShiftEnd,
-                    workingDays: editWorkingDays
+                    workingDays: editWorkingDays,
+                    isTechnician: editIsTechnician
                 })
             })
             if (res.ok) {
@@ -829,6 +835,27 @@ export default function EmployeesPage() {
                                         ))}
                                     </div>
                                 </div>
+
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">New Technician?</Label>
+                                    <div className="flex items-center gap-2 p-2.5 bg-muted/30 rounded-lg border border-border min-h-11">
+                                        <button
+                                            type="button"
+                                            onClick={() => setNewIsTechnician(true)}
+                                            className={`flex-1 h-8 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${newIsTechnician ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground border border-border'}`}
+                                        >
+                                            Yes
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setNewIsTechnician(false)}
+                                            className={`flex-1 h-8 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${!newIsTechnician ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground border border-border'}`}
+                                        >
+                                            No
+                                        </button>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground leading-tight">Adds this staff member to the Technicians board.</p>
+                                </div>
                             </div>
                             <Button type="submit" className="w-full h-11 font-bold uppercase tracking-widest text-xs">Create Staff Member</Button>
                         </form>
@@ -1370,6 +1397,27 @@ export default function EmployeesPage() {
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Technician?</Label>
+                                <div className="flex items-center gap-2 p-2.5 bg-muted/30 rounded-lg border border-border min-h-11">
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditIsTechnician(true)}
+                                        className={`flex-1 h-8 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${editIsTechnician ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground border border-border'}`}
+                                    >
+                                        Yes
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditIsTechnician(false)}
+                                        className={`flex-1 h-8 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${!editIsTechnician ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground border border-border'}`}
+                                    >
+                                        No
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground leading-tight">Shows this staff member on the Technicians board.</p>
                             </div>
                         </div>
                         <Button type="submit" disabled={isSaving} className="w-full h-11 font-bold uppercase tracking-widest text-xs gap-2">
