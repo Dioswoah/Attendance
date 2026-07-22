@@ -912,7 +912,10 @@ export default function UserPortal() {
             // Only sync if the tab is visible to save resources
             if (document.visibilityState === 'visible') {
                 try {
-                    await fetch('/api/calendar/sync', { method: 'POST' })
+                    // Consolidated calendar-status route (single source of truth,
+                    // shared with the server-side cron). Was /api/calendar/sync,
+                    // which raced with this on different logic (Marc, 2026-07-22).
+                    await fetch('/api/user/status/sync', { method: 'POST' })
                     // Refresh data to reflect any status changes
                     fetchDashboardData()
                 } catch (e) {

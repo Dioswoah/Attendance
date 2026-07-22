@@ -243,6 +243,7 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "SIMPRO_POLL_ENABLED=$SIMPRO_POLL_ENABLED" `
     --set-env-vars "ENABLE_CRON=true" `
     --set-env-vars "CRON_SECRET=$CRON_SECRET" `
+    --set-env-vars "CALENDAR_STATUS_SYNC_ENABLED=true" `
     --memory 2Gi `
     --cpu 1 `
     --concurrency 1000 `
