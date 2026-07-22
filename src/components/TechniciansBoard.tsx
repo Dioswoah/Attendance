@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { useSession } from "next-auth/react"
+import { useSSE } from "@/contexts/SSEContext"
 import { getBrowserTimezone } from "@/lib/timezone"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -116,6 +117,13 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
         fetcher,
         { refreshInterval: 60_000, revalidateOnFocus: true },
     )
+
+    // A simPRO webhook clock-in/out broadcasts the same 'attendance' event the
+    // rest of the app uses — revalidate immediately instead of waiting up to
+    // 60s for the next poll (Marc, 2026-07-22).
+    useSSE((payload) => {
+        if (payload.type === "attendance") mutate()
+    })
 
     const technicians = useMemo(() => {
         const list = data?.technicians ?? []

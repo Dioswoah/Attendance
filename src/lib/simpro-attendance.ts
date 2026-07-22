@@ -19,7 +19,7 @@ import {
     type SimproSchedule,
     type SimproTimelineEntry,
 } from '@/lib/simpro'
-import { SIMPRO_FIELD_ROSTER } from '@/lib/simpro-roster'
+import { SIMPRO_FIELD_ROSTER, type SimproRosterEntry } from '@/lib/simpro-roster'
 import { logActivity, updateAttendanceSummary } from '@/lib/db-utils'
 import { invalidateCache, CacheKeys } from '@/lib/cache'
 import { broadcastUpdate } from '@/lib/eventBus'
@@ -118,8 +118,12 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
 /**
  * Live per-technician view for one Sydney date: first job + simPRO mobile
  * status + RSA attendance state. Read-only — safe to call from UI routes.
+ *
+ * `roster` defaults to the full field roster; callers that only need to
+ * refresh specific tech(s) (e.g. a webhook targeting one job) can pass a
+ * narrower subset to skip fetching/scanning everyone else.
  */
-export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]> {
+export async function getTechDayStatuses(date?: string, roster: SimproRosterEntry[] = SIMPRO_FIELD_ROSTER): Promise<TechDayStatus[]> {
     if (!isSimproConfigured()) throw new Error('simPRO is not configured on this deployment')
     const day = date || sydneyToday()
 
@@ -149,8 +153,8 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
     const users = await prisma.user.findMany({
         where: {
             OR: [
-                { simproEmployeeId: { in: SIMPRO_FIELD_ROSTER.map((r) => r.simproEmployeeId) } },
-                { email: { in: SIMPRO_FIELD_ROSTER.map((r) => r.rsaEmail), mode: 'insensitive' } },
+                { simproEmployeeId: { in: roster.map((r) => r.simproEmployeeId) } },
+                { email: { in: roster.map((r) => r.rsaEmail), mode: 'insensitive' } },
             ],
             deletedAt: null,
         },
@@ -198,7 +202,7 @@ export async function getTechDayStatuses(date?: string): Promise<TechDayStatus[]
     const leaveByUserId = new Map(leaveRows.map((l) => [l.userId, l.type]))
 
     // 3) Resolve each roster tech's first job, then fetch its details + timeline.
-    const statuses = await mapWithConcurrency(SIMPRO_FIELD_ROSTER, 5, async (tech): Promise<TechDayStatus> => {
+    const statuses = await mapWithConcurrency(roster, 5, async (tech): Promise<TechDayStatus> => {
         const user =
             users.find((u) => u.simproEmployeeId === tech.simproEmployeeId) ||
             users.find((u) => u.email.toLowerCase() === tech.rsaEmail.toLowerCase()) ||
@@ -402,16 +406,16 @@ export interface SimproClockInResult {
  */
 let sweepChain: Promise<unknown> = Promise.resolve()
 
-export function processSimproClockIns(date?: string): Promise<SimproClockInResult> {
-    const run = sweepChain.then(() => runSimproAttendanceSweep(date))
+export function processSimproClockIns(date?: string, roster?: SimproRosterEntry[]): Promise<SimproClockInResult> {
+    const run = sweepChain.then(() => runSimproAttendanceSweep(date, roster))
     sweepChain = run.then(() => undefined, () => undefined)
     return run
 }
 
-async function runSimproAttendanceSweep(date?: string): Promise<SimproClockInResult> {
+async function runSimproAttendanceSweep(date?: string, roster?: SimproRosterEntry[]): Promise<SimproClockInResult> {
     const day = date || sydneyToday()
     const writeEnabled = process.env.SIMPRO_ATTENDANCE_WRITE === 'true'
-    const statuses = await getTechDayStatuses(day)
+    const statuses = await getTechDayStatuses(day, roster)
     const result: SimproClockInResult = { writeEnabled, date: day, checked: statuses.length, created: 0, clockedOut: 0, skipped: [] }
     if (!writeEnabled) return result
 
@@ -579,4 +583,60 @@ export async function maybeProcessSimproClockIns(minIntervalMs = 4 * 60_000): Pr
     } finally {
         running = false
     }
+}
+
+// Per-job debounce for webhook-triggered targeted sweeps — separate from the
+// full-sweep throttle above, since a burst of job.updated pings for the same
+// job (simPRO can fire several within seconds) shouldn't each kick off a
+// resweep, but a ping for a DIFFERENT tech's job shouldn't wait behind it either.
+const webhookJobDebounce = new Map<string, number>()
+const WEBHOOK_JOB_DEBOUNCE_MS = 15_000
+
+/**
+ * React to one simPRO webhook event. The payload only ever identifies WHICH
+ * job/schedule changed (never what changed about it), so this resolves that
+ * jobID against today's live schedule to find which roster tech(s) — if any
+ * — actually have it, and only refreshes those. A job can be shared by
+ * several techs (e.g. a group "AFTERNOON SAFETY CHECK"), so every match is
+ * refreshed, not just the first. If the payload doesn't identify a job (e.g.
+ * simPRO's subscription test ping) or the job belongs to nobody on the
+ * roster today, this does the minimum necessary — a full debounced sweep for
+ * the former, nothing at all for the latter — instead of resweeping everyone
+ * on every one of the ~1,500 job.updated pings a day (Marc, 2026-07-22).
+ */
+export async function processSimproWebhookEvent(ref: { companyId?: number; jobId?: number } | null | undefined): Promise<void> {
+    if (!ref?.companyId || !ref?.jobId) {
+        await maybeProcessSimproClockIns(30_000)
+        return
+    }
+
+    const debounceKey = `${ref.companyId}:${ref.jobId}`
+    const lastRun = webhookJobDebounce.get(debounceKey) ?? 0
+    if (Date.now() - lastRun < WEBHOOK_JOB_DEBOUNCE_MS) return
+    webhookJobDebounce.set(debounceKey, Date.now())
+    if (webhookJobDebounce.size > 1000) webhookJobDebounce.clear()
+
+    const day = sydneyToday()
+    let schedules: SimproSchedule[]
+    try {
+        schedules = await getSchedulesForDate(ref.companyId, day)
+    } catch (err) {
+        console.error(`[simPRO] webhook schedule lookup failed for company ${ref.companyId}:`, err)
+        return
+    }
+
+    const staffIds = new Set<number>()
+    for (const s of schedules) {
+        if (s.Type !== 'job') continue
+        if (parseInt(s.Reference.split('-')[0], 10) === ref.jobId && s.Staff?.ID) staffIds.add(s.Staff.ID)
+    }
+
+    const matchedRoster = SIMPRO_FIELD_ROSTER.filter((r) => staffIds.has(r.simproEmployeeId))
+    if (matchedRoster.length === 0) {
+        console.log(`[simPRO] webhook targeted: job ${ref.jobId} (company ${ref.companyId}) matches nobody on the roster today — skipped`)
+        return
+    }
+
+    console.log(`[simPRO] webhook targeted: job ${ref.jobId} (company ${ref.companyId}) -> ${matchedRoster.map((r) => r.displayName).join(', ')}`)
+    await processSimproClockIns(day, matchedRoster)
 }

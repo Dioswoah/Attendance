@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { NextResponse } from 'next/server'
-import { maybeProcessSimproClockIns } from '@/lib/simpro-attendance'
+import { processSimproWebhookEvent } from '@/lib/simpro-attendance'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
         }
 
-        let event: { ID?: string; date_triggered?: string } = {}
+        let event: { ID?: string; date_triggered?: string; reference?: { companyID?: number; jobID?: number } } = {}
         try {
             event = JSON.parse(rawBody)
         } catch {
@@ -51,10 +51,11 @@ export async function POST(request: Request) {
         }
         console.log(`[simPRO] webhook received: ${event.ID ?? '(no event id)'} at ${event.date_triggered ?? new Date().toISOString()}`)
 
-        // Respond fast; run the processor with a short debounce in the background.
-        maybeProcessSimproClockIns(30_000).catch((e) =>
-            console.error('[simPRO] webhook-triggered processing failed:', e),
-        )
+        // Respond fast; resolve which tech(s) this job/schedule actually
+        // belongs to today and only refresh those, in the background.
+        processSimproWebhookEvent(
+            event.reference ? { companyId: event.reference.companyID, jobId: event.reference.jobID } : null,
+        ).catch((e) => console.error('[simPRO] webhook-triggered processing failed:', e))
 
         return NextResponse.json({ received: true })
     } catch (error) {
