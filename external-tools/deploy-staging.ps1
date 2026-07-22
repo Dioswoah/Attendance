@@ -295,6 +295,7 @@ gcloud run deploy $SERVICE_NAME `
     --set-env-vars "SIMPRO_WEBHOOK_SECRET=$SIMPRO_WEBHOOK_SECRET" `
     --set-env-vars "SIMPRO_ATTENDANCE_WRITE=$SIMPRO_ATTENDANCE_WRITE" `
     --set-env-vars "SIMPRO_POLL_ENABLED=$SIMPRO_POLL_ENABLED" `
+    --set-env-vars "CALENDAR_STATUS_SYNC_ENABLED=true" `
     --memory 1Gi `
     --cpu 1 `
     --concurrency 500 `
