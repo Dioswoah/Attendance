@@ -22,7 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, History, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit, LogIn, LogOut, MapPin, ChevronDown, ArrowRight, FileEdit, FilePlus2, Paperclip } from "lucide-react"
+import { Search, Check, X, Calendar as CalendarIcon, Clock, AlertCircle, Loader2, ChevronLeft, ChevronRight, Users, LayoutGrid, List, ListChecks, History, CalendarDays, Plus, MessageSquare, Trash2, Filter, Download, Building2, TrendingUp, CheckCircle2, Edit, LogIn, LogOut, MapPin, ChevronDown, ArrowRight, FileEdit, FilePlus2, Paperclip, Upload } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { prepareTimeForExport, formatWithTimezone, getBrowserTimezone } from "@/lib/timezone"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -146,6 +146,7 @@ export default function ManagerControlPage() {
     const [grantLeaveStartTime, setGrantLeaveStartTime] = useState("09:00")
     const [grantLeaveEndTime, setGrantLeaveEndTime] = useState("18:00")
     const [grantLeaveReason, setGrantLeaveReason] = useState("")
+    const [grantLeaveFile, setGrantLeaveFile] = useState<File | null>(null)
     const [isGrantingLeave, setIsGrantingLeave] = useState(false)
     const [leaveFilter, setLeaveFilter] = useState<'all' | 'today'>('all')
 
@@ -616,6 +617,26 @@ export default function ManagerControlPage() {
             })
 
             if (res.ok) {
+                // Optional medical certificate: upload against the new approved
+                // Leave record. Mirrors the Request Leave dialog; a failed upload
+                // never fails the grant itself.
+                if (grantLeaveFile) {
+                    try {
+                        const created = await res.json()
+                        const leaveId = created?.id
+                        if (leaveId) {
+                            const formData = new FormData()
+                            formData.append('file', grantLeaveFile)
+                            formData.append('leaveId', leaveId)
+                            const uploadRes = await fetch('/api/leaves/upload', { method: 'POST', body: formData })
+                            if (!uploadRes.ok) {
+                                toast.warning("Leave granted, but certificate upload failed.")
+                            }
+                        }
+                    } catch {
+                        toast.warning("Leave granted, but certificate upload failed.")
+                    }
+                }
                 toast.success("Leave record created successfully")
                 setGrantLeaveEmpId("")
                 setGrantLeaveStart(format(new Date(), "yyyy-MM-dd"))
@@ -625,6 +646,7 @@ export default function ManagerControlPage() {
                 setGrantLeaveStartTime("09:00")
                 setGrantLeaveEndTime("18:00")
                 setGrantLeaveReason("")
+                setGrantLeaveFile(null)
                 mutateApprovedLeaves()
                 mutateHistoryLeaves()
             } else {
@@ -2808,6 +2830,61 @@ export default function ManagerControlPage() {
                                             className="bg-muted/30 resize-none"
                                             rows={4}
                                         />
+                                    </div>
+
+                                    {/* Medical Certificate (optional) — mirrors the Request Leave dialog */}
+                                    <div className="space-y-2">
+                                        <Label className="flex items-center gap-1.5">
+                                            <Paperclip className="w-3.5 h-3.5" />
+                                            Medical Certificate
+                                            <span className="text-xs text-muted-foreground font-normal ml-1">(optional)</span>
+                                        </Label>
+                                        <label
+                                            htmlFor="grant-cert-upload"
+                                            className={cn(
+                                                "flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                                                grantLeaveFile
+                                                    ? "border-green-400 bg-green-50 hover:bg-green-100"
+                                                    : "border-border bg-muted/30 hover:bg-muted/50"
+                                            )}
+                                        >
+                                            {grantLeaveFile ? (
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <Paperclip className="w-5 h-5 text-green-600" />
+                                                    <span className="text-xs font-medium text-green-700 max-w-[200px] truncate">{grantLeaveFile.name}</span>
+                                                    <span className="text-[10px] text-muted-foreground">{(grantLeaveFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <Upload className="w-5 h-5 text-muted-foreground" />
+                                                    <span className="text-xs text-muted-foreground">Click to upload PDF or photo</span>
+                                                    <span className="text-[10px] text-muted-foreground">Max 10 MB · PDF, JPG, PNG</span>
+                                                </div>
+                                            )}
+                                            <input
+                                                id="grant-cert-upload"
+                                                type="file"
+                                                accept="image/*,application/pdf"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0] || null
+                                                    if (file && file.size > 10 * 1024 * 1024) {
+                                                        toast.error("File is too large. Maximum size is 10 MB.")
+                                                        return
+                                                    }
+                                                    setGrantLeaveFile(file)
+                                                }}
+                                            />
+                                        </label>
+                                        {grantLeaveFile && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setGrantLeaveFile(null)}
+                                                className="text-xs text-muted-foreground hover:text-red-600 flex items-center gap-1 transition-colors"
+                                            >
+                                                <X className="w-3 h-3" /> Remove file
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="flex justify-end pt-2">

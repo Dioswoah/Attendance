@@ -15,10 +15,13 @@ export async function POST(req: NextRequest) {
 
         const formData = await req.formData()
         const file = formData.get("file") as File | null
+        // A pending leave lives in LeaveRequest (leaveRequestId); an approved leave
+        // granted by a manager/admin lives in Leave (leaveId). Support both.
         const leaveRequestId = formData.get("leaveRequestId") as string | null
+        const leaveId = formData.get("leaveId") as string | null
 
-        if (!file || !leaveRequestId) {
-            return NextResponse.json({ error: "Missing file or leaveRequestId" }, { status: 400 })
+        if (!file || (!leaveRequestId && !leaveId)) {
+            return NextResponse.json({ error: "Missing file or leave id" }, { status: 400 })
         }
 
         // Validate file type
@@ -31,17 +34,20 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "File too large. Maximum size is 10 MB." }, { status: 400 })
         }
 
-        // Verify the leave request belongs to the caller (or caller is admin/manager)
-        const leaveRequest = await (prisma as any).leaveRequest.findUnique({
-            where: { id: leaveRequestId },
+        const model = leaveId ? "leave" : "leaveRequest"
+        const recordId = (leaveId || leaveRequestId) as string
+
+        // Verify the record exists and belongs to the caller (or caller is admin/manager)
+        const record = await (prisma as any)[model].findUnique({
+            where: { id: recordId },
         })
 
-        if (!leaveRequest) {
-            return NextResponse.json({ error: "Leave request not found" }, { status: 404 })
+        if (!record) {
+            return NextResponse.json({ error: "Leave record not found" }, { status: 404 })
         }
 
         const userRoles: string[] = session.user.roles || []
-        const isOwner = leaveRequest.userId === session.user.id
+        const isOwner = record.userId === session.user.id
         const isPrivileged = userRoles.includes("ADMIN") || userRoles.includes("MANAGER")
 
         if (!isOwner && !isPrivileged) {
@@ -53,11 +59,11 @@ export async function POST(req: NextRequest) {
         const buffer = Buffer.from(arrayBuffer)
 
         // Upload to GCS
-        const objectPath = await uploadMedicalCert(leaveRequestId, file.name, buffer, file.type)
+        const objectPath = await uploadMedicalCert(recordId, file.name, buffer, file.type)
 
-        // Save the path back to the leave request
-        await (prisma as any).leaveRequest.update({
-            where: { id: leaveRequestId },
+        // Save the path back to the originating record
+        await (prisma as any)[model].update({
+            where: { id: recordId },
             data: { attachmentPath: objectPath },
         })
 
