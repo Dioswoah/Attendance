@@ -483,26 +483,31 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                                 </td>
                                                 <td className="py-2.5 pr-4 whitespace-nowrap">
                                                     {t.rsa.clockedInToday ? (
-                                                        <div>
-                                                            <div className="flex items-center gap-1.5">
+                                                        <div className="flex items-start gap-1.5">
+                                                            {/* Clock-IN column: "via simPRO" belongs to the clock-in
+                                                                only (simPRO auto clock-in from the tech's first job). */}
+                                                            <div className="flex flex-col items-start">
                                                                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                                                     In {fmtTime(t.rsa.clockInAt, userTimeZone)}
                                                                 </Badge>
+                                                                {t.rsa.source === "SIMPRO" && (
+                                                                    <span className="text-xs text-muted-foreground mt-0.5">via simPRO</span>
+                                                                )}
+                                                            </div>
+                                                            {/* Clock-OUT column: "via RSA" belongs to the clock-out
+                                                                only, and only for a human clock-out in the RSA app —
+                                                                simPRO-driven clock-outs are left unmarked. */}
+                                                            <div className="flex flex-col items-start">
                                                                 <Badge
                                                                     variant="outline"
                                                                     className={t.rsa.clockOutAt ? "bg-slate-50 text-slate-600 border-slate-200" : "bg-slate-50 text-slate-400 border-slate-100"}
                                                                 >
                                                                     Out {t.rsa.clockOutAt ? fmtTime(t.rsa.clockOutAt, userTimeZone) : "—"}
                                                                 </Badge>
+                                                                {t.rsa.clockOutAt && !t.rsa.clockOutViaSimpro && (
+                                                                    <span className="text-xs text-muted-foreground mt-0.5">via RSA</span>
+                                                                )}
                                                             </div>
-                                                            {t.rsa.source === "SIMPRO" && (
-                                                                <div className="text-xs text-muted-foreground mt-0.5">via simPRO</div>
-                                                            )}
-                                                            {/* Clock-out provenance: only a human clock-out in the RSA app
-                                                                is labelled; simPRO-driven clock-outs are left unmarked. */}
-                                                            {t.rsa.clockOutAt && !t.rsa.clockOutViaSimpro && (
-                                                                <div className="text-xs text-muted-foreground mt-0.5">via RSA</div>
-                                                            )}
                                                         </div>
                                                     ) : (
                                                         <span className="text-muted-foreground text-xs">Not clocked in</span>
