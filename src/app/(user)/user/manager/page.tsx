@@ -72,6 +72,7 @@ export default function ManagerControlPage() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const isViewer = ((session?.user as any)?.roles || []).includes('VIEWER')
+    const isAdmin = ((session?.user as any)?.roles || []).includes('ADMIN')
 
     // Sync active tab with search params
     const activeTab = searchParams.get('tab') || 'requests'
@@ -207,6 +208,11 @@ export default function ManagerControlPage() {
     const { data: historyLeavesData, mutate: mutateHistoryLeaves } = useSWR(uid ? `/api/leaves?managerId=${uid}&status=APPROVED,DECLINED` : null, fetcher)
     const { data: historyAttendanceData, mutate: mutateHistoryAttendance } = useSWR(uid ? `/api/attendance-requests?managerId=${uid}&status=APPROVED,DECLINED` : null, fetcher)
 
+    // 6b. Leave history for the staff member selected in Grant Leave — keyed on
+    // that user so the side panel is correct even when an admin grants leave to
+    // someone outside their own team.
+    const { data: grantStaffLeavesData, mutate: mutateGrantStaffLeaves } = useSWR(grantLeaveEmpId ? `/api/leaves?userId=${grantLeaveEmpId}` : null, fetcher)
+
     // 7. Today's Attendance (for sidebar status)
     const { data: todayAttendanceData } = useSWR(uid ? '/api/attendance' : null, fetcher)
 
@@ -217,6 +223,12 @@ export default function ManagerControlPage() {
         uid ? `/api/attendance?managerId=${uid}&startDate=${monthlyStart}&endDate=${monthlyEnd}` : null,
         fetcher
     )
+
+    // Grant Leave staff options: admins may grant leave to ANY active employee,
+    // while managers are limited to their own team (myTeam).
+    const grantLeaveCandidates = isAdmin
+        ? (employeesData || []).filter((e: any) => !e.isArchived)
+        : myTeam
 
     // --- State Synchronization Effects ---
 
@@ -649,6 +661,7 @@ export default function ManagerControlPage() {
                 setGrantLeaveFile(null)
                 mutateApprovedLeaves()
                 mutateHistoryLeaves()
+                mutateGrantStaffLeaves()
             } else {
                 const data = await res.json()
                 toast.error(data.error || "Failed to create leave record")
@@ -2727,7 +2740,7 @@ export default function ManagerControlPage() {
                                                 <SelectValue placeholder="Select team member..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {myTeam.map((emp: any) => (
+                                                {grantLeaveCandidates.map((emp: any) => (
                                                     <SelectItem key={emp.id} value={emp.id}>
                                                         {emp.name}{emp.department?.name ? ` — ${emp.department.name}` : ""}
                                                     </SelectItem>
@@ -2912,7 +2925,7 @@ export default function ManagerControlPage() {
                                     Leave History
                                     {grantLeaveEmpId && (
                                         <span className="text-xs font-normal text-muted-foreground truncate">
-                                            — {myTeam.find((e: any) => e.id === grantLeaveEmpId)?.name}
+                                            — {grantLeaveCandidates.find((e: any) => e.id === grantLeaveEmpId)?.name}
                                         </span>
                                     )}
                                 </CardTitle>
@@ -2926,6 +2939,7 @@ export default function ManagerControlPage() {
                                 ) : (() => {
                                     const seen = new Set<string>()
                                     const staffLeaves = [
+                                        ...(grantStaffLeavesData || []),
                                         ...(pendingLeavesData || []),
                                         ...(historyLeavesData || [])
                                     ]
