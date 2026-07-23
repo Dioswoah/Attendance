@@ -706,6 +706,14 @@ function authMarkdown(): string {
     ].join("\n")
 }
 
+// The host the docs' example requests point at. Uses the current origin in the
+// browser so curl samples are correct on whatever domain the user is on
+// (prod staff.redadair.com.au, staging, etc.); falls back to the prod domain
+// during SSR.
+function apiHost(): string {
+    return typeof window !== "undefined" ? window.location.origin : "https://staff.redadair.com.au"
+}
+
 function endpointMarkdown(ep: Endpoint): string {
     const lines: string[] = []
     lines.push(`## ${ep.method} ${ep.path} — ${ep.title}`, "")
@@ -717,7 +725,7 @@ function endpointMarkdown(ep: Endpoint): string {
     }
     lines.push("**Example request**", "")
     lines.push("```bash")
-    lines.push(`curl -H "x-api-key: rsa_…" "https://<staging-host>${ep.path}"`)
+    lines.push(`curl -H "x-api-key: rsa_…" "${apiHost()}${ep.path}"`)
     lines.push("```", "")
     lines.push("**Example response — 200 OK**", "")
     if (ep.responseNotes) lines.push(ep.responseNotes, "")
@@ -876,7 +884,7 @@ function EndpointCard({ endpoint, tryKey }: { endpoint: Endpoint; tryKey: string
         }
     }
 
-    const curl = `curl -H "x-api-key: rsa_…" "https://<staging-host>${buildUrl()}"`
+    const curl = `curl -H "x-api-key: rsa_…" "${apiHost()}${buildUrl()}"`
 
     return (
         <Card>
