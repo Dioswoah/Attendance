@@ -2,9 +2,7 @@
 
 import { useMemo, useState } from "react"
 import useSWR from "swr"
-import { useSession } from "next-auth/react"
 import { useSSE } from "@/contexts/SSEContext"
-import { getBrowserTimezone } from "@/lib/timezone"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -58,6 +56,7 @@ interface TechDayStatus {
         clockedInToday: boolean
         clockInAt: string | null
         clockOutAt: string | null
+        clockOutViaSimpro: boolean
         source: string | null
         attendanceId: string | null
     }
@@ -138,10 +137,13 @@ function parseTimeInTimezone(dateStr: string, timeStr: string, tz: string): Date
 // warnings and the unlinked stat card; the user-portal (OPERATIONS) view is
 // read-only field status.
 export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: boolean }) {
-    const { data: session } = useSession()
-    const userTimeZone = (session?.user as any)?.useCurrentTimezone
-        ? getBrowserTimezone()
-        : (session?.user as any)?.selectedTimezone || getBrowserTimezone()
+    // This board is exclusively Australian field technicians, and every simPRO
+    // schedule/attendance timestamp is anchored to Sydney (see sydneyToday() in
+    // simpro-attendance.ts). Render — and edit — all times in the business
+    // timezone so they read as when the tech actually worked, regardless of the
+    // viewer's location. Following the viewer's browser tz previously showed
+    // times 2h early for anyone working from Manila (UTC+8) vs Sydney (UTC+10).
+    const userTimeZone = "Australia/Sydney"
     const [search, setSearch] = useState("")
     const [statusFilter, setStatusFilter] = useState("ALL")
     const [linking, setLinking] = useState(false)
@@ -495,6 +497,11 @@ export function TechniciansBoard({ showLinkTools = false }: { showLinkTools?: bo
                                                             </div>
                                                             {t.rsa.source === "SIMPRO" && (
                                                                 <div className="text-xs text-muted-foreground mt-0.5">via simPRO</div>
+                                                            )}
+                                                            {/* Clock-out provenance: only a human clock-out in the RSA app
+                                                                is labelled; simPRO-driven clock-outs are left unmarked. */}
+                                                            {t.rsa.clockOutAt && !t.rsa.clockOutViaSimpro && (
+                                                                <div className="text-xs text-muted-foreground mt-0.5">via RSA</div>
                                                             )}
                                                         </div>
                                                     ) : (

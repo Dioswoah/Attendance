@@ -68,6 +68,7 @@ export interface TechDayStatus {
         clockedInToday: boolean
         clockInAt: string | null
         clockOutAt: string | null
+        clockOutViaSimpro: boolean // clock-out was performed by the simPRO sweep, not a human in the RSA app
         source: string | null
         attendanceId: string | null // the picked Attendance row id, for inline admin edit/clear
     }
@@ -272,6 +273,21 @@ export async function getTechDayStatuses(
     })
     const leaveByUserId = new Map(leaveRows.map((l) => [l.userId, l.type]))
 
+    // Which of the picked sessions were clocked out BY the simPRO sweep, as
+    // opposed to a human in the RSA app. The sweep is the only path that stamps
+    // details.source = 'SIMPRO' on a CLOCK_OUT activity log; manual web/app
+    // clock-outs log CLOCK_OUT with no source, and the nightly shift-end job
+    // logs a different action (AUTO_CLOCK_OUT). Matching on the picked row's own
+    // id keeps this exact — the board labels every non-simPRO clock-out "via RSA".
+    const pickedAttIds = [...latestAttendanceByUserId.values()].map((a) => a.id)
+    const simproClockOutRows = pickedAttIds.length
+        ? await prisma.activityLog.findMany({
+              where: { entityId: { in: pickedAttIds }, action: 'CLOCK_OUT', details: { path: ['source'], equals: 'SIMPRO' } },
+              select: { entityId: true },
+          })
+        : []
+    const simproClockOutAttIds = new Set(simproClockOutRows.map((r) => r.entityId))
+
     // 3) Resolve each tech's first job, then fetch its details + timeline.
     const statuses = await mapWithConcurrency(effectiveTechs, 5, async (tech): Promise<TechDayStatus> => {
         const user =
@@ -284,6 +300,7 @@ export async function getTechDayStatuses(
             clockedInToday: Boolean(att),
             clockInAt: att?.clockIn?.toISOString() ?? null,
             clockOutAt: att?.clockOut?.toISOString() ?? null,
+            clockOutViaSimpro: Boolean(att?.clockOut && simproClockOutAttIds.has(att.id)),
             source: att?.source ?? null,
             attendanceId: att?.id ?? null,
         }
