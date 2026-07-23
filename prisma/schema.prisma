@@ -59,9 +59,38 @@ model User {
   overriddenSummaries  AttendanceSummary[] @relation("OverrideManager")
   secondaryDepartments Department[]        @relation("UserSecondaryDepartments")
   leaveHistoryActed    LeaveRequestHistory[] @relation("LeaveHistoryActor")
+  apiKeys              ApiKey[]
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  userId     String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageLogs  ApiKeyUsageLog[]
+
+  @@index([userId])
+}
+
+// One row per authenticated v1 API request — powers the usage dashboard
+// (calls/day, top endpoints) in the Developer tab.
+model ApiKeyUsageLog {
+  id        String   @id @default(cuid())
+  apiKeyId  String
+  endpoint  String
+  createdAt DateTime @default(now())
+
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, createdAt])
 }
 
 model Account {
@@ -308,6 +337,7 @@ model ChatMessage {
 }
 
 enum Role {
+  DEVELOPER
   ADMIN
   MANAGER
   OPERATIONS
